@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}測驗結果 - {{ submission.quiz_bank.title }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 0 auto;">
+    <div class="card">
+        <div class="card-header">
+            <h1 style="margin: 0;">🎉 測驗結果</h1>
+        </div>
+        <div class="card-body">
+            <div style="text-align: center; margin-bottom: 2rem;">
+                <h2 style="color: #333; margin-bottom: 1rem;">{{ submission.quiz_bank.title }}</h2>
+                
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 15px; margin: 2rem 0;">
+                    <div style="font-size: 4rem; font-weight: bold; margin-bottom: 0.5rem;">
+                        {{ "%.1f"|format((submission.score / submission.total_points * 100) if submission.total_points > 0 else 0) }}%
+                    </div>
+                    <div style="font-size: 1.3rem;">
+                        得分：{{ submission.score }} / {{ submission.total_points }} 分
+                    </div>
+                </div>
+                
+                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 10px; margin-bottom: 2rem;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; text-align: center;">
+                        <div>
+                            <div style="font-size: 1.1rem; color: #666;">學生姓名</div>
+                            <div style="font-size: 1.3rem; font-weight: bold; color: #333;">{{ submission.student_name }}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 1.1rem; color: #666;">完成時間</div>
+                            <div style="font-size: 1.3rem; font-weight: bold; color: #333;">{{ submission.submitted_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 1.1rem; color: #666;">題目數量</div>
+                            <div style="font-size: 1.3rem; font-weight: bold; color: #333;">{{ submission.quiz_bank.questions|length }} 題</div>
+                        </div>
+                    </div>
+                </div>
+                
+                {% set percentage = (submission.score / submission.total_points * 100) if submission.total_points > 0 else 0 %}
+                {% if percentage >= 80 %}
+                <div style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                    <strong>🎉 優秀！</strong> 您的表現非常出色！
+                </div>
+                {% elif percentage >= 60 %}
+                <div style="background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                    <strong>👍 良好！</strong> 繼續努力，您會做得更好！
+                </div>
+                {% else %}
+                <div style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                    <strong>💪 加油！</strong> 多練習就會進步的！
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- 答題詳情 -->
+            <div style="margin-top: 2rem;">
+                <h3 style="margin-bottom: 1.5rem; color: #333;">📋 答題詳情</h3>
+                
+                {% set student_answers = submission.answers | from_json %}
+                {% for question in submission.quiz_bank.questions %}
+                {% set question_data = question.question_data | from_json %}
+                {% set user_answer = student_answers.get(question.id|string) %}
+                {% set is_correct = false %}
+                
+                <!-- 判斷答案是否正確 -->
+                {% if question.question_type in ['single_choice', 'dropdown'] %}
+                    {% set is_correct = (user_answer == question_data.get('correct_answer')) %}
+                {% elif question.question_type == 'multiple_choice' %}
+                    {% set correct_answers = question_data.get('correct_answers', []) %}
+                    {% set user_answers_set = user_answer if user_answer is iterable and user_answer is not string else [] %}
+                    {% set is_correct = (user_answers_set|sort == correct_answers|sort) %}
+                {% elif question.question_type == 'fill_blank' %}
+                    {% set correct_answer = question_data.get('correct_answer', '').lower().strip() %}
+                    {% set user_answer_clean = (user_answer or '').lower().strip() %}
+                    {% set is_correct = (user_answer_clean == correct_answer) %}
+                {% elif question.question_type == 'parsons' %}
+                    {% set correct_order = question_data.get('correct_order', []) %}
+                    {% set user_order = user_answer if user_answer is iterable and user_answer is not string else [] %}
+                    {% set is_correct = (user_order == correct_order) %}
+                {% endif %}
+                
+                <div class="question-result" style="border: 1px solid {{ '#c3e6cb' if is_correct else '#f5c6cb' }}; border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden;">
+                    <div style="background: {{ '#d4edda' if is_correct else '#f8d7da' }}; padding: 1rem; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>題目 {{ loop.index }}：{{ question.title }}</strong>
+                            <span style="margin-left: 1rem; color: #666;">({{ question.points }} 分)</span>
+                        </div>
+                        <div style="font-weight: bold; color: {{ '#155724' if is_correct else '#721c24' }};">
+                            {{ '✓ 正確' if is_correct else '✗ 錯誤' }}
+                        </div>
+                    </div>
+                    <div style="padding: 1rem;">
+                        <div style="margin-bottom: 1rem;">
+                            <strong>題目：</strong>{{ question.question_text }}
+                        </div>
+                        
+                        {% if question.question_type in ['single_choice', 'multiple_choice'] %}
+                        <div style="margin-bottom: 1rem;">
+                            <strong>選項：</strong>
+                            <div style="margin-top: 0.5rem;">
+                                {% for option in question_data.options %}
+                                {% set is_user_choice = (option == user_answer) or (user_answer and option in user_answer) %}
+                                {% set is_correct_option = (option == question_data.get('correct_answer')) or (option in question_data.get('correct_answers', [])) %}
+                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; 
+                                     background: {% if is_correct_option %}#d4edda{% elif is_user_choice %}#f8d7da{% else %}#f8f9fa{% endif %};">
+                                    {{ option }}
+                                    {% if is_correct_option %}
+                                    <span style="color: #155724; font-weight: bold;"> (正確答案)</span>
+                                    {% endif %}
+                                    {% if is_user_choice and not is_correct_option %}
+                                    <span style="color: #721c24; font-weight: bold;"> (您的選擇)</span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
+                        {% elif question.question_type == 'fill_blank' %}
+                        <div style="margin-bottom: 1rem;">
+                            <strong>您的答案：</strong>
+                            <span style="color: {{ '#155724' if is_correct else '#721c24' }};">{{ user_answer or '(未作答)' }}</span>
+                        </div>
+                        <div>
+                            <strong>正確答案：</strong>
+                            <span style="color: #155724;">{{ question_data.get('correct_answer') }}</span>
+                        </div>
+                        
+                        {% elif question.question_type == 'dropdown' %}
+                        <div style="margin-bottom: 1rem;">
+                            <strong>您的選擇：</strong>
+                            <span style="color: {{ '#155724' if is_correct else '#721c24' }};">{{ user_answer or '(未選擇)' }}</span>
+                        </div>
+                        <div>
+                            <strong>正確答案：</strong>
+                            <span style="color: #155724;">{{ question_data.get('correct_answer') }}</span>
+                        </div>
+                        
+                        {% elif question.question_type == 'parsons' %}
+                        <div style="margin-bottom: 1rem;">
+                            <strong>您的排序：</strong>
+                            <div style="font-family: monospace; background: {{ '#d4edda' if is_correct else '#f8d7da' }}; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
+                                {% if user_answer %}
+                                    {% for block in user_answer %}
+                                    <div style="padding: 0.25rem 0; border-left: 3px solid {{ '#27ae60' if is_correct else '#e74c3c' }}; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">
+                                        {{ loop.index }}. {{ block }}
+                                        {% if block in question_data.get('correct_order', []) %}
+                                            {% if question_data.get('correct_order', []).index(block) == loop.index - 1 %}
+                                            <span style="color: #27ae60; margin-left: 1rem;">✓ 位置正確</span>
+                                            {% else %}
+                                            <span style="color: #f39c12; margin-left: 1rem;">⚠ 位置錯誤</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span style="color: #e74c3c; margin-left: 1rem;">✗ 這是干擾項</span>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div style="color: #721c24;">(未完成排序)</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div>
+                            <strong>正確順序：</strong>
+                            <div style="font-family: monospace; background: #e8f5e8; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
+                                {% for block in question_data.get('correct_order', []) %}
+                                <div style="padding: 0.25rem 0; border-left: 3px solid #27ae60; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">{{ loop.index }}. {{ block }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% if question_data.get('distractor_blocks') %}
+                        <div style="margin-top: 1rem;">
+                            <strong>干擾項：</strong>
+                            <div style="font-family: monospace; background: #ffeaea; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
+                                {% for block in question_data.get('distractor_blocks', []) %}
+                                <div style="padding: 0.25rem 0; border-left: 3px solid #e74c3c; padding-left: 0.5rem; margin: 0.25rem 0;">❌ {{ block }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div style="text-align: center; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e9ecef;">
+                <button onclick="window.print()" class="btn btn-secondary" style="margin-right: 1rem;">🖨️ 列印結果</button>
+                <button onclick="location.href='/'" class="btn">返回首頁</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+@media print {
+    .navbar { display: none !important; }
+    .btn { display: none !important; }
+    body { background: white !important; }
+    .container { box-shadow: none !important; }
+    .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+}
+</style>
+{% endblock %}

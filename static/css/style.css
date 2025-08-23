@@ -1,0 +1,688 @@
+/* 基本樣式設定 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Microsoft JhengHei', Arial, sans-serif;
+    line-height: 1.6;
+    background: #f0f2f5;
+    min-height: 100vh;
+}
+
+.container {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* 側邊導航欄樣式 */
+.navbar {
+    width: 220px;
+    background: #fff;
+    color: #333;
+    box-shadow: 0 0 10px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    position: fixed;
+    height: 100vh;
+    z-index: 100;
+}
+
+.navbar h1 {
+    font-size: 1.2rem;
+    font-weight: bold;
+    padding: 1.5rem 1rem;
+    color: #1890ff;
+    border-bottom: 1px solid #f0f0f0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.navbar .nav-links {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 0;
+}
+
+.navbar a {
+    color: #555;
+    text-decoration: none;
+    padding: 0.8rem 1.5rem;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+}
+
+.navbar a:hover {
+    background-color: #f0f7ff;
+    color: #1890ff;
+}
+
+.navbar a.active {
+    background-color: #e6f7ff;
+    color: #1890ff;
+    border-right: 3px solid #1890ff;
+}
+
+/* 內容區域 */
+.content {
+    flex: 1;
+    padding: 1.5rem 2rem;
+    margin-left: 220px;
+    background: #f0f2f5;
+}
+
+/* 頁面標題區域 */
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #eaeaea;
+}
+
+.page-header h1 {
+    font-size: 1.5rem;
+    color: #333;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 主要功能區塊 */
+.main-functions {
+    margin-bottom: 1.5rem;
+}
+
+/* 表單樣式 */
+.form-container {
+    max-width: 500px;
+    margin: 1.5rem auto;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    border: 1px solid #eaeaea;
+}
+
+.form-group {
+    margin-bottom: 1.2rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #333;
+    font-size: 0.9rem;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 0.5rem 0.8rem;
+    border: 1px solid #d9d9d9;
+    border-radius: 2px;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    height: 32px;
+}
+
+.form-group textarea {
+    height: auto;
+    min-height: 80px;
+}
+
+.form-group input:hover,
+.form-group textarea:hover,
+.form-group select:hover {
+    border-color: #40a9ff;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #1890ff;
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+/* 按鈕樣式 */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    background: #1890ff;
+    color: white;
+    text-decoration: none;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s;
+    height: 32px;
+    gap: 5px;
+}
+
+.btn:hover {
+    background: #40a9ff;
+    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.2);
+}
+
+.btn-secondary {
+    background: #f0f0f0;
+    color: #666;
+    border: 1px solid #d9d9d9;
+}
+
+.btn-secondary:hover {
+    background: #fafafa;
+    color: #40a9ff;
+    border-color: #40a9ff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.btn-danger {
+    background: #ff4d4f;
+}
+
+.btn-danger:hover {
+    background: #ff7875;
+    box-shadow: 0 2px 8px rgba(255, 77, 79, 0.2);
+}
+
+.btn-success {
+    background: #52c41a;
+}
+
+.btn-success:hover {
+    background: #73d13d;
+    box-shadow: 0 2px 8px rgba(82, 196, 26, 0.2);
+}
+
+.btn-lg {
+    height: 40px;
+    padding: 0.5rem 1.25rem;
+    font-size: 1rem;
+}
+
+/* 卡片樣式 */
+.card {
+    background: white;
+    border-radius: 2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: all 0.3s;
+    border: 1px solid #eaeaea;
+}
+
+.card:hover {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.card-header {
+    background: #fafafa;
+    color: #333;
+    padding: 0.8rem 1.2rem;
+    font-weight: 500;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.card-body {
+    padding: 1.2rem;
+}
+
+.card-footer {
+    background: #fafafa;
+    padding: 0.8rem 1.2rem;
+    border-top: 1px solid #f0f0f0;
+}
+
+/* 統計卡片區域 */
+.stats-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 2px;
+    padding: 1.2rem;
+    display: flex;
+    align-items: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    border: 1px solid #eaeaea;
+}
+
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 1rem;
+    font-size: 1.5rem;
+    color: white;
+}
+
+.stat-icon.blue {
+    background: #1890ff;
+}
+
+.stat-icon.green {
+    background: #52c41a;
+}
+
+.stat-icon.purple {
+    background: #722ed1;
+}
+
+.stat-icon.orange {
+    background: #fa8c16;
+}
+
+.stat-content {
+    flex: 1;
+}
+
+.stat-title {
+    font-size: 0.85rem;
+    color: #888;
+    margin-bottom: 0.3rem;
+}
+
+.stat-value {
+    font-size: 1.8rem;
+    font-weight: 500;
+    color: #333;
+    line-height: 1;
+}
+
+/* 題庫卡片網格 */
+.quiz-banks-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.quiz-bank-card {
+    background: white;
+    border-radius: 2px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    border: 1px solid #eaeaea;
+    padding: 1.2rem;
+    transition: all 0.3s;
+}
+
+.quiz-bank-card:hover {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+}
+
+.quiz-bank-title {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 0.5rem;
+}
+
+.quiz-bank-description {
+    color: #666;
+    margin-bottom: 1rem;
+    line-height: 1.4;
+    font-size: 0.9rem;
+}
+
+.quiz-bank-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.access-code {
+    background: #f5f5f5;
+    padding: 3px 6px;
+    border-radius: 2px;
+    font-family: 'Courier New', monospace;
+    font-weight: 500;
+    color: #333;
+    font-size: 0.85rem;
+}
+
+/* 題目樣式 */
+.question-item {
+    border: 1px solid #eaeaea;
+    border-radius: 2px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    background: white;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.question-header {
+    background: #fafafa;
+    padding: 0.8rem 1.2rem;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.question-content {
+    padding: 1.2rem;
+}
+
+.question-type-badge {
+    background: #1890ff;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-size: 0.75rem;
+}
+
+/* 選項樣式 */
+.option {
+    margin: 0.5rem 0;
+    padding: 0.7rem 1rem;
+    border: 1px solid #d9d9d9;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+}
+
+.option:hover {
+    border-color: #40a9ff;
+    background: #f0f7ff;
+}
+
+.option.selected {
+    border-color: #1890ff;
+    background: #e6f7ff;
+    color: #1890ff;
+}
+
+.option input[type="radio"],
+.option input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+/* Parsons Puzzle 樣式 */
+.parsons-container {
+    display: flex;
+    gap: 2rem;
+    margin-top: 1rem;
+}
+
+.parsons-bank {
+    flex: 1;
+    border: 2px dashed #ddd;
+    border-radius: 8px;
+    padding: 1rem;
+    min-height: 300px;
+    background: #fafafa;
+}
+
+.parsons-target {
+    flex: 1;
+    border: 2px dashed #667eea;
+    border-radius: 8px;
+    padding: 1rem;
+    min-height: 300px;
+    background: #f8f9ff;
+}
+
+.code-block {
+    background: #2d3748;
+    color: #e2e8f0;
+    padding: 0.8rem 1rem;
+    margin: 0.5rem 0;
+    border-radius: 6px;
+    font-family: 'Courier New', monospace;
+    cursor: move;
+    transition: transform 0.2s, box-shadow 0.2s;
+    user-select: none;
+    position: relative;
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+
+.code-block:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+.code-block.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg);
+}
+
+/* 移除正確程式碼塊的顏色區分 */
+.code-block.correct-block {
+    background: #2d3748;
+}
+
+/* 移除干擾項程式碼塊的顏色區分 */
+.code-block.distractor-block {
+    background: #2d3748;
+}
+
+/* 答案區塊樣式 */
+.answer-slot {
+    border: 2px dashed #bbb;
+    border-radius: 8px;
+    margin: 0.5rem 0;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+    background: white;
+    transition: all 0.3s;
+    position: relative;
+}
+
+.answer-slot:hover {
+    border-color: #667eea;
+    background: #f0f4ff;
+}
+
+.answer-slot.slot-occupied {
+    border: 2px solid #27ae60;
+    background: #e8f5e8;
+}
+
+.answer-slot.slot-highlight {
+    border-color: #667eea;
+    background: #e6efff;
+    transform: scale(1.02);
+}
+
+.slot-number {
+    min-width: 30px;
+    height: 30px;
+    background: #667eea;
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 0.9rem;
+    margin-right: 1rem;
+}
+
+.slot-content {
+    flex: 1;
+    color: #999;
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+}
+
+.answer-slot .code-block {
+    margin: 0;
+    width: 100%;
+    cursor: default;
+}
+
+.answer-slot .code-block:hover {
+    transform: none;
+}
+
+/* 拖放時的視覺效果 */
+.drop-zone.drag-over {
+    background: #e6efff;
+    border-color: #667eea;
+}
+
+/* 下拉選單填空題樣式 */
+.dropdown-fillblank-container {
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin: 1rem 0;
+}
+
+.fillblank-text {
+    line-height: 2;
+    font-size: 1.1rem;
+}
+
+.fillblank-text select {
+    margin: 0 0.25rem;
+    padding: 0.4rem 0.6rem;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.3s;
+}
+
+.fillblank-text select:hover {
+    border-color: #667eea;
+}
+
+.fillblank-text select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.answer-slot.drag-over {
+    border-color: #27ae60;
+    background: #e8f5e8;
+    transform: scale(1.05);
+}
+
+/* 響應式設計 */
+@media (max-width: 992px) {
+    .stats-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        flex-direction: column;
+    }
+    
+    .navbar {
+        width: 100%;
+        height: auto;
+        position: relative;
+        flex-direction: column;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .navbar .nav-links {
+        width: 100%;
+        padding: 0;
+    }
+    
+    .navbar a {
+        padding: 0.8rem 1rem;
+    }
+    
+    .content {
+        margin-left: 0;
+        padding: 1rem;
+    }
+    
+    .quiz-banks-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .parsons-container {
+        flex-direction: column;
+    }
+    
+    .stats-cards {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 載入動畫 */
+.loading {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 提示訊息 */
+.alert {
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.alert-success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.alert-error {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+.alert-info {
+    background: #d1ecf1;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+}

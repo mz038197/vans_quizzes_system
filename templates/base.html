@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}智慧題庫 - 線上教學平台{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <h1><i class="fas fa-book"></i> 智慧題庫</h1>
+            <div class="nav-links">
+                {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('teacher_dashboard') }}" class="{{ 'active' if request.endpoint == 'teacher_dashboard' else '' }}">
+                        <i class="fas fa-tachometer-alt"></i> 儀表板
+                    </a>
+                    <a href="{{ url_for('create_quiz_bank') }}" class="{{ 'active' if request.endpoint == 'create_quiz_bank' else '' }}">
+                        <i class="fas fa-plus-circle"></i> 新增題庫
+                    </a>
+                    <a href="{{ url_for('logout') }}">
+                        <i class="fas fa-sign-out-alt"></i> 登出 ({{ current_user.username }})
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">
+                        <i class="fas fa-home"></i> 首頁
+                    </a>
+                    <a href="{{ url_for('login') }}" class="{{ 'active' if request.endpoint == 'login' else '' }}">
+                        <i class="fas fa-sign-in-alt"></i> 登入
+                    </a>
+                    <a href="{{ url_for('register') }}" class="{{ 'active' if request.endpoint == 'register' else '' }}">
+                        <i class="fas fa-user-plus"></i> 註冊
+                    </a>
+                {% endif %}
+            </div>
+        </nav>
+        
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

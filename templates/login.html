@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}教師登入 - 線上題庫系統{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h2 style="text-align: center; margin-bottom: 2rem; color: #333;">👨‍🏫 教師登入</h2>
+    
+    <div id="alert-container"></div>
+    
+    <form id="login-form">
+        <div class="form-group">
+            <label for="username">用戶名</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">密碼</label>
+            <input type="password" id="password" name="password" required>
+        </div>
+        
+        <button type="submit" class="btn" style="width: 100%;">
+            <span id="login-text">登入</span>
+            <span id="login-loading" class="loading" style="display: none;"></span>
+        </button>
+    </form>
+    
+    <p style="text-align: center; margin-top: 1.5rem;">
+        還沒有帳號？ <a href="{{ url_for('register') }}" style="color: #667eea;">立即註冊</a>
+    </p>
+</div>
+
+<script>
+document.getElementById('login-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    
+    // 清除之前的錯誤訊息
+    clearAlert();
+    
+    // 顯示載入狀態
+    setLoading(true);
+    
+    try {
+        const response = await fetch('/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username: username,
+                password: password
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showAlert('登入成功！正在跳轉...', 'success');
+            setTimeout(() => {
+                window.location.href = data.redirect;
+            }, 1000);
+        } else {
+            showAlert(data.error || '登入失敗，請檢查用戶名和密碼', 'error');
+        }
+    } catch (error) {
+        showAlert('網路錯誤，請檢查連線', 'error');
+    } finally {
+        setLoading(false);
+    }
+});
+
+function showAlert(message, type) {
+    const alertContainer = document.getElementById('alert-container');
+    alertContainer.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+}
+
+function clearAlert() {
+    document.getElementById('alert-container').innerHTML = '';
+}
+
+function setLoading(loading) {
+    const text = document.getElementById('login-text');
+    const spinner = document.getElementById('login-loading');
+    const button = document.querySelector('#login-form button[type="submit"]');
+    
+    if (loading) {
+        text.style.display = 'none';
+        spinner.style.display = 'inline-block';
+        button.disabled = true;
+    } else {
+        text.style.display = 'inline';
+        spinner.style.display = 'none';
+        button.disabled = false;
+    }
+}
+</script>
+{% endblock %}

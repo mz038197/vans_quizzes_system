@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+
+{% block title %}成績查看 - {{ quiz_bank.title }}{% endblock %}
+
+{% block content %}
+<div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <div>
+            <h1 style="color: #333; margin-bottom: 0.5rem;">📊 成績統計</h1>
+            <p style="color: #666;">{{ quiz_bank.title }} - 題庫代碼：{{ quiz_bank.access_code }}</p>
+        </div>
+        <div style="display: flex; gap: 1rem;">
+            <button onclick="exportToCSV()" class="btn btn-secondary">📄 匯出CSV</button>
+            <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="btn">← 返回題庫</a>
+        </div>
+    </div>
+    
+    <div id="submissions-container">
+        <div style="text-align: center; padding: 2rem;">
+            <div class="loading" style="margin: 0 auto;"></div>
+            <p style="margin-top: 1rem; color: #666;">載入成績資料中...</p>
+        </div>
+    </div>
+    
+    <!-- 統計摘要 -->
+    <div id="statistics-summary" style="display: none; margin-bottom: 2rem;">
+        <div class="card">
+            <div class="card-header">
+                <h3 style="margin: 0;">📈 統計摘要</h3>
+            </div>
+            <div class="card-body">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                        <div style="font-size: 2rem; font-weight: bold; color: #667eea;" id="total-submissions">0</div>
+                        <div style="color: #666;">總作答人數</div>
+                    </div>
+                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                        <div style="font-size: 2rem; font-weight: bold; color: #27ae60;" id="average-score">0%</div>
+                        <div style="color: #666;">平均分數</div>
+                    </div>
+                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                        <div style="font-size: 2rem; font-weight: bold; color: #e74c3c;" id="highest-score">0%</div>
+                        <div style="color: #666;">最高分數</div>
+                    </div>
+                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                        <div style="font-size: 2rem; font-weight: bold; color: #f39c12;" id="pass-rate">0%</div>
+                        <div style="color: #666;">及格率 (60分以上)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 成績列表 -->
+    <div id="submissions-table" style="display: none;">
+        <div class="card">
+            <div class="card-header">
+                <h3 style="margin: 0;">📋 詳細成績</h3>
+            </div>
+            <div class="card-body" style="padding: 0; overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8f9fa;">
+                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">排名</th>
+                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">學生姓名</th>
+                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">電子郵件</th>
+                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: center;">得分</th>
+                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: center;">百分比</th>
+                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">完成時間</th>
+                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: center;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="submissions-tbody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div id="no-submissions" style="display: none; text-align: center; padding: 3rem; background: #f8f9fa; border-radius: 10px;">
+        <h3 style="color: #666; margin-bottom: 1rem;">📝 還沒有學生作答</h3>
+        <p style="color: #888; margin-bottom: 2rem;">等待學生使用題庫代碼進行測驗</p>
+        <div style="background: white; padding: 1rem; border-radius: 8px; display: inline-block;">
+            <strong>題庫代碼：</strong>
+            <span class="access-code" style="font-size: 1.2rem;">{{ quiz_bank.access_code }}</span>
+            <button onclick="copyQuizLink('{{ quiz_bank.access_code }}')" class="btn btn-secondary" style="margin-left: 1rem; padding: 6px 12px;">📋 複製連結</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let submissionsData = [];
+
+// 載入成績資料
+async function loadSubmissions() {
+    try {
+        const response = await fetch('/api/quiz-bank/{{ quiz_bank.id }}/submissions');
+        if (response.ok) {
+            submissionsData = await response.json();
+            displaySubmissions();
+        } else {
+            throw new Error('載入失敗');
+        }
+    } catch (error) {
+        document.getElementById('submissions-container').innerHTML = `
+            <div style="text-align: center; padding: 2rem; color: #e74c3c;">
+                <h3>載入失敗</h3>
+                <p>無法載入成績資料，請稍後再試</p>
+                <button onclick="loadSubmissions()" class="btn">重新載入</button>
+            </div>
+        `;
+    }
+}
+
+function displaySubmissions() {
+    document.getElementById('submissions-container').style.display = 'none';
+    
+    if (submissionsData.length === 0) {
+        document.getElementById('no-submissions').style.display = 'block';
+        return;
+    }
+    
+    // 顯示統計摘要
+    displayStatistics();
+    
+    // 顯示成績表格
+    displaySubmissionsTable();
+}
+
+function displayStatistics() {
+    const totalSubmissions = submissionsData.length;
+    const averageScore = totalSubmissions > 0 ? 
+        submissionsData.reduce((sum, s) => sum + s.percentage, 0) / totalSubmissions : 0;
+    const highestScore = totalSubmissions > 0 ? 
+        Math.max(...submissionsData.map(s => s.percentage)) : 0;
+    const passCount = submissionsData.filter(s => s.percentage >= 60).length;
+    const passRate = totalSubmissions > 0 ? (passCount / totalSubmissions) * 100 : 0;
+    
+    document.getElementById('total-submissions').textContent = totalSubmissions;
+    document.getElementById('average-score').textContent = averageScore.toFixed(1) + '%';
+    document.getElementById('highest-score').textContent = highestScore.toFixed(1) + '%';
+    document.getElementById('pass-rate').textContent = passRate.toFixed(1) + '%';
+    
+    document.getElementById('statistics-summary').style.display = 'block';
+}
+
+function displaySubmissionsTable() {
+    // 按分數排序
+    const sortedSubmissions = [...submissionsData].sort((a, b) => b.percentage - a.percentage);
+    
+    const tbody = document.getElementById('submissions-tbody');
+    tbody.innerHTML = '';
+    
+    sortedSubmissions.forEach((submission, index) => {
+        const row = document.createElement('tr');
+        row.style.borderBottom = '1px solid #e9ecef';
+        
+        // 設定排名顏色
+        let rankColor = '#666';
+        if (index === 0) rankColor = '#f39c12'; // 金色
+        else if (index === 1) rankColor = '#95a5a6'; // 銀色
+        else if (index === 2) rankColor = '#e67e22'; // 銅色
+        
+        // 設定分數顏色
+        let scoreColor = '#e74c3c';
+        if (submission.percentage >= 80) scoreColor = '#27ae60';
+        else if (submission.percentage >= 60) scoreColor = '#f39c12';
+        
+        row.innerHTML = `
+            <td style="padding: 1rem; color: ${rankColor}; font-weight: bold;">
+                ${index + 1}
+                ${index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : ''}
+            </td>
+            <td style="padding: 1rem; font-weight: bold;">
+                ${submission.student_name}
+            </td>
+            <td style="padding: 1rem; color: #666;">
+                ${submission.student_email || '-'}
+            </td>
+            <td style="padding: 1rem; text-align: center;">
+                ${submission.score} / ${submission.total_points}
+            </td>
+            <td style="padding: 1rem; text-align: center; font-weight: bold; color: ${scoreColor};">
+                ${submission.percentage.toFixed(1)}%
+            </td>
+            <td style="padding: 1rem; color: #666;">
+                ${submission.submitted_at}
+            </td>
+            <td style="padding: 1rem; text-align: center;">
+                <a href="/result/${submission.id}" target="_blank" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
+                    查看詳情
+                </a>
+            </td>
+        `;
+        
+        tbody.appendChild(row);
+    });
+    
+    document.getElementById('submissions-table').style.display = 'block';
+}
+
+function exportToCSV() {
+    if (submissionsData.length === 0) {
+        alert('沒有資料可以匯出');
+        return;
+    }
+    
+    // 準備CSV資料
+    const headers = ['排名', '學生姓名', '電子郵件', '得分', '總分', '百分比', '完成時間'];
+    const sortedSubmissions = [...submissionsData].sort((a, b) => b.percentage - a.percentage);
+    
+    let csvContent = headers.join(',') + '\n';
+    
+    sortedSubmissions.forEach((submission, index) => {
+        const row = [
+            index + 1,
+            `"${submission.student_name}"`,
+            `"${submission.student_email || ''}"`,
+            submission.score,
+            submission.total_points,
+            submission.percentage.toFixed(1),
+            `"${submission.submitted_at}"`
+        ];
+        csvContent += row.join(',') + '\n';
+    });
+    
+    // 下載CSV檔案
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `{{ quiz_bank.title }}_成績統計.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function copyQuizLink(accessCode) {
+    const link = window.location.origin + '/quiz/' + accessCode;
+    
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(link).then(() => {
+            alert('題庫連結已複製到剪貼簿！\n' + link);
+        }).catch(() => {
+            fallbackCopyTextToClipboard(link);
+        });
+    } else {
+        fallbackCopyTextToClipboard(link);
+    }
+}
+
+function fallbackCopyTextToClipboard(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+        document.execCommand('copy');
+        alert('題庫連結已複製到剪貼簿！\n' + text);
+    } catch (err) {
+        alert('無法複製連結，請手動複製：\n' + text);
+    }
+    
+    document.body.removeChild(textArea);
+}
+
+// 頁面載入時載入資料
+document.addEventListener('DOMContentLoaded', loadSubmissions);
+</script>
+{% endblock %}

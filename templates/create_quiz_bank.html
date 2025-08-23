@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}新增題庫 - 線上題庫系統{% endblock %}
+
+{% block content %}
+<div class="form-container" style="max-width: 600px;">
+    <h2 style="text-align: center; margin-bottom: 2rem; color: #333;">📝 建立新題庫</h2>
+    
+    <div id="alert-container"></div>
+    
+    <form id="create-quiz-form">
+        <div class="form-group">
+            <label for="title">題庫標題 *</label>
+            <input type="text" id="title" name="title" required placeholder="例如：程式設計基礎測驗">
+        </div>
+        
+        <div class="form-group">
+            <label for="description">題庫描述</label>
+            <textarea id="description" name="description" rows="4" placeholder="描述這個題庫的內容和目的..."></textarea>
+        </div>
+        
+        <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="btn" style="flex: 1;">
+                <span id="create-text">建立題庫</span>
+                <span id="create-loading" class="loading" style="display: none;"></span>
+            </button>
+            <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-secondary" style="flex: 1; text-align: center; line-height: 1.5;">取消</a>
+        </div>
+    </form>
+    
+    <div style="margin-top: 2rem; padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
+        <h4 style="color: #333; margin-bottom: 1rem;">💡 建立題庫後您可以：</h4>
+        <ul style="color: #666; line-height: 1.6;">
+            <li>新增各種類型的題目（單選、多選、填空、程式碼排序等）</li>
+            <li>設定每題的分數和正確答案</li>
+            <li>獲得專屬的題庫代碼，分享給學生</li>
+            <li>查看學生的作答結果和成績統計</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+document.getElementById('create-quiz-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const title = document.getElementById('title').value.trim();
+    const description = document.getElementById('description').value.trim();
+    
+    // 清除之前的錯誤訊息
+    clearAlert();
+    
+    if (!title) {
+        showAlert('請輸入題庫標題', 'error');
+        return;
+    }
+    
+    // 顯示載入狀態
+    setLoading(true);
+    
+    try {
+        const response = await fetch('/create-quiz-bank', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: title,
+                description: description
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showAlert(`題庫建立成功！題庫代碼：${data.access_code}`, 'success');
+            setTimeout(() => {
+                window.location.href = `/quiz-bank/${data.quiz_bank_id}`;
+            }, 2000);
+        } else {
+            showAlert(data.error || '建立題庫失敗，請稍後再試', 'error');
+        }
+    } catch (error) {
+        showAlert('網路錯誤，請檢查連線', 'error');
+    } finally {
+        setLoading(false);
+    }
+});
+
+function showAlert(message, type) {
+    const alertContainer = document.getElementById('alert-container');
+    alertContainer.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+}
+
+function clearAlert() {
+    document.getElementById('alert-container').innerHTML = '';
+}
+
+function setLoading(loading) {
+    const text = document.getElementById('create-text');
+    const spinner = document.getElementById('create-loading');
+    const button = document.querySelector('#create-quiz-form button[type="submit"]');
+    
+    if (loading) {
+        text.style.display = 'none';
+        spinner.style.display = 'inline-block';
+        button.disabled = true;
+    } else {
+        text.style.display = 'inline';
+        spinner.style.display = 'none';
+        button.disabled = false;
+    }
+}
+</script>
+{% endblock %}

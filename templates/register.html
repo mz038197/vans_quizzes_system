@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+
+{% block title %}教師註冊 - 線上題庫系統{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h2 style="text-align: center; margin-bottom: 2rem; color: #333;">👨‍🏫 教師註冊</h2>
+    
+    <div id="alert-container"></div>
+    
+    <form id="register-form">
+        <div class="form-group">
+            <label for="username">用戶名</label>
+            <input type="text" id="username" name="username" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="email">電子郵件</label>
+            <input type="email" id="email" name="email" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">密碼</label>
+            <input type="password" id="password" name="password" required minlength="6">
+        </div>
+        
+        <div class="form-group">
+            <label for="confirm-password">確認密碼</label>
+            <input type="password" id="confirm-password" name="confirm-password" required>
+        </div>
+        
+        <button type="submit" class="btn" style="width: 100%;">
+            <span id="register-text">註冊</span>
+            <span id="register-loading" class="loading" style="display: none;"></span>
+        </button>
+    </form>
+    
+    <p style="text-align: center; margin-top: 1.5rem;">
+        已有帳號？ <a href="{{ url_for('login') }}" style="color: #667eea;">立即登入</a>
+    </p>
+</div>
+
+<script>
+document.getElementById('register-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const username = document.getElementById('username').value;
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+    
+    // 清除之前的錯誤訊息
+    clearAlert();
+    
+    // 驗證密碼
+    if (password !== confirmPassword) {
+        showAlert('密碼與確認密碼不符', 'error');
+        return;
+    }
+    
+    if (password.length < 6) {
+        showAlert('密碼長度至少需要6個字符', 'error');
+        return;
+    }
+    
+    // 顯示載入狀態
+    setLoading(true);
+    
+    try {
+        const response = await fetch('/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username: username,
+                email: email,
+                password: password
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showAlert('註冊成功！正在跳轉到登入頁面...', 'success');
+            setTimeout(() => {
+                window.location.href = data.redirect;
+            }, 1500);
+        } else {
+            showAlert(data.error || '註冊失敗，請稍後再試', 'error');
+        }
+    } catch (error) {
+        showAlert('網路錯誤，請檢查連線', 'error');
+    } finally {
+        setLoading(false);
+    }
+});
+
+function showAlert(message, type) {
+    const alertContainer = document.getElementById('alert-container');
+    alertContainer.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+}
+
+function clearAlert() {
+    document.getElementById('alert-container').innerHTML = '';
+}
+
+function setLoading(loading) {
+    const text = document.getElementById('register-text');
+    const spinner = document.getElementById('register-loading');
+    const button = document.querySelector('#register-form button[type="submit"]');
+    
+    if (loading) {
+        text.style.display = 'none';
+        spinner.style.display = 'inline-block';
+        button.disabled = true;
+    } else {
+        text.style.display = 'inline';
+        spinner.style.display = 'none';
+        button.disabled = false;
+    }
+}
+</script>
+{% endblock %}

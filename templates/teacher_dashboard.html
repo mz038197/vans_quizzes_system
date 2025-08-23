@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}教學儀表板 - 智慧題庫{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="fas fa-tachometer-alt"></i> 教學儀表板</h1>
+    <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-lg">
+        <i class="fas fa-plus"></i> 建立題庫
+    </a>
+</div>
+
+<div class="stats-cards">
+    <div class="stat-card">
+        <div class="stat-icon blue">
+            <i class="fas fa-book"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-title">題庫總數</div>
+            <div class="stat-value">{{ quiz_banks|length }}</div>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon green">
+            <i class="fas fa-file-alt"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-title">題目總數</div>
+            <div class="stat-value">{% set total_questions = 0 %}{% for bank in quiz_banks %}{% set total_questions = total_questions + bank.questions|length %}{% endfor %}{{ total_questions }}</div>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon purple">
+            <i class="fas fa-users"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-title">學生人數</div>
+            <div class="stat-value">{% set total_submissions = 0 %}{% for bank in quiz_banks %}{% set total_submissions = total_submissions + bank.submissions|length %}{% endfor %}{{ total_submissions }}</div>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon orange">
+            <i class="fas fa-chart-line"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-title">平均分數</div>
+            <div class="stat-value">100%</div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2><i class="fas fa-book"></i> 我的題庫</h2>
+        <a href="{{ url_for('create_quiz_bank') }}" class="btn">
+            <i class="fas fa-plus"></i> 新增題庫
+        </a>
+    </div>
+    <div class="card-body">
+        {% if quiz_banks %}
+            <div class="quiz-banks-grid">
+                {% for quiz_bank in quiz_banks %}
+                <div class="quiz-bank-card">
+                    <div class="quiz-bank-title">{{ quiz_bank.title }}</div>
+                    <div class="quiz-bank-description">
+                        {{ quiz_bank.description if quiz_bank.description else '暫無描述' }}
+                    </div>
+                    <div class="quiz-bank-info">
+                        <span><i class="far fa-calendar-alt"></i> {{ quiz_bank.created_at.strftime('%Y-%m-%d') }}</span>
+                        <span class="access-code">{{ quiz_bank.access_code }}</span>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="btn" style="flex: 1; text-align: center;">
+                            <i class="fas fa-cog"></i> 管理題目
+                        </a>
+                        <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" style="flex: 1; text-align: center;">
+                            <i class="fas fa-chart-bar"></i> 查看成績
+                        </a>
+                    </div>
+                    <div style="margin-top: 0.5rem;">
+                        <button onclick="copyQuizLink('{{ quiz_bank.access_code }}')" class="btn btn-secondary" style="width: 100%;">
+                            <i class="fas fa-link"></i> 複製題庫連結
+                        </button>
+                    </div>
+                    <div style="margin-top: 0.5rem;">
+                        <button onclick="toggleQuizBank({{ quiz_bank.id }}, {{ quiz_bank.is_active|lower }})" 
+                                class="btn {{ 'btn-danger' if quiz_bank.is_active else 'btn-success' }}" 
+                                style="width: 100%;">
+                            <i class="fas fa-{{ 'lock' if quiz_bank.is_active else 'lock-open' }}"></i>
+                            {{ '停用題庫' if quiz_bank.is_active else '啟用題庫' }}
+                        </button>
+                    </div>
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: 0.9rem; color: #666;">
+                        <div><i class="fas fa-file-alt"></i> 題目數量：{{ quiz_bank.questions|length }} 題</div>
+                        <div><i class="fas fa-users"></i> 作答次數：{{ quiz_bank.submissions|length }} 次</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div style="text-align: center; padding: 3rem; background: #f8f9fa; border-radius: 2px;">
+                <div style="font-size: 3rem; color: #d9d9d9; margin-bottom: 1rem;">
+                    <i class="fas fa-book"></i>
+                </div>
+                <h3 style="color: #666; margin-bottom: 1rem;">還沒有題庫</h3>
+                <p style="color: #888; margin-bottom: 2rem;">開始建立您的第一個題庫吧！</p>
+                <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-lg">
+                    <i class="fas fa-plus"></i> 建立題庫
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function copyQuizLink(accessCode) {
+    const link = window.location.origin + '/quiz/' + accessCode;
+    
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(link).then(() => {
+            alert('題庫連結已複製到剪貼簿！\n' + link);
+        }).catch(() => {
+            fallbackCopyTextToClipboard(link);
+        });
+    } else {
+        fallbackCopyTextToClipboard(link);
+    }
+}
+
+function fallbackCopyTextToClipboard(text) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+        document.execCommand('copy');
+        alert('題庫連結已複製到剪貼簿！\n' + text);
+    } catch (err) {
+        alert('無法複製連結，請手動複製：\n' + text);
+    }
+    
+    document.body.removeChild(textArea);
+}
+
+async function toggleQuizBank(quizBankId, isActive) {
+    const action = isActive ? '停用' : '啟用';
+    if (!confirm(`確定要${action}這個題庫嗎？`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/quiz-bank/${quizBankId}/toggle`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert('操作失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+</script>
+{% endblock %}

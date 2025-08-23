@@ -1,0 +1,540 @@
+{% extends "base.html" %}
+
+{% block title %}{{ quiz_bank.title }} - 測驗答題{% endblock %}
+
+{% block content %}
+<div>
+    <div class="card" style="margin-bottom: 2rem;">
+        <div class="card-header">
+            <h1 style="margin: 0;">📝 {{ quiz_bank.title }}</h1>
+        </div>
+        <div class="card-body">
+            {% if quiz_bank.description %}
+            <p>{{ quiz_bank.description }}</p>
+            {% endif %}
+            
+            <!-- 學生資料填寫 -->
+            <div id="student-info-section" style="margin-bottom: 2rem;">
+                <h3 style="margin-bottom: 1rem;">請先填寫您的資料</h3>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                    <div class="form-group" style="flex: 1; min-width: 200px;">
+                        <label for="student-name">姓名 *</label>
+                        <input type="text" id="student-name" required placeholder="請輸入您的姓名">
+                    </div>
+                    <div class="form-group" style="flex: 1; min-width: 200px;">
+                        <label for="student-email">電子郵件（可選）</label>
+                        <input type="email" id="student-email" placeholder="您的電子郵件">
+                    </div>
+                </div>
+                <button onclick="startQuiz()" class="btn">開始測驗</button>
+            </div>
+            
+            <!-- 測驗進度 -->
+            <div id="quiz-progress" style="display: none; margin-bottom: 1rem;">
+                <div style="background: #f8f9fa; border-radius: 8px; padding: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>進度：<span id="current-question">1</span> / {{ questions|length }}</span>
+                        <span>總分：{{ questions|sum(attribute='points') }} 分</span>
+                    </div>
+                    <div style="background: #e9ecef; border-radius: 4px; height: 8px; margin-top: 0.5rem;">
+                        <div id="progress-bar" style="background: #667eea; height: 100%; border-radius: 4px; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 測驗題目 -->
+    <div id="quiz-questions" style="display: none;">
+        {% for question in questions %}
+        <div class="question-card" data-question-id="{{ question.id }}" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3>題目 {{ loop.index }}：{{ question.title }}</h3>
+                        <span class="question-type-badge">{{ get_question_type_name(question.question_type) }} - {{ question.points }}分</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="question-text" style="margin-bottom: 1.5rem; font-size: 1.1rem; line-height: 1.6;">
+                        {{ question.question_text }}
+                    </div>
+                    
+                    <!-- 單選題 -->
+                    {% if question.question_type == 'single_choice' %}
+                    <div class="options-container">
+                        {% for option in question.options %}
+                        <div class="option" onclick="selectSingleOption(this, '{{ question.id }}', '{{ option }}')">
+                            <input type="radio" name="question-{{ question.id }}" value="{{ option }}" style="margin-right: 0.5rem;">
+                            {{ option }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- 多選題 -->
+                    {% elif question.question_type == 'multiple_choice' %}
+                    <div class="options-container">
+                        {% for option in question.options %}
+                        <div class="option" onclick="toggleMultipleOption(this, '{{ question.id }}', '{{ option }}')">
+                            <input type="checkbox" name="question-{{ question.id }}" value="{{ option }}" style="margin-right: 0.5rem;">
+                            {{ option }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <!-- 填空題 -->
+                    {% elif question.question_type == 'fill_blank' %}
+                    <div class="form-group">
+                        <input type="text" id="answer-{{ question.id }}" placeholder="請輸入答案" style="font-size: 1.1rem;">
+                    </div>
+                    
+                    <!-- 下拉選單 -->
+                    {% elif question.question_type == 'dropdown' %}
+                    <div class="form-group">
+                        <select id="answer-{{ question.id }}" style="font-size: 1.1rem;">
+                            <option value="">請選擇答案</option>
+                            {% for option in question.options %}
+                            <option value="{{ option }}">{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <!-- 下拉選單填空題 -->
+                    {% elif question.question_type == 'dropdown_fillblank' %}
+                    <div class="dropdown-fillblank-container" data-question-id="{{ question.id }}">
+                        <div class="fillblank-text" style="font-size: 1.1rem; line-height: 1.6; margin-bottom: 1rem;">
+                            {{ question.fillblank_text | safe }}
+                        </div>
+                    </div>
+                    
+                    <!-- 程式碼排序題 -->
+                    {% elif question.question_type == 'parsons' %}
+                    <div class="parsons-container">
+                        <div class="parsons-bank">
+                            <h4 style="text-align: center; margin-bottom: 1rem; color: #666;">程式碼塊</h4>
+                            <div id="code-bank-{{ question.id }}">
+                                <!-- 正確的程式碼塊 -->
+                                {% for block in question.correct_blocks %}
+                                <div class="code-block correct-block" draggable="true" data-block="{{ block }}" data-type="correct">{{ block }}</div>
+                                {% endfor %}
+                                
+                                <!-- 干擾項程式碼塊 -->
+                                {% if question.distractor_blocks %}
+                                    {% for block in question.distractor_blocks %}
+                                    <div class="code-block distractor-block" draggable="true" data-block="{{ block }}" data-type="distractor">{{ block }}</div>
+                                    {% endfor %}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="parsons-target">
+                            <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea;">答題區 (請按正確順序排列)</h4>
+                            <div id="code-target-{{ question.id }}" class="drop-zone">
+                                <!-- 根據正確程式碼塊數量產生空白區塊 -->
+                                {% for i in range(question.answer_slots or question.correct_blocks|length) %}
+                                <div class="answer-slot" data-slot="{{ i + 1 }}">
+                                    <div class="slot-number">{{ i + 1 }}</div>
+                                    <div class="slot-content">將程式碼塊拖拉到這裡</div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="card-footer">
+                    <div style="display: flex; justify-content: space-between;">
+                        <button onclick="previousQuestion()" class="btn btn-secondary" {% if loop.first %}disabled{% endif %}>
+                            ← 上一題
+                        </button>
+                        {% if loop.last %}
+                        <button onclick="submitQuiz()" class="btn btn-success">提交測驗</button>
+                        {% else %}
+                        <button onclick="nextQuestion()" class="btn">下一題 →</button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- 完成訊息 -->
+    <div id="completion-message" style="display: none; text-align: center; padding: 3rem;">
+        <h2 style="color: #27ae60; margin-bottom: 1rem;">🎉 測驗完成！</h2>
+        <div id="score-display" style="background: #f8f9fa; padding: 2rem; border-radius: 10px; margin: 2rem auto; max-width: 400px;">
+            <div style="font-size: 3rem; color: #667eea; margin-bottom: 1rem;" id="score-percentage">--</div>
+            <div style="font-size: 1.2rem; color: #333;" id="score-details">計算中...</div>
+        </div>
+        <button onclick="location.href='/'" class="btn">返回首頁</button>
+    </div>
+</div>
+
+<script>
+let currentQuestionIndex = 0;
+let totalQuestions = {{ questions|length }};
+let studentAnswers = {};
+let quizStarted = false;
+
+// 儲存題目資料供 JavaScript 使用
+window.questionsData = {{ questions | tojson | safe }};
+
+function startQuiz() {
+    const studentName = document.getElementById('student-name').value.trim();
+    if (!studentName) {
+        alert('請輸入您的姓名');
+        return;
+    }
+    
+    quizStarted = true;
+    document.getElementById('student-info-section').style.display = 'none';
+    document.getElementById('quiz-progress').style.display = 'block';
+    document.getElementById('quiz-questions').style.display = 'block';
+    
+    showQuestion(0);
+}
+
+function showQuestion(index) {
+    // 隱藏所有題目
+    const questions = document.querySelectorAll('.question-card');
+    questions.forEach(q => q.style.display = 'none');
+    
+    // 顯示當前題目
+    if (questions[index]) {
+        questions[index].style.display = 'block';
+        currentQuestionIndex = index;
+        
+        // 更新進度
+        document.getElementById('current-question').textContent = index + 1;
+        const progress = ((index + 1) / totalQuestions) * 100;
+        document.getElementById('progress-bar').style.width = progress + '%';
+        
+        // 初始化 Parsons Puzzle
+        initializeParsons(questions[index]);
+        
+        // 初始化下拉選單填空題
+        initializeDropdownFillblank(questions[index]);
+    }
+}
+
+function nextQuestion() {
+    if (currentQuestionIndex < totalQuestions - 1) {
+        showQuestion(currentQuestionIndex + 1);
+    }
+}
+
+function previousQuestion() {
+    if (currentQuestionIndex > 0) {
+        showQuestion(currentQuestionIndex - 1);
+    }
+}
+
+function selectSingleOption(element, questionId, value) {
+    // 清除同組其他選項的選中狀態
+    const container = element.parentNode;
+    container.querySelectorAll('.option').forEach(opt => opt.classList.remove('selected'));
+    
+    // 設定當前選項為選中
+    element.classList.add('selected');
+    element.querySelector('input').checked = true;
+    
+    // 儲存答案
+    studentAnswers[questionId] = value;
+}
+
+function toggleMultipleOption(element, questionId, value) {
+    const checkbox = element.querySelector('input');
+    const isChecked = !checkbox.checked;
+    
+    checkbox.checked = isChecked;
+    element.classList.toggle('selected', isChecked);
+    
+    // 儲存答案
+    if (!studentAnswers[questionId]) {
+        studentAnswers[questionId] = [];
+    }
+    
+    if (isChecked) {
+        if (!studentAnswers[questionId].includes(value)) {
+            studentAnswers[questionId].push(value);
+        }
+    } else {
+        studentAnswers[questionId] = studentAnswers[questionId].filter(v => v !== value);
+    }
+}
+
+// Parsons Puzzle 拖拉功能
+function initializeParsons(questionElement) {
+    const parsonsContainer = questionElement.querySelector('.parsons-container');
+    if (!parsonsContainer) return;
+    
+    const questionId = questionElement.dataset.questionId;
+    const codeBlocks = parsonsContainer.querySelectorAll('.code-block');
+    const answerSlots = parsonsContainer.querySelectorAll('.answer-slot');
+    
+    // 初始化程式碼塊的拖拉功能
+    codeBlocks.forEach(block => {
+        block.addEventListener('dragstart', handleDragStart);
+        block.addEventListener('dragend', handleDragEnd);
+    });
+    
+    // 初始化答案區塊的拖放功能
+    answerSlots.forEach(slot => {
+        slot.addEventListener('dragover', handleSlotDragOver);
+        slot.addEventListener('drop', e => handleSlotDrop(e, questionId));
+        slot.addEventListener('dragenter', handleSlotDragEnter);
+        slot.addEventListener('dragleave', handleSlotDragLeave);
+        
+        // 為已經放置的程式碼塊添加移除功能
+        const existingBlock = slot.querySelector('.code-block');
+        if (existingBlock) {
+            addRemoveButton(existingBlock, slot, questionId);
+        }
+    });
+    
+    // 打亂左側程式碼塊順序
+    shuffleCodeBlocks(questionId);
+}
+
+// 初始化下拉選單填空題
+function initializeDropdownFillblank(questionElement) {
+    const container = questionElement.querySelector('.dropdown-fillblank-container');
+    if (!container) return;
+    
+    const questionId = container.dataset.questionId;
+    const fillblankTextElement = container.querySelector('.fillblank-text');
+    
+    if (!fillblankTextElement) return;
+    
+    // 獲取題目資料
+    const questionData = window.questionsData.find(q => q.id == questionId);
+    if (!questionData || !questionData.blanks) return;
+    
+    let fillblankText = questionData.fillblank_text;
+    
+    // 找到所有 {{ '{{}}' }} 並替換為下拉選單
+    let blankIndex = 0;
+    fillblankText = fillblankText.replace(/\{\{[^}]*\}\}/g, function(match) {
+        const blank = questionData.blanks[blankIndex];
+        if (!blank) return match;
+        
+        let selectHTML = `<select id="blank_${blankIndex}_q${questionId}" onchange="saveDropdownFillblankAnswer(${questionId}, ${blankIndex}, this.value)" style="margin: 0 0.25rem; padding: 0.25rem; border: 1px solid #ddd; border-radius: 3px; font-size: 1rem;">`;
+        selectHTML += '<option value="">請選擇...</option>';
+        
+        blank.options.forEach(option => {
+            selectHTML += `<option value="${option}">${option}</option>`;
+        });
+        
+        selectHTML += '</select>';
+        blankIndex++;
+        
+        return selectHTML;
+    });
+    
+    fillblankTextElement.innerHTML = fillblankText;
+}
+
+// 儲存下拉選單填空題答案
+function saveDropdownFillblankAnswer(questionId, blankIndex, value) {
+    if (!studentAnswers[questionId]) {
+        studentAnswers[questionId] = {};
+    }
+    studentAnswers[questionId][`blank_${blankIndex}`] = value;
+}
+
+let draggedElement = null;
+
+function handleDragStart(e) {
+    draggedElement = e.target;
+    e.target.classList.add('dragging');
+}
+
+function handleDragEnd(e) {
+    e.target.classList.remove('dragging');
+    draggedElement = null;
+    
+    // 移除所有高亮效果
+    document.querySelectorAll('.answer-slot').forEach(slot => {
+        slot.classList.remove('slot-highlight', 'drag-over');
+    });
+}
+
+function handleSlotDragOver(e) {
+    e.preventDefault();
+}
+
+function handleSlotDragEnter(e) {
+    e.preventDefault();
+    if (draggedElement && !e.currentTarget.querySelector('.code-block')) {
+        e.currentTarget.classList.add('slot-highlight');
+    }
+}
+
+function handleSlotDragLeave(e) {
+    // 只有當離開的是答案區塊本身時才移除高亮
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+        e.currentTarget.classList.remove('slot-highlight');
+    }
+}
+
+function handleSlotDrop(e, questionId) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!draggedElement) return;
+    
+    const targetSlot = e.currentTarget;
+    
+    // 檢查這個區塊是否已經有程式碼塊
+    if (targetSlot.querySelector('.code-block')) {
+        targetSlot.classList.remove('slot-highlight');
+        return;
+    }
+    
+    // 複製程式碼塊到目標區域
+    const clonedBlock = draggedElement.cloneNode(true);
+    clonedBlock.classList.remove('dragging');
+    clonedBlock.draggable = false;
+    
+    // 隱藏原始的提示文字
+    const slotContent = targetSlot.querySelector('.slot-content');
+    slotContent.style.display = 'none';
+    
+    // 添加程式碼塊到區塊中
+    targetSlot.appendChild(clonedBlock);
+    targetSlot.classList.add('slot-occupied');
+    targetSlot.classList.remove('slot-highlight');
+    
+    // 添加移除按鈕
+    addRemoveButton(clonedBlock, targetSlot, questionId);
+    
+    updateParsonsAnswer(questionId);
+}
+
+function addRemoveButton(codeBlock, slot, questionId) {
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '✕';
+    removeBtn.style.cssText = 'position: absolute; top: 5px; right: 5px; background: #e74c3c; color: white; border: none; border-radius: 3px; width: 20px; height: 20px; cursor: pointer; font-size: 12px; z-index: 10;';
+    removeBtn.onclick = (e) => {
+        e.stopPropagation();
+        codeBlock.remove();
+        slot.classList.remove('slot-occupied');
+        
+        // 重新顯示提示文字
+        const slotContent = slot.querySelector('.slot-content');
+        slotContent.style.display = 'flex';
+        
+        updateParsonsAnswer(questionId);
+    };
+    
+    codeBlock.style.position = 'relative';
+    codeBlock.appendChild(removeBtn);
+}
+
+function shuffleCodeBlocks(questionId) {
+    const bank = document.querySelector(`#code-bank-${questionId}`);
+    const blocks = Array.from(bank.children);
+    
+    // Fisher-Yates 洗牌演算法
+    for (let i = blocks.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        bank.appendChild(blocks[j]);
+        [blocks[i], blocks[j]] = [blocks[j], blocks[i]];
+    }
+}
+
+function updateParsonsAnswer(questionId) {
+    const targetZone = document.querySelector(`#code-target-${questionId}`);
+    const answerSlots = targetZone.querySelectorAll('.answer-slot');
+    const order = [];
+    
+    answerSlots.forEach(slot => {
+        const block = slot.querySelector('.code-block');
+        if (block) {
+            order.push(block.dataset.block);
+        } else {
+            order.push(null); // 空白區塊
+        }
+    });
+    
+    // 移除末尾的空值，只保留有內容的部分
+    while (order.length > 0 && order[order.length - 1] === null) {
+        order.pop();
+    }
+    
+    studentAnswers[questionId] = order.filter(item => item !== null);
+}
+
+// 收集填空題和下拉選單答案
+function collectTextAnswers() {
+    const fillBlanks = document.querySelectorAll('input[id^="answer-"]');
+    fillBlanks.forEach(input => {
+        const questionId = input.id.replace('answer-', '');
+        studentAnswers[questionId] = input.value;
+    });
+    
+    const dropdowns = document.querySelectorAll('select[id^="answer-"]');
+    dropdowns.forEach(select => {
+        const questionId = select.id.replace('answer-', '');
+        studentAnswers[questionId] = select.value;
+    });
+}
+
+async function submitQuiz() {
+    if (!confirm('確定要提交測驗嗎？提交後將無法修改。')) {
+        return;
+    }
+    
+    // 收集所有答案
+    collectTextAnswers();
+    
+    const studentName = document.getElementById('student-name').value;
+    const studentEmail = document.getElementById('student-email').value;
+    
+    try {
+        const response = await fetch('/api/quiz/{{ quiz_bank.access_code }}/submit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                student_name: studentName,
+                student_email: studentEmail,
+                answers: studentAnswers
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // 隱藏測驗內容
+            document.getElementById('quiz-questions').style.display = 'none';
+            document.getElementById('quiz-progress').style.display = 'none';
+            
+            // 顯示結果
+            document.getElementById('completion-message').style.display = 'block';
+            document.getElementById('score-percentage').textContent = result.percentage + '%';
+            document.getElementById('score-details').textContent = `得分：${result.score} / ${result.total_points} 分`;
+            
+            // 滾動到頂部
+            window.scrollTo(0, 0);
+        } else {
+            alert(result.error || '提交失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+
+// 頁面載入時初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 防止意外離開頁面
+    window.addEventListener('beforeunload', function(e) {
+        if (quizStarted && document.getElementById('completion-message').style.display === 'none') {
+            e.preventDefault();
+            e.returnValue = '您還未提交測驗，確定要離開嗎？';
+        }
+    });
+});
+</script>
+
+{% endblock %}
