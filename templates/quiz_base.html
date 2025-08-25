@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}智慧題庫 - 線上教學平台{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <div class="container">
+        <nav class="navbar">
+            <h1><i class="fas fa-book"></i> 智慧題庫</h1>
+            <div class="nav-links">
+                <span style="color: #666; font-size: 0.9rem;">
+                    <i class="fas fa-user-graduate"></i> 學生測驗模式
+                </span>
+            </div>
+        </nav>
+        
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

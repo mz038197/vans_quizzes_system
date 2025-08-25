@@ -7,31 +7,21 @@
     <h1 style="font-size: 3rem; margin-bottom: 1rem; color: #333;">🎓 歡迎使用線上題庫系統</h1>
     <p style="font-size: 1.3rem; color: #666; margin-bottom: 2rem;">為教師和學生提供便利的線上測驗平台</p>
     
-    <div style="display: flex; justify-content: center; gap: 2rem; flex-wrap: wrap; margin-top: 3rem;">
-        <div class="card" style="width: 300px;">
+    <div style="display: flex; justify-content: center; margin-top: 3rem;">
+        <div class="card" style="width: 400px;">
             <div class="card-header">
-                <h3>👨‍🏫 教師入口</h3>
+                <h3>👨‍🏫 教師專用平台</h3>
             </div>
             <div class="card-body">
-                <p>建立和管理題庫，設計多種題型，追蹤學生成績</p>
-                <div style="margin-top: 1.5rem;">
-                    <a href="{{ url_for('register') }}" class="btn" style="margin-right: 0.5rem;">註冊</a>
-                    <a href="{{ url_for('login') }}" class="btn btn-secondary">登入</a>
+                <p style="margin-bottom: 1.5rem;">建立和管理題庫，設計多種題型，追蹤學生成績</p>
+                <div style="margin-bottom: 2rem;">
+                    <a href="{{ url_for('register') }}" class="btn" style="margin-right: 0.5rem; width: 45%;">註冊</a>
+                    <a href="{{ url_for('login') }}" class="btn btn-secondary" style="width: 45%;">登入</a>
                 </div>
-            </div>
-        </div>
-        
-        <div class="card" style="width: 300px;">
-            <div class="card-header">
-                <h3>👨‍🎓 學生入口</h3>
-            </div>
-            <div class="card-body">
-                <p>使用題庫代碼進入測驗，支援多種題型，即時查看成績</p>
-                <div style="margin-top: 1.5rem;">
-                    <form id="access-form" style="display: flex; gap: 0.5rem;">
-                        <input type="text" id="access-code" placeholder="輸入題庫代碼" style="flex: 1;">
-                        <button type="submit" class="btn">進入</button>
-                    </form>
+                <div style="background: #f8f9fa; padding: 1rem; border-radius: 5px; border-left: 4px solid #667eea;">
+                    <p style="margin: 0; font-size: 0.9rem; color: #666;">
+                        <strong>📝 學生注意：</strong> 請使用老師提供的題庫連結或代碼直接進入測驗
+                    </p>
                 </div>
             </div>
         </div>
@@ -60,15 +50,5 @@
     </div>
 </div>
 
-<script>
-document.getElementById('access-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    const accessCode = document.getElementById('access-code').value.trim();
-    if (accessCode) {
-        window.location.href = '/quiz/' + accessCode;
-    } else {
-        alert('請輸入題庫代碼');
-    }
-});
-</script>
+
 {% endblock %}
