@@ -632,10 +632,190 @@ function validateFormData(data) {
     return true;
 }
 
-function editQuestion(questionId) {
-    // 這裡需要從伺服器獲取題目資料來填充表單
-    // 簡化處理，直接重新載入頁面讓用戶重新建立
-    alert('編輯功能開發中，請先刪除後重新建立題目');
+async function editQuestion(questionId) {
+    currentQuestionId = questionId;
+    document.getElementById('modal-title').textContent = '編輯題目';
+    
+    try {
+        // 從API獲取題目數據
+        const response = await fetch(`/api/quiz-bank/{{ quiz_bank.id }}/questions`);
+        const questions = await response.json();
+        
+        // 找到要編輯的題目
+        const question = questions.find(q => q.id === questionId);
+        if (!question) {
+            alert('找不到題目數據');
+            return;
+        }
+        
+        // 填充基本信息
+        document.getElementById('question-title').value = question.title;
+        document.getElementById('question-text').value = question.question_text;
+        document.getElementById('question-type').value = question.question_type;
+        document.getElementById('question-points').value = question.points;
+        
+        // 觸發類型變更事件以生成對應的表單
+        handleQuestionTypeChange();
+        
+        // 根據題目類型填充特定內容
+        if (question.question_data) {
+            const data = question.question_data;
+            
+            switch (question.question_type) {
+                case 'single_choice':
+                case 'multiple_choice':
+                    // 清空現有選項
+                    document.getElementById('options-container').innerHTML = '';
+                    
+                    // 添加選項
+                    if (data.options && data.options.length > 0) {
+                        data.options.forEach(option => {
+                            const optionRow = document.createElement('div');
+                            optionRow.className = 'option-row';
+                            optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+                            
+                            const isCorrect = question.question_type === 'single_choice' 
+                                ? option === data.correct_answer
+                                : (data.correct_answers && data.correct_answers.includes(option));
+                            
+                            optionRow.innerHTML = `
+                                <input type="text" class="option-input" placeholder="選項內容" style="flex: 1;" value="${option}">
+                                <label style="margin: 0; display: flex; align-items: center;">
+                                    <input type="${question.question_type === 'single_choice' ? 'radio' : 'checkbox'}" 
+                                           name="correct-option" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
+                                    正確
+                                </label>
+                                <button type="button" onclick="removeOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            `;
+                            
+                            document.getElementById('options-container').appendChild(optionRow);
+                        });
+                    }
+                    break;
+                    
+                case 'fill_blank':
+                    if (data.correct_answer) {
+                        document.getElementById('correct-answer').value = data.correct_answer;
+                    }
+                    break;
+                    
+                case 'dropdown':
+                    // 清空現有選項
+                    document.getElementById('dropdown-options-container').innerHTML = '';
+                    
+                    // 添加選項
+                    if (data.options && data.options.length > 0) {
+                        data.options.forEach(option => {
+                            const optionRow = document.createElement('div');
+                            optionRow.className = 'dropdown-option-row';
+                            optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+                            
+                            const isCorrect = option === data.correct_answer;
+                            
+                            optionRow.innerHTML = `
+                                <input type="text" class="dropdown-option-input" placeholder="選項內容" style="flex: 1;" value="${option}">
+                                <label style="margin: 0; display: flex; align-items: center;">
+                                    <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
+                                    正確
+                                </label>
+                                <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            `;
+                            
+                            document.getElementById('dropdown-options-container').appendChild(optionRow);
+                        });
+                    }
+                    break;
+                    
+                case 'dropdown_fillblank':
+                    // 填充題目文字
+                    if (data.fillblank_text) {
+                        document.getElementById('fillblank-text').value = data.fillblank_text;
+                    }
+                    
+                    // 解析空格
+                    parseBlanks();
+                    
+                    // 填充空格選項
+                    if (data.blanks && data.blanks.length > 0) {
+                        setTimeout(() => {
+                            data.blanks.forEach((blank, index) => {
+                                const blankContainer = document.querySelector(`[data-blank-index="${index}"]`);
+                                if (!blankContainer) return;
+                                
+                                // 清空現有選項
+                                blankContainer.innerHTML = '';
+                                
+                                // 添加選項
+                                if (blank.options && blank.options.length > 0) {
+                                    blank.options.forEach(option => {
+                                        const optionRow = document.createElement('div');
+                                        optionRow.className = 'blank-option-row';
+                                        optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+                                        
+                                        const isCorrect = option === blank.correct_answer;
+                                        
+                                        optionRow.innerHTML = `
+                                            <input type="text" class="blank-option-input" placeholder="選項內容" style="flex: 1;" value="${option}">
+                                            <label style="margin: 0; display: flex; align-items: center;">
+                                                <input type="radio" name="correct-blank-${index}" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
+                                                正確答案
+                                            </label>
+                                            <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                                        `;
+                                        
+                                        blankContainer.appendChild(optionRow);
+                                    });
+                                }
+                            });
+                        }, 100); // 延遲一下以確保空格容器已經生成
+                    }
+                    break;
+                    
+                case 'parsons':
+                    // 清空現有程式碼塊
+                    document.getElementById('correct-blocks-container').innerHTML = '';
+                    document.getElementById('distractor-blocks-container').innerHTML = '';
+                    
+                    // 添加正確程式碼塊
+                    if (data.correct_blocks && data.correct_blocks.length > 0) {
+                        data.correct_blocks.forEach((block, index) => {
+                            const blockRow = document.createElement('div');
+                            blockRow.className = 'correct-block-row';
+                            blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+                            blockRow.innerHTML = `
+                                <span style="min-width: 30px; color: #666;">${index + 1}.</span>
+                                <textarea class="correct-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;">${block}</textarea>
+                                <button type="button" onclick="removeCorrectBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            `;
+                            document.getElementById('correct-blocks-container').appendChild(blockRow);
+                        });
+                    }
+                    
+                    // 添加干擾項
+                    if (data.distractor_blocks && data.distractor_blocks.length > 0) {
+                        data.distractor_blocks.forEach(block => {
+                            const blockRow = document.createElement('div');
+                            blockRow.className = 'distractor-block-row';
+                            blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+                            blockRow.innerHTML = `
+                                <span style="min-width: 30px; color: #e74c3c;">❌</span>
+                                <textarea class="distractor-block-input" placeholder="干擾項程式碼塊 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;">${block}</textarea>
+                                <button type="button" onclick="removeDistractorBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            `;
+                            document.getElementById('distractor-blocks-container').appendChild(blockRow);
+                        });
+                    }
+                    break;
+            }
+        }
+        
+        // 顯示模態框
+        document.getElementById('question-modal').style.display = 'block';
+        
+    } catch (error) {
+        console.error('獲取題目數據失敗', error);
+        alert('獲取題目數據失敗，請稍後再試');
+    }
 }
 
 async function deleteQuestion(questionId) {
