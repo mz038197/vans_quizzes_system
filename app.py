@@ -447,3 +447,10 @@ if __name__ == '__main__':
     if ENVIRONMENT == 'development':
         app.run(debug=True, host='0.0.0.0', port=5000)
     # 生產環境下，由 Gunicorn 啟動應用，這裡不需要 app.run()
+else:
+    # 只在設置了特定環境變量時初始化數據庫
+    should_init_db = os.environ.get('INIT_DB', 'false').lower() == 'true'
+    if should_init_db:
+        with app.app_context():
+            db.create_all()
+            print("數據庫初始化完成")
