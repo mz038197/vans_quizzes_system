@@ -32,7 +32,7 @@
                     </div>
                 </div>
                 <div class="question-content">
-                    <p>{{ question.question_text }}</p>
+                    <p style="white-space: pre-wrap;">{{ question.question_text | trim }}</p>
                     {% if question.question_data %}
                         {% set data = question.question_data | from_json %}
                         {% if question.question_type in ['single_choice', 'multiple_choice'] %}

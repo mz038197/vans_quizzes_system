@@ -93,7 +93,7 @@
                     </div>
                     <div style="padding: 1rem;">
                         <div style="margin-bottom: 1rem;">
-                            <strong>題目：</strong>{{ question.question_text }}
+                            <strong>題目：</strong><span style="white-space: pre-wrap;">{{ question.question_text | trim }}</span>
                         </div>
                         
                         {% if question.question_type in ['single_choice', 'multiple_choice'] %}
