@@ -30,6 +30,7 @@
 ### 環境需求
 - Python 3.7+
 - pip
+- PostgreSQL (僅生產環境)
 
 ### 安裝步驟
 
@@ -38,12 +39,28 @@
 pip install -r requirements.txt
 ```
 
-2. **啟動應用程式**
+2. **設置環境變數**
 ```bash
-python app.py
+# 開發環境
+export FLASK_ENV=development
+export SECRET_KEY="your-development-secret-key"
+
+# 或生產環境
+export FLASK_ENV=production
+export SECRET_KEY="your-production-secret-key"
+export DATABASE_URL="postgresql://username:password@host:port/database"
 ```
 
-3. **開啟瀏覽器**
+3. **啟動應用程式**
+```bash
+# 開發環境
+python app.py
+
+# 生產環境
+gunicorn app:app
+```
+
+4. **開啟瀏覽器**
 訪問 `http://localhost:5000`
 
 ### 初次使用
@@ -123,18 +140,34 @@ python app.py
 ### 開發環境
 - 使用內建的SQLite資料庫
 - 預設在localhost:5000運行
+- 設置 `FLASK_ENV=development`
 
 ### 生產環境
-- 建議使用PostgreSQL或MySQL
-- 設定環境變數
-- 使用WSGI伺服器 (如Gunicorn)
+- 使用PostgreSQL資料庫
+- 設置 `FLASK_ENV=production`
+- 使用Gunicorn作為WSGI伺服器
 - 配置反向代理 (如Nginx)
+- 適合部署在Render.com等雲端平台
 
 ### 環境變數設定
 ```bash
+# 必要變數
+export FLASK_ENV="production"  # 或 "development"
 export SECRET_KEY="your-secret-key"
-export DATABASE_URL="your-database-url"
+
+# 生產環境必要
+export DATABASE_URL="postgresql://username:password@host:port/database"
 ```
+
+### Render.com部署指南
+1. 在Render.com建立新的Web Service
+2. 連接到您的GitHub倉庫
+3. 設定環境變數：
+   - `FLASK_ENV=production`
+   - `SECRET_KEY=your-secret-key`
+   - `DATABASE_URL=postgresql://...`
+4. 設定啟動命令：`gunicorn app:app`
+5. 建立服務並等待部署完成
 
 ## 📝 授權
 

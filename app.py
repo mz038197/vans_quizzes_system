@@ -6,10 +6,25 @@ from flask_cors import CORS
 import json
 import uuid
 from datetime import datetime
+import os
+import sys
+
+# 環境設置
+ENVIRONMENT = os.environ.get('FLASK_ENV', 'development')
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quiz_platform.db'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+
+# 根據環境選擇數據庫
+if ENVIRONMENT == 'production':
+    # 處理 render.com 中的 postgres:// 前綴問題
+    database_url = os.environ.get('DATABASE_URL', '')
+    if database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+else:  # development
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quiz_platform.db'
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -416,7 +431,19 @@ def view_submissions(quiz_bank_id):
     
     return jsonify(submissions_data)
 
+# 獲取當前環境
+@app.route('/api/environment')
+def get_environment():
+    return jsonify({
+        'environment': ENVIRONMENT,
+        'database_type': 'PostgreSQL' if ENVIRONMENT == 'production' else 'SQLite'
+    })
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    
+    # 根據環境決定運行方式
+    if ENVIRONMENT == 'development':
+        app.run(debug=True, host='0.0.0.0', port=5000)
+    # 生產環境下，由 Gunicorn 啟動應用，這裡不需要 app.run()
