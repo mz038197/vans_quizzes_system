@@ -63,8 +63,8 @@
                     <div class="options-container">
                         {% for option in question.options %}
                         <div class="option" onclick="selectSingleOption(this, '{{ question.id }}', '{{ option }}')">
-                            <input type="radio" name="question-{{ question.id }}" value="{{ option }}" style="margin-right: 0.5rem;">
-                            {{ option }}
+                            <input type="radio" name="question-{{ question.id }}" value="{{ option }}">
+                            <div class="option-text">{{ option }}</div>
                         </div>
                         {% endfor %}
                     </div>
@@ -74,8 +74,8 @@
                     <div class="options-container">
                         {% for option in question.options %}
                         <div class="option" onclick="toggleMultipleOption(this, '{{ question.id }}', '{{ option }}')">
-                            <input type="checkbox" name="question-{{ question.id }}" value="{{ option }}" style="margin-right: 0.5rem;">
-                            {{ option }}
+                            <input type="checkbox" name="question-{{ question.id }}" value="{{ option }}">
+                            <div class="option-text">{{ option }}</div>
                         </div>
                         {% endfor %}
                     </div>
@@ -229,7 +229,10 @@ function previousQuestion() {
 function selectSingleOption(element, questionId, value) {
     // 清除同組其他選項的選中狀態
     const container = element.parentNode;
-    container.querySelectorAll('.option').forEach(opt => opt.classList.remove('selected'));
+    container.querySelectorAll('.option').forEach(opt => {
+        opt.classList.remove('selected');
+        opt.querySelector('input').checked = false;
+    });
     
     // 設定當前選項為選中
     element.classList.add('selected');
@@ -319,7 +322,8 @@ function initializeDropdownFillblank(questionElement) {
         selectHTML += '<option value="">請選擇...</option>';
         
         blank.options.forEach(option => {
-            selectHTML += `<option value="${option}">${option}</option>`;
+            // 注意：HTML的option元素不支持多行显示，但我们仍然保留原始格式用于值
+            selectHTML += `<option value="${option}">${option.replace(/\n/g, ' ')}</option>`;
         });
         
         selectHTML += '</select>';

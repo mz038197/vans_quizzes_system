@@ -410,8 +410,29 @@ body {
     border-radius: 2px;
     cursor: pointer;
     transition: all 0.2s;
-    display: flex;
-    align-items: center;
+    position: relative;
+}
+
+.option input[type="radio"],
+.option input[type="checkbox"] {
+    position: absolute;
+    left: 1rem;
+    top: 0.7rem;
+    margin: 0;
+}
+
+.option-text {
+    display: block;
+    white-space: pre-wrap;
+    padding-left: 1.5rem;
+}
+
+.option-correct {
+    display: block;
+    color: #27ae60;
+    font-weight: bold;
+    margin-top: 0.5rem;
+    padding-left: 1.5rem;
 }
 
 .option:hover {
@@ -422,7 +443,6 @@ body {
 .option.selected {
     border-color: #1890ff;
     background: #e6f7ff;
-    color: #1890ff;
 }
 
 .option input[type="radio"],

@@ -38,11 +38,11 @@
                         {% if question.question_type in ['single_choice', 'multiple_choice'] %}
                             <div style="margin-top: 1rem;">
                                 {% for option in data.options %}
-                                <div class="option" style="margin: 0.5rem 0; background: #f8f9fa;">
-                                    {{ option }}
+                                <div class="option" style="background: #f8f9fa;">
+                                    <div class="option-text">{{ option }}</div>
                                     {% if (question.question_type == 'single_choice' and option == data.correct_answer) or 
                                            (question.question_type == 'multiple_choice' and option in data.correct_answers) %}
-                                    <span style="color: #27ae60; font-weight: bold;">✓ 正確答案</span>
+                                    <div class="option-correct">✓ 正確答案</div>
                                     {% endif %}
                                 </div>
                                 {% endfor %}
@@ -190,7 +190,7 @@ function handleQuestionTypeChange() {
                     <label>選項 *</label>
                     <div id="options-container">
                         <div class="option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <input type="text" class="option-input" placeholder="選項內容" style="flex: 1;">
+                            <textarea class="option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
                             <label style="margin: 0; display: flex; align-items: center;">
                                 <input type="${type === 'single_choice' ? 'radio' : 'checkbox'}" name="correct-option" style="margin-right: 0.5rem;">
                                 正確
@@ -218,7 +218,7 @@ function handleQuestionTypeChange() {
                     <label>下拉選項 *</label>
                     <div id="dropdown-options-container">
                         <div class="dropdown-option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <input type="text" class="dropdown-option-input" placeholder="選項內容" style="flex: 1;">
+                            <textarea class="dropdown-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
                             <label style="margin: 0; display: flex; align-items: center;">
                                 <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;">
                                 正確
@@ -295,7 +295,7 @@ function addOption() {
     optionRow.className = 'option-row';
     optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
     optionRow.innerHTML = `
-        <input type="text" class="option-input" placeholder="選項內容" style="flex: 1;">
+        <textarea class="option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
         <label style="margin: 0; display: flex; align-items: center;">
             <input type="${isMultiple ? 'checkbox' : 'radio'}" name="correct-option" style="margin-right: 0.5rem;">
             正確
@@ -315,7 +315,7 @@ function addDropdownOption() {
     optionRow.className = 'dropdown-option-row';
     optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
     optionRow.innerHTML = `
-        <input type="text" class="dropdown-option-input" placeholder="選項內容" style="flex: 1;">
+        <textarea class="dropdown-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
         <label style="margin: 0; display: flex; align-items: center;">
             <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;">
             正確
@@ -393,7 +393,7 @@ function parseBlanks() {
             <h4 style="margin: 0 0 1rem 0; color: #333;">空格 ${index + 1}: ${blank}</h4>
             <div class="blank-options" data-blank-index="${index}">
                 <div class="blank-option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
-                    <input type="text" class="blank-option-input" placeholder="選項內容" style="flex: 1;">
+                    <textarea class="blank-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
                     <label style="margin: 0; display: flex; align-items: center;">
                         <input type="radio" name="correct-blank-${index}" style="margin-right: 0.5rem;">
                         正確答案
@@ -414,7 +414,7 @@ function addBlankOption(blankIndex) {
     optionRow.className = 'blank-option-row';
     optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
     optionRow.innerHTML = `
-        <input type="text" class="blank-option-input" placeholder="選項內容" style="flex: 1;">
+        <textarea class="blank-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
         <label style="margin: 0; display: flex; align-items: center;">
             <input type="radio" name="correct-blank-${blankIndex}" style="margin-right: 0.5rem;">
             正確答案
@@ -679,7 +679,7 @@ async function editQuestion(questionId) {
                                 : (data.correct_answers && data.correct_answers.includes(option));
                             
                             optionRow.innerHTML = `
-                                <input type="text" class="option-input" placeholder="選項內容" style="flex: 1;" value="${option}">
+                                <textarea class="option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;">${option}</textarea>
                                 <label style="margin: 0; display: flex; align-items: center;">
                                     <input type="${question.question_type === 'single_choice' ? 'radio' : 'checkbox'}" 
                                            name="correct-option" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
@@ -713,7 +713,7 @@ async function editQuestion(questionId) {
                             const isCorrect = option === data.correct_answer;
                             
                             optionRow.innerHTML = `
-                                <input type="text" class="dropdown-option-input" placeholder="選項內容" style="flex: 1;" value="${option}">
+                                <textarea class="dropdown-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;">${option}</textarea>
                                 <label style="margin: 0; display: flex; align-items: center;">
                                     <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
                                     正確
@@ -755,7 +755,7 @@ async function editQuestion(questionId) {
                                         const isCorrect = option === blank.correct_answer;
                                         
                                         optionRow.innerHTML = `
-                                            <input type="text" class="blank-option-input" placeholder="選項內容" style="flex: 1;" value="${option}">
+                                            <textarea class="blank-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;">${option}</textarea>
                                             <label style="margin: 0; display: flex; align-items: center;">
                                                 <input type="radio" name="correct-blank-${index}" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
                                                 正確答案
