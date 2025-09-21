@@ -111,29 +111,50 @@
                         <div class="parsons-bank">
                             <h4 style="text-align: center; margin-bottom: 1rem; color: #666;">程式碼塊</h4>
                             <div id="code-bank-{{ question.id }}">
-                                <!-- 正確的程式碼塊 -->
-                                {% for block in question.correct_blocks %}
-                                <div class="code-block correct-block" draggable="true" data-block="{{ block }}" data-type="correct">{{ block }}</div>
-                                {% endfor %}
-                                
-                                <!-- 干擾項程式碼塊 -->
-                                {% if question.distractor_blocks %}
-                                    {% for block in question.distractor_blocks %}
-                                    <div class="code-block distractor-block" draggable="true" data-block="{{ block }}" data-type="distractor">{{ block }}</div>
+                                <!-- 所有可選擇的程式碼塊 -->
+                                {% if question.all_blocks %}
+                                    {% for block in question.all_blocks %}
+                                    <div class="code-block" draggable="true" data-block="{{ block }}">{{ block }}</div>
                                     {% endfor %}
+                                {% else %}
+                                    <!-- 向後兼容：顯示正確程式碼塊和干擾項 -->
+                                    {% for block in question.correct_blocks %}
+                                    <div class="code-block" draggable="true" data-block="{{ block }}">{{ block }}</div>
+                                    {% endfor %}
+                                    {% if question.distractor_blocks %}
+                                        {% for block in question.distractor_blocks %}
+                                        <div class="code-block" draggable="true" data-block="{{ block }}">{{ block }}</div>
+                                        {% endfor %}
+                                    {% endif %}
                                 {% endif %}
                             </div>
                         </div>
                         <div class="parsons-target">
-                            <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea;">答題區 (請按正確順序排列)</h4>
+                            <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea;">答題區 (請將程式碼塊拖拉到對應位置)</h4>
                             <div id="code-target-{{ question.id }}" class="drop-zone">
-                                <!-- 根據正確程式碼塊數量產生空白區塊 -->
-                                {% for i in range(question.answer_slots or question.correct_blocks|length) %}
-                                <div class="answer-slot" data-slot="{{ i + 1 }}">
-                                    <div class="slot-number">{{ i + 1 }}</div>
-                                    <div class="slot-content">將程式碼塊拖拉到這裡</div>
-                                </div>
-                                {% endfor %}
+                                <!-- 根據答案空格配置生成空白區塊 -->
+                                {% if question.answer_slot_config %}
+                                    {% for slot_config in question.answer_slot_config %}
+                                    <div class="answer-slot" data-slot="{{ slot_config.slot_index + 1 }}">
+                                        <div class="slot-number">{{ slot_config.slot_index + 1 }}</div>
+                                        <div class="slot-content">
+                                            {% if slot_config.hint %}
+                                                <div class="slot-hint">{{ slot_config.hint }}</div>
+                                            {% else %}
+                                                將程式碼塊拖拉到這裡
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <!-- 向後兼容：根據答案區塊數量產生空白區塊 -->
+                                    {% for i in range(question.answer_slots or question.correct_blocks|length) %}
+                                    <div class="answer-slot" data-slot="{{ i + 1 }}">
+                                        <div class="slot-number">{{ i + 1 }}</div>
+                                        <div class="slot-content">將程式碼塊拖拉到這裡</div>
+                                    </div>
+                                    {% endfor %}
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -447,23 +468,41 @@ function shuffleCodeBlocks(questionId) {
 function updateParsonsAnswer(questionId) {
     const targetZone = document.querySelector(`#code-target-${questionId}`);
     const answerSlots = targetZone.querySelectorAll('.answer-slot');
-    const order = [];
     
-    answerSlots.forEach(slot => {
-        const block = slot.querySelector('.code-block');
-        if (block) {
-            order.push(block.dataset.block);
-        } else {
-            order.push(null); // 空白區塊
+    // 檢查是否為新格式（使用answer_slot_config）
+    const questionElement = document.querySelector(`[data-question-id="${questionId}"]`);
+    const isNewFormat = questionElement && questionElement.querySelector('.slot-hint');
+    
+    if (isNewFormat) {
+        // 新格式：記錄每個空格位置的答案
+        const slotAnswers = {};
+        answerSlots.forEach(slot => {
+            const slotNumber = slot.dataset.slot;
+            const block = slot.querySelector('.code-block');
+            if (block) {
+                slotAnswers[slotNumber] = block.dataset.block;
+            }
+        });
+        studentAnswers[questionId] = slotAnswers;
+    } else {
+        // 舊格式：按順序記錄答案列表（向後兼容）
+        const order = [];
+        answerSlots.forEach(slot => {
+            const block = slot.querySelector('.code-block');
+            if (block) {
+                order.push(block.dataset.block);
+            } else {
+                order.push(null); // 空白區塊
+            }
+        });
+        
+        // 移除末尾的空值，只保留有內容的部分
+        while (order.length > 0 && order[order.length - 1] === null) {
+            order.pop();
         }
-    });
-    
-    // 移除末尾的空值，只保留有內容的部分
-    while (order.length > 0 && order[order.length - 1] === null) {
-        order.pop();
+        
+        studentAnswers[questionId] = order.filter(item => item !== null);
     }
-    
-    studentAnswers[questionId] = order.filter(item => item !== null);
 }
 
 // 收集填空題和下拉選單答案

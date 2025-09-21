@@ -79,23 +79,42 @@
                             <div style="margin-top: 1rem;">
                                 <div style="display: flex; gap: 1rem;">
                                     <div style="flex: 1;">
-                                        <strong style="color: #27ae60;">正確程式碼塊：</strong>
-                                        <div style="font-family: monospace; background: #e8f5e8; padding: 1rem; border-radius: 4px; margin-top: 0.5rem;">
-                                            {% for block in data.correct_blocks %}
-                                            <div style="border-left: 3px solid #27ae60; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">{{ loop.index }}. {{ block }}</div>
-                                            {% endfor %}
+                                        <strong style="color: #2196F3;">程式碼區塊：</strong>
+                                        <div style="font-family: monospace; background: #f8f9fa; padding: 1rem; border-radius: 4px; margin-top: 0.5rem;">
+                                            {% if data.all_blocks %}
+                                                {% for block in data.all_blocks %}
+                                                <div style="border-left: 3px solid #2196F3; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">
+                                                    {{ block }}
+                                                </div>
+                                                {% endfor %}
+                                            {% else %}
+                                                {% for block in data.correct_blocks %}
+                                                <div style="border-left: 3px solid #2196F3; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">{{ block }}</div>
+                                                {% endfor %}
+                                                {% if data.distractor_blocks %}
+                                                    {% for block in data.distractor_blocks %}
+                                                    <div style="border-left: 3px solid #2196F3; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">{{ block }}</div>
+                                                    {% endfor %}
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                        <div style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;">
+                                            答案區塊數量：{{ data.answer_slots or data.correct_blocks|length }}
+                                            {% if data.answer_slot_config %}
+                                            <div style="margin-top: 0.5rem;">
+                                                <strong>答案配置：</strong>
+                                                {% for slot in data.answer_slot_config %}
+                                                {% if slot.correct_answer %}
+                                                <div style="font-size: 0.8rem; color: #333;">
+                                                    空格{{ slot.slot_index + 1 }}：{{ slot.correct_answer[:30] }}{% if slot.correct_answer|length > 30 %}...{% endif %}
+                                                    {% if slot.hint %} (提示：{{ slot.hint }}){% endif %}
+                                                </div>
+                                                {% endif %}
+                                                {% endfor %}
+                                            </div>
+                                            {% endif %}
                                         </div>
                                     </div>
-                                    {% if data.distractor_blocks %}
-                                    <div style="flex: 1;">
-                                        <strong style="color: #e74c3c;">干擾項：</strong>
-                                        <div style="font-family: monospace; background: #ffeaea; padding: 1rem; border-radius: 4px; margin-top: 0.5rem;">
-                                            {% for block in data.distractor_blocks %}
-                                            <div style="border-left: 3px solid #e74c3c; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">❌ {{ block }}</div>
-                                            {% endfor %}
-                                        </div>
-                                    </div>
-                                    {% endif %}
                                 </div>
                             </div>
                         {% endif %}
@@ -253,31 +272,35 @@ function handleQuestionTypeChange() {
         case 'parsons':
             container.innerHTML = `
                 <div class="form-group">
-                    <label>正確的程式碼塊 * (按正確順序排列)</label>
-                    <div id="correct-blocks-container" style="background: #e8f5e8; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                        <div class="correct-block-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
+                    <label>程式碼區塊 * (學生可選擇的程式碼片段)</label>
+                    <div id="code-blocks-container" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                        <div class="code-block-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
                             <span style="min-width: 30px; color: #666;">1.</span>
-                            <textarea class="correct-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;"></textarea>
-                            <button type="button" onclick="removeCorrectBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;"></textarea>
+                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
                         </div>
                     </div>
-                    <button type="button" onclick="addCorrectBlock()" class="btn btn-success" style="margin-bottom: 1rem;">新增正確程式碼塊</button>
+                    <button type="button" onclick="addCodeBlock()" class="btn btn-primary" style="margin-bottom: 1rem;">新增程式碼區塊</button>
                     
-                    <label>干擾項程式碼塊 (可選)</label>
-                    <div id="distractor-blocks-container" style="background: #ffeaea; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                        <div class="distractor-block-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
-                            <span style="min-width: 30px; color: #e74c3c;">❌</span>
-                            <textarea class="distractor-block-input" placeholder="干擾項程式碼塊 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;"></textarea>
-                            <button type="button" onclick="removeDistractorBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                    <div class="form-group">
+                        <label>答案區塊數量 *</label>
+                        <input type="number" id="answer-slots-count" min="1" value="3" style="width: 100px;" placeholder="答案區塊數量" onchange="updateAnswerSlots()">
+                        <small style="color: #666; margin-left: 1rem;">學生需要填入的程式碼區塊數量</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>答案空格設定</label>
+                        <div id="answer-slots-config" style="background: #fff3e0; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                            <!-- 答案空格配置將動態生成 -->
                         </div>
                     </div>
-                    <button type="button" onclick="addDistractorBlock()" class="btn btn-secondary">新增干擾項</button>
                     
-                    <p style="color: #666; font-size: 0.9rem; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                    <p style="color: #666; font-size: 0.9rem; margin-top: 1rem; padding: 1rem; background: #e3f2fd; border-radius: 8px;">
                         <strong>📝 說明：</strong><br>
-                        • 正確程式碼塊：學生需要按順序排列的程式碼<br>
-                        • 干擾項：額外的錯誤選項，增加題目難度<br>
-                        • 答題區會根據正確程式碼塊的數量自動產生對應的空白區塊
+                        • 程式碼區塊：提供給學生選擇的所有程式碼片段<br>
+                        • 答案區塊數量：決定學生答題區域有幾個空格可以拖放程式碼<br>
+                        • 正確答案：為每個答案空格指定對應的正確程式碼區塊<br>
+                        • 學生需要將正確的程式碼區塊拖放到對應的答案空格中
                     </p>
                 </div>
             `;
@@ -329,45 +352,71 @@ function removeDropdownOption(button) {
     button.parentNode.remove();
 }
 
-function addCorrectBlock() {
-    const container = document.getElementById('correct-blocks-container');
+function addCodeBlock() {
+    const container = document.getElementById('code-blocks-container');
     const blockCount = container.children.length + 1;
     const blockRow = document.createElement('div');
-    blockRow.className = 'correct-block-row';
+    blockRow.className = 'code-block-row';
     blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
     blockRow.innerHTML = `
         <span style="min-width: 30px; color: #666;">${blockCount}.</span>
-        <textarea class="correct-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;"></textarea>
-        <button type="button" onclick="removeCorrectBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+        <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;" onblur="updateAnswerSlots()"></textarea>
+        <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
     `;
     container.appendChild(blockRow);
+    // 更新答案空格配置
+    updateAnswerSlots();
 }
 
-function removeCorrectBlock(button) {
+function removeCodeBlock(button) {
     button.parentNode.remove();
     // 重新編號
-    const container = document.getElementById('correct-blocks-container');
+    const container = document.getElementById('code-blocks-container');
     Array.from(container.children).forEach((row, index) => {
         const numberSpan = row.querySelector('span');
         if (numberSpan) numberSpan.textContent = (index + 1) + '.';
     });
+    // 更新答案空格配置
+    updateAnswerSlots();
 }
 
-function addDistractorBlock() {
-    const container = document.getElementById('distractor-blocks-container');
-    const blockRow = document.createElement('div');
-    blockRow.className = 'distractor-block-row';
-    blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
-    blockRow.innerHTML = `
-        <span style="min-width: 30px; color: #e74c3c;">❌</span>
-        <textarea class="distractor-block-input" placeholder="干擾項程式碼塊 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;"></textarea>
-        <button type="button" onclick="removeDistractorBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
-    `;
-    container.appendChild(blockRow);
-}
-
-function removeDistractorBlock(button) {
-    button.parentNode.remove();
+function updateAnswerSlots() {
+    const slotsCount = parseInt(document.getElementById('answer-slots-count').value) || 3;
+    const container = document.getElementById('answer-slots-config');
+    
+    if (!container) return;
+    
+    // 獲取現有的程式碼區塊
+    const codeBlocks = [];
+    document.querySelectorAll('.code-block-input').forEach(input => {
+        const content = input.value.trim();
+        if (content) {
+            codeBlocks.push(content);
+        }
+    });
+    
+    // 生成答案空格配置
+    container.innerHTML = '';
+    for (let i = 0; i < slotsCount; i++) {
+        const slotConfig = document.createElement('div');
+        slotConfig.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+        
+        let optionsHtml = '<option value="">-- 請選擇正確答案 --</option>';
+        codeBlocks.forEach((block, index) => {
+            // 截取程式碼區塊的前30個字符作為選項顯示
+            const displayText = block.length > 30 ? block.substring(0, 30) + '...' : block;
+            optionsHtml += `<option value="${block}">${displayText}</option>`;
+        });
+        
+        slotConfig.innerHTML = `
+            <label style="min-width: 80px; color: #666;">空格 ${i + 1}：</label>
+            <select class="answer-slot-select" data-slot="${i}" style="flex: 1; padding: 0.5rem;">
+                ${optionsHtml}
+            </select>
+            <input type="text" class="slot-hint-input" placeholder="提示文字 (可選)" style="flex: 0.5; padding: 0.5rem;" data-slot="${i}">
+        `;
+        container.appendChild(slotConfig);
+    }
 }
 
 // 下拉選單填空題型函數
@@ -537,13 +586,42 @@ function collectFormData() {
             break;
             
         case 'parsons':
-            const correctBlockInputs = document.querySelectorAll('.correct-block-input');
-            const distractorBlockInputs = document.querySelectorAll('.distractor-block-input');
+            const codeBlockRows = document.querySelectorAll('.code-block-row');
+            const answerSlotsInput = document.getElementById('answer-slots-count');
+            const answerSlotSelects = document.querySelectorAll('.answer-slot-select');
+            const slotHintInputs = document.querySelectorAll('.slot-hint-input');
             
-            questionData.correct_blocks = Array.from(correctBlockInputs).map(input => input.value.trim()).filter(v => v);
-            questionData.distractor_blocks = Array.from(distractorBlockInputs).map(input => input.value.trim()).filter(v => v);
-            questionData.answer_slots = questionData.correct_blocks.length; // 答案區塊數量
-            questionData.correct_order = questionData.correct_blocks.slice(); // 正確順序
+            const allBlocks = [];
+            
+            codeBlockRows.forEach((row, index) => {
+                const input = row.querySelector('.code-block-input');
+                const content = input.value.trim();
+                
+                if (content) {
+                    allBlocks.push(content);
+                }
+            });
+            
+            // 收集答案空格配置
+            const answerSlotConfig = [];
+            answerSlotSelects.forEach((select, index) => {
+                const hintInput = slotHintInputs[index];
+                answerSlotConfig.push({
+                    slot_index: index,
+                    correct_answer: select.value || null,
+                    hint: hintInput ? hintInput.value.trim() : ''
+                });
+            });
+            
+            questionData.all_blocks = allBlocks; // 所有程式碼區塊
+            questionData.answer_slots = parseInt(answerSlotsInput.value) || 3; // 答案區塊數量
+            questionData.answer_slot_config = answerSlotConfig; // 答案空格配置
+            
+            // 向後兼容的欄位
+            const correctAnswers = answerSlotConfig.map(slot => slot.correct_answer).filter(answer => answer);
+            questionData.correct_blocks = correctAnswers; // 正確的程式碼區塊（來自答案設定）
+            questionData.distractor_blocks = allBlocks.filter(block => !correctAnswers.includes(block)); // 非必要的區塊
+            questionData.correct_order = correctAnswers; // 正確順序
             break;
     }
     
@@ -622,9 +700,22 @@ function validateFormData(data) {
             break;
             
         case 'parsons':
-            if (!data.question_data.correct_blocks || data.question_data.correct_blocks.length < 2) {
-                alert('至少需要2個正確的程式碼塊');
+            if (!data.question_data.all_blocks || data.question_data.all_blocks.length < 2) {
+                alert('至少需要2個程式碼區塊');
                 return false;
+            }
+            if (!data.question_data.answer_slots || data.question_data.answer_slots < 1) {
+                alert('答案區塊數量至少需要1個');
+                return false;
+            }
+            
+            // 檢查是否有設定正確答案
+            if (data.question_data.answer_slot_config && data.question_data.answer_slot_config.length > 0) {
+                const hasCorrectAnswers = data.question_data.answer_slot_config.some(slot => slot.correct_answer);
+                if (!hasCorrectAnswers) {
+                    alert('請為至少一個答案空格設定正確答案');
+                    return false;
+                }
             }
             break;
     }
@@ -773,38 +864,71 @@ async function editQuestion(questionId) {
                     
                 case 'parsons':
                     // 清空現有程式碼塊
-                    document.getElementById('correct-blocks-container').innerHTML = '';
-                    document.getElementById('distractor-blocks-container').innerHTML = '';
+                    document.getElementById('code-blocks-container').innerHTML = '';
                     
-                    // 添加正確程式碼塊
-                    if (data.correct_blocks && data.correct_blocks.length > 0) {
-                        data.correct_blocks.forEach((block, index) => {
-                            const blockRow = document.createElement('div');
-                            blockRow.className = 'correct-block-row';
-                            blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
-                            blockRow.innerHTML = `
-                                <span style="min-width: 30px; color: #666;">${index + 1}.</span>
-                                <textarea class="correct-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;">${block}</textarea>
-                                <button type="button" onclick="removeCorrectBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
-                            `;
-                            document.getElementById('correct-blocks-container').appendChild(blockRow);
-                        });
+                    // 設置答案區塊數量
+                    const answerSlotsInput = document.getElementById('answer-slots-count');
+                    if (answerSlotsInput) {
+                        answerSlotsInput.value = data.answer_slots || data.correct_blocks?.length || 3;
                     }
                     
-                    // 添加干擾項
-                    if (data.distractor_blocks && data.distractor_blocks.length > 0) {
-                        data.distractor_blocks.forEach(block => {
-                            const blockRow = document.createElement('div');
-                            blockRow.className = 'distractor-block-row';
-                            blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
-                            blockRow.innerHTML = `
-                                <span style="min-width: 30px; color: #e74c3c;">❌</span>
-                                <textarea class="distractor-block-input" placeholder="干擾項程式碼塊 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;">${block}</textarea>
-                                <button type="button" onclick="removeDistractorBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
-                            `;
-                            document.getElementById('distractor-blocks-container').appendChild(blockRow);
-                        });
+                    // 處理所有程式碼區塊
+                    let allBlocks = [];
+                    let correctBlocks = data.correct_blocks || [];
+                    
+                    // 如果有新的 all_blocks 欄位，使用它
+                    if (data.all_blocks && data.all_blocks.length > 0) {
+                        allBlocks = data.all_blocks;
+                    } else {
+                        // 向後兼容：合併正確區塊和干擾項
+                        allBlocks = [...(data.correct_blocks || []), ...(data.distractor_blocks || [])];
                     }
+                    
+                    // 添加程式碼區塊
+                    allBlocks.forEach((block, index) => {
+                        const blockRow = document.createElement('div');
+                        blockRow.className = 'code-block-row';
+                        blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+                        blockRow.innerHTML = `
+                            <span style="min-width: 30px; color: #666;">${index + 1}.</span>
+                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;" onblur="updateAnswerSlots()">${block}</textarea>
+                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                        `;
+                        document.getElementById('code-blocks-container').appendChild(blockRow);
+                    });
+                    
+                    // 如果沒有任何程式碼區塊，添加一個空的
+                    if (allBlocks.length === 0) {
+                        const blockRow = document.createElement('div');
+                        blockRow.className = 'code-block-row';
+                        blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+                        blockRow.innerHTML = `
+                            <span style="min-width: 30px; color: #666;">1.</span>
+                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: monospace;" onblur="updateAnswerSlots()"></textarea>
+                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                        `;
+                        document.getElementById('code-blocks-container').appendChild(blockRow);
+                    }
+                    
+                    // 延遲一下再設置答案空格配置，確保程式碼區塊已經載入
+                    setTimeout(() => {
+                        updateAnswerSlots();
+                        
+                        // 載入答案空格配置
+                        if (data.answer_slot_config && data.answer_slot_config.length > 0) {
+                            data.answer_slot_config.forEach((slotConfig, index) => {
+                                const select = document.querySelector(`.answer-slot-select[data-slot="${index}"]`);
+                                const hintInput = document.querySelector(`.slot-hint-input[data-slot="${index}"]`);
+                                
+                                if (select && slotConfig.correct_answer) {
+                                    select.value = slotConfig.correct_answer;
+                                }
+                                if (hintInput && slotConfig.hint) {
+                                    hintInput.value = slotConfig.hint;
+                                }
+                            });
+                        }
+                    }, 200);
                     break;
             }
         }

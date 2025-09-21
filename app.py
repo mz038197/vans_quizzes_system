@@ -368,10 +368,30 @@ def submit_quiz(access_code):
                 score += question.points
                 
         elif question.question_type == 'parsons':
-            correct_order = question_data.get('correct_order', [])
-            user_order = user_answer if isinstance(user_answer, list) else []
-            if user_order == correct_order:
-                score += question.points
+            # 支援新的答案空格配置格式
+            if 'answer_slot_config' in question_data and question_data['answer_slot_config']:
+                # 新格式：檢查每個答案空格是否正確
+                slot_config = question_data['answer_slot_config']
+                user_answers = user_answer if isinstance(user_answer, dict) else {}
+                
+                all_correct = True
+                for slot in slot_config:
+                    slot_index = slot.get('slot_index', 0)
+                    correct_answer = slot.get('correct_answer')
+                    user_slot_answer = user_answers.get(str(slot_index + 1))  # 空格從1開始編號
+                    
+                    if correct_answer and user_slot_answer != correct_answer:
+                        all_correct = False
+                        break
+                
+                if all_correct:
+                    score += question.points
+            else:
+                # 向後兼容：使用舊的順序比對方式
+                correct_order = question_data.get('correct_order', [])
+                user_order = user_answer if isinstance(user_answer, list) else []
+                if user_order == correct_order:
+                    score += question.points
     
     # 儲存結果
     submission = Submission(

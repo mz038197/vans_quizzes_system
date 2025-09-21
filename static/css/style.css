@@ -706,3 +706,15 @@ body {
     border: 1px solid #bee5eb;
     color: #0c5460;
 }
+
+/* 程式碼排序題答案空格提示樣式 */
+.slot-hint {
+    font-size: 0.9rem;
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    padding: 0.5rem;
+    background: #f8f9ff;
+    border-radius: 4px;
+    border: 1px dashed #ddd;
+}
