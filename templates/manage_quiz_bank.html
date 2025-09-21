@@ -77,42 +77,138 @@
                             </div>
                         {% elif question.question_type == 'parsons' %}
                             <div style="margin-top: 1rem;">
-                                <div style="display: flex; gap: 1rem;">
-                                    <div style="flex: 1;">
-                                        <strong style="color: #2196F3;">程式碼區塊：</strong>
-                                        <div style="font-family: monospace; background: #f8f9fa; padding: 1rem; border-radius: 4px; margin-top: 0.5rem;">
+                                <div class="parsons-preview-container" style="display: flex; flex-direction: column; gap: 1.5rem;">
+                                    <!-- 程式碼區塊卡片 -->
+                                    <div class="parsons-preview-card" style="border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                        <div style="background: #2196F3; color: white; padding: 0.75rem 1rem; font-weight: 500; display: flex; align-items: center;">
+                                            <i class="fas fa-code" style="margin-right: 0.5rem;"></i>
+                                            程式碼區塊
+                                            <span style="margin-left: auto; font-size: 0.8rem; background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 4px;">
+                                                共 {{ (data.all_blocks|length) or ((data.correct_blocks|length) + (data.distractor_blocks|length)) }} 個區塊
+                                            </span>
+                                        </div>
+                                        <div style="padding: 1rem; background: #1e1e1e; max-height: 300px; overflow-y: auto;">
                                             {% if data.all_blocks %}
                                                 {% for block in data.all_blocks %}
-                                                <div style="border-left: 3px solid #2196F3; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">
+                                                <div class="code-block-preview" style="background: #2d2d2d; border-radius: 4px; margin-bottom: 0.5rem; padding: 0.75rem; font-family: 'Consolas', 'Monaco', monospace; color: #d4d4d4; white-space: pre-wrap; position: relative;">
+                                                    <span style="position: absolute; right: 0.5rem; top: 0.5rem; color: #666; font-size: 0.7rem; background: rgba(0,0,0,0.2); padding: 0.1rem 0.3rem; border-radius: 2px;">區塊 {{ loop.index }}</span>
                                                     {{ block }}
                                                 </div>
                                                 {% endfor %}
                                             {% else %}
                                                 {% for block in data.correct_blocks %}
-                                                <div style="border-left: 3px solid #2196F3; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">{{ block }}</div>
+                                                <div class="code-block-preview" style="background: #2d2d2d; border-radius: 4px; margin-bottom: 0.5rem; padding: 0.75rem; font-family: 'Consolas', 'Monaco', monospace; color: #d4d4d4; white-space: pre-wrap; position: relative;">
+                                                    <span style="position: absolute; right: 0.5rem; top: 0.5rem; color: #666; font-size: 0.7rem; background: rgba(0,0,0,0.2); padding: 0.1rem 0.3rem; border-radius: 2px;">區塊 {{ loop.index }}</span>
+                                                    {{ block }}
+                                                </div>
                                                 {% endfor %}
                                                 {% if data.distractor_blocks %}
                                                     {% for block in data.distractor_blocks %}
-                                                    <div style="border-left: 3px solid #2196F3; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">{{ block }}</div>
+                                                    <div class="code-block-preview" style="background: #2d2d2d; border-radius: 4px; margin-bottom: 0.5rem; padding: 0.75rem; font-family: 'Consolas', 'Monaco', monospace; color: #d4d4d4; white-space: pre-wrap; position: relative;">
+                                                        <span style="position: absolute; right: 0.5rem; top: 0.5rem; color: #666; font-size: 0.7rem; background: rgba(0,0,0,0.2); padding: 0.1rem 0.3rem; border-radius: 2px;">區塊 {{ loop.index + data.correct_blocks|length }}</span>
+                                                        {{ block }}
+                                                    </div>
                                                     {% endfor %}
                                                 {% endif %}
                                             {% endif %}
                                         </div>
-                                        <div style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;">
-                                            答案區塊數量：{{ data.answer_slots or data.correct_blocks|length }}
+                                    </div>
+                                    
+                                    <!-- 答案配置卡片 -->
+                                    <div class="parsons-preview-card" style="border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                        <div style="background: #4caf50; color: white; padding: 0.75rem 1rem; font-weight: 500; display: flex; align-items: center;">
+                                            <i class="fas fa-check-circle" style="margin-right: 0.5rem;"></i>
+                                            答案配置
+                                            <span style="margin-left: auto; font-size: 0.8rem; background: rgba(255,255,255,0.2); padding: 0.2rem 0.5rem; border-radius: 4px;">
+                                                {{ data.answer_slots or data.correct_blocks|length }} 個答案空格
+                                            </span>
+                                        </div>
+                                        <div style="padding: 1rem; background: #f9f9f9;">
                                             {% if data.answer_slot_config %}
-                                            <div style="margin-top: 0.5rem;">
-                                                <strong>答案配置：</strong>
-                                                {% for slot in data.answer_slot_config %}
-                                                {% if slot.correct_answer %}
-                                                <div style="font-size: 0.8rem; color: #333;">
-                                                    空格{{ slot.slot_index + 1 }}：{{ slot.correct_answer[:30] }}{% if slot.correct_answer|length > 30 %}...{% endif %}
-                                                    {% if slot.hint %} (提示：{{ slot.hint }}){% endif %}
+                                                <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                                                    {% for slot in data.answer_slot_config %}
+                                                    <div class="answer-slot-preview" style="flex: 1; min-width: 200px; border: 1px solid #ddd; border-radius: 6px; overflow: hidden;">
+                                                        <div style="background: #f0f0f0; padding: 0.5rem; font-weight: 500; border-bottom: 1px solid #ddd; display: flex; align-items: center;">
+                                                            <span style="background: #4caf50; color: white; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; margin-right: 0.5rem;">{{ slot.slot_index + 1 }}</span>
+                                                            空格 {{ slot.slot_index + 1 }}
+                                                            {% if slot.hint %}
+                                                            <span style="margin-left: auto; font-size: 0.75rem; color: #666;">有提示</span>
+                                                            {% endif %}
+                                                        </div>
+                                                        <div style="padding: 0.75rem;">
+                                                            {% if slot.correct_answer %}
+                                                            <div style="font-weight: 500; margin-bottom: 0.25rem; color: #333;">正確答案：</div>
+                                                            <div style="background: #e8f5e9; border-left: 3px solid #4caf50; padding: 0.5rem; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9rem; white-space: pre-wrap;">{{ slot.correct_answer }}</div>
+                                                            {% else %}
+                                                            <div style="color: #f44336; font-style: italic; text-align: center; padding: 0.5rem;">未設定正確答案</div>
+                                                            {% endif %}
+                                                            
+                                                            {% if slot.hint %}
+                                                            <div style="margin-top: 0.75rem; font-weight: 500; color: #333;">提示文字：</div>
+                                                            <div style="background: #fff3e0; border-left: 3px solid #ff9800; padding: 0.5rem; font-style: italic; font-size: 0.9rem;">{{ slot.hint }}</div>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                    {% endfor %}
                                                 </div>
-                                                {% endif %}
-                                                {% endfor %}
-                                            </div>
+                                            {% else %}
+                                                <div style="text-align: center; padding: 1rem; color: #666; font-style: italic;">
+                                                    未設定詳細答案配置
+                                                </div>
                                             {% endif %}
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 學生視角預覽 -->
+                                    <div class="parsons-preview-card" style="border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                        <div style="background: #ff9800; color: white; padding: 0.75rem 1rem; font-weight: 500; display: flex; align-items: center;">
+                                            <i class="fas fa-eye" style="margin-right: 0.5rem;"></i>
+                                            學生視角預覽
+                                        </div>
+                                        <div style="padding: 1rem; background: #fff;">
+                                            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                                                <!-- 左側程式碼區塊 -->
+                                                <div style="flex: 1; min-width: 250px; border: 2px dashed #ddd; border-radius: 8px; padding: 0.75rem; background: #fafafa;">
+                                                    <div style="text-align: center; margin-bottom: 0.75rem; color: #666; font-weight: 500;">程式碼區塊</div>
+                                                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                                                        {% if data.all_blocks %}
+                                                            {% for block in data.all_blocks %}
+                                                            <div style="background: #2d2d2d; color: #d4d4d4; padding: 0.5rem; border-radius: 4px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.85rem; width: 100%; white-space: pre-wrap;">{{ block }}</div>
+                                                            {% endfor %}
+                                                        {% else %}
+                                                            {% for block in data.correct_blocks %}
+                                                            <div style="background: #2d2d2d; color: #d4d4d4; padding: 0.5rem; border-radius: 4px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.85rem; width: 100%; white-space: pre-wrap;">{{ block }}</div>
+                                                            {% endfor %}
+                                                            {% if data.distractor_blocks %}
+                                                                {% for block in data.distractor_blocks %}
+                                                                <div style="background: #2d2d2d; color: #d4d4d4; padding: 0.5rem; border-radius: 4px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.85rem; width: 100%; white-space: pre-wrap;">{{ block }}</div>
+                                                                {% endfor %}
+                                                            {% endif %}
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- 右側答案空格 -->
+                                                <div style="flex: 1; min-width: 250px; border: 2px dashed #667eea; border-radius: 8px; padding: 0.75rem; background: #f8f9ff;">
+                                                    <div style="text-align: center; margin-bottom: 0.75rem; color: #667eea; font-weight: 500;">答題區 (請按正確順序排列)</div>
+                                                    <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                                                        {% set slots_count = data.answer_slots or data.correct_blocks|length %}
+                                                        {% for i in range(slots_count) %}
+                                                        <div style="border: 2px dashed #bbb; border-radius: 8px; min-height: 60px; display: flex; align-items: center; padding: 0.5rem; background: white; position: relative;">
+                                                            <div style="position: absolute; left: -10px; top: 50%; transform: translateY(-50%); background: #667eea; color: white; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem;">{{ i+1 }}</div>
+                                                            <div style="width: 100%; text-align: center; color: #aaa; font-style: italic;">
+                                                                {% set current_slot = data.answer_slot_config[i] if data.answer_slot_config and i < data.answer_slot_config|length else None %}
+                                                                {% if current_slot and current_slot.hint %}
+                                                                    <div class="slot-hint" style="font-size: 0.9rem; color: #666; font-style: italic; padding: 0.5rem; background: #f8f9ff; border-radius: 4px; border: 1px dashed #ddd;">{{ current_slot.hint }}</div>
+                                                                {% else %}
+                                                                    將程式碼塊拖拉到這裡
+                                                                {% endif %}
+                                                            </div>
+                                                        </div>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
