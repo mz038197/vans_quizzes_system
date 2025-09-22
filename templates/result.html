@@ -77,8 +77,17 @@
                     {% set is_correct = (user_answer_clean == correct_answer) %}
                 {% elif question.question_type == 'parsons' %}
                     {% set correct_order = question_data.get('correct_order', []) %}
-                    {% set user_order = user_answer if user_answer is iterable and user_answer is not string else [] %}
-                    {% set is_correct = (user_order == correct_order) %}
+                    {% if user_answer is mapping %}
+                        {% set user_order = [] %}
+                        {% for i in range(1, (correct_order|length) + 1) %}
+                            {% if user_answer[i|string] is defined %}
+                                {% set _ = user_order.append(user_answer[i|string]) %}
+                            {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        {% set user_order = user_answer if user_answer is iterable and user_answer is not string else [] %}
+                    {% endif %}
+                    {% set is_correct = (user_order|length == correct_order|length) and user_order == correct_order %}
                 {% endif %}
                 
                 <div class="question-result" style="border: 1px solid {{ '#c3e6cb' if is_correct else '#f5c6cb' }}; border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden;">
@@ -186,8 +195,7 @@
             </div>
             
             <div style="text-align: center; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e9ecef;">
-                <button onclick="window.print()" class="btn btn-secondary" style="margin-right: 1rem;">🖨️ 列印結果</button>
-                <button onclick="location.href='/'" class="btn">返回首頁</button>
+                <button onclick="window.print()" class="btn btn-secondary">🖨️ 列印結果</button>
             </div>
         </div>
     </div>
