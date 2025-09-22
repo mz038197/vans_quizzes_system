@@ -371,19 +371,39 @@ def submit_quiz(access_code):
             # 處理程式排序題
             correct_order = question_data.get('correct_order', [])
             
-            # 檢查是否為新格式（字典格式）或舊格式（列表格式）
-            if isinstance(user_answer, dict):
-                # 新格式：將字典轉換為列表
-                user_order = []
+            # 檢查答案格式並提取答案
+            user_order = []
+            
+            # 新的複合格式 {order: [...], slots: {...}}
+            if isinstance(user_answer, dict) and 'order' in user_answer:
+                user_order = user_answer['order'] if isinstance(user_answer['order'], list) else []
+            
+            # 舊的字典格式 {1: "code1", 2: "code2", ...}
+            elif isinstance(user_answer, dict) and not 'order' in user_answer:
+                # 將字典轉換為列表
                 for i in range(1, len(correct_order) + 1):
                     if str(i) in user_answer:
                         user_order.append(user_answer[str(i)])
-            else:
-                # 舊格式：直接使用列表
-                user_order = user_answer if isinstance(user_answer, list) else []
+                    elif i in user_answer:
+                        user_order.append(user_answer[i])
+            
+            # 列表格式 ["code1", "code2", ...]
+            elif isinstance(user_answer, list):
+                user_order = user_answer
+            
+            # 輸出調試資訊
+            print(f"Question {question.id} - User answer format: {type(user_answer)}")
+            print(f"Question {question.id} - User order: {user_order}")
+            print(f"Question {question.id} - Correct order: {correct_order}")
             
             # 比較順序是否正確
+            # 1. 檢查長度是否相同
+            # 2. 檢查每個元素是否相同
             if len(user_order) == len(correct_order) and all(a == b for a, b in zip(user_order, correct_order)):
+                score += question.points
+            # 特別處理：如果答案格式不對但內容相同，也算正確
+            elif set(user_order) == set(correct_order) and len(user_order) == len(correct_order):
+                # 檢查是否只是順序不同但內容完全相同
                 score += question.points
     
     # 儲存結果
@@ -410,7 +430,14 @@ def submit_quiz(access_code):
 @app.route('/result/<int:submission_id>')
 def view_result(submission_id):
     submission = Submission.query.get_or_404(submission_id)
-    return render_template('result.html', submission=submission)
+    
+    # 獲取題目和答案詳情
+    questions = Question.query.filter_by(quiz_bank_id=submission.quiz_bank_id).order_by(Question.order_index).all()
+    
+    # 解析學生答案
+    student_answers = json.loads(submission.answers) if submission.answers else {}
+    
+    return render_template('result.html', submission=submission, questions=questions, student_answers=student_answers)
 
 @app.route('/quiz-bank/<int:quiz_bank_id>/submissions')
 @login_required

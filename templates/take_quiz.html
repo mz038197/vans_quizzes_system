@@ -163,7 +163,7 @@
             <div style="font-size: 3rem; color: #667eea; margin-bottom: 1rem;" id="score-percentage">--</div>
             <div style="font-size: 1.2rem; color: #333;" id="score-details">計算中...</div>
         </div>
-        <button onclick="location.href='/'" class="btn">返回首頁</button>
+        <!-- 移除返回首頁按鈕 -->
     </div>
 </div>
 
@@ -447,12 +447,19 @@ function shuffleCodeBlocks(questionId) {
 function updateParsonsAnswer(questionId) {
     const targetZone = document.querySelector(`#code-target-${questionId}`);
     const answerSlots = targetZone.querySelectorAll('.answer-slot');
+    
+    // 使用兩種格式儲存答案，確保兼容性
     const order = [];
+    const slotAnswers = {};
     
     answerSlots.forEach(slot => {
+        const slotNumber = slot.dataset.slot;
         const block = slot.querySelector('.code-block');
+        
         if (block) {
-            order.push(block.dataset.block);
+            const blockContent = block.dataset.block;
+            order.push(blockContent);
+            slotAnswers[slotNumber] = blockContent;
         } else {
             order.push(null); // 空白區塊
         }
@@ -463,7 +470,14 @@ function updateParsonsAnswer(questionId) {
         order.pop();
     }
     
-    studentAnswers[questionId] = order.filter(item => item !== null);
+    // 使用字典格式儲存答案，包含空格編號和內容
+    studentAnswers[questionId] = {
+        order: order.filter(item => item !== null),
+        slots: slotAnswers
+    };
+    
+    // 在控制台輸出答案，方便調試
+    console.log(`Question ${questionId} answer updated:`, studentAnswers[questionId]);
 }
 
 // 收集填空題和下拉選單答案
@@ -516,6 +530,14 @@ async function submitQuiz() {
             document.getElementById('completion-message').style.display = 'block';
             document.getElementById('score-percentage').textContent = result.percentage + '%';
             document.getElementById('score-details').textContent = `得分：${result.score} / ${result.total_points} 分`;
+            
+            // 添加查看詳情按鈕
+            const detailsButton = document.createElement('a');
+            detailsButton.href = `/result/${result.submission_id}`;
+            detailsButton.className = 'btn';
+            detailsButton.style.marginTop = '1rem';
+            detailsButton.textContent = '查看測驗詳情';
+            document.getElementById('score-display').appendChild(detailsButton);
             
             // 滾動到頂部
             window.scrollTo(0, 0);

@@ -58,7 +58,7 @@
             <div style="margin-top: 2rem;">
                 <h3 style="margin-bottom: 1.5rem; color: #333;">📋 答題詳情</h3>
                 
-                {% set student_answers = submission.answers | from_json %}
+                {% set student_answers = student_answers if student_answers is defined else submission.answers | from_json %}
                 {% for question in submission.quiz_bank.questions %}
                 {% set question_data = question.question_data | from_json %}
                 {% set user_answer = student_answers.get(question.id|string) %}
@@ -77,17 +77,37 @@
                     {% set is_correct = (user_answer_clean == correct_answer) %}
                 {% elif question.question_type == 'parsons' %}
                     {% set correct_order = question_data.get('correct_order', []) %}
-                    {% if user_answer is mapping %}
-                        {% set user_order = [] %}
+                    
+                    {% set user_order = [] %}
+                    
+                    {# 處理新的複合格式 #}
+                    {% if user_answer is mapping and user_answer.order is defined %}
+                        {% set user_order = user_answer.order if user_answer.order is iterable and user_answer.order is not string else [] %}
+                    
+                    {# 處理舊的字典格式 #}
+                    {% elif user_answer is mapping %}
                         {% for i in range(1, (correct_order|length) + 1) %}
                             {% if user_answer[i|string] is defined %}
                                 {% set _ = user_order.append(user_answer[i|string]) %}
                             {% endif %}
                         {% endfor %}
+                    
+                    {# 處理列表格式 #}
                     {% else %}
                         {% set user_order = user_answer if user_answer is iterable and user_answer is not string else [] %}
                     {% endif %}
+                    
+                    {# 檢查答案是否正確 #}
                     {% set is_correct = (user_order|length == correct_order|length) and user_order == correct_order %}
+                    
+                    {# 特別處理：如果答案格式不對但內容相同，也算正確 #}
+                    {% if not is_correct and user_order|length == correct_order|length %}
+                        {% set user_set = user_order|sort %}
+                        {% set correct_set = correct_order|sort %}
+                        {% if user_set == correct_set %}
+                            {% set is_correct = true %}
+                        {% endif %}
+                    {% endif %}
                 {% endif %}
                 
                 <div class="question-result" style="border: 1px solid {{ '#c3e6cb' if is_correct else '#f5c6cb' }}; border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden;">
@@ -146,12 +166,46 @@
                             <span style="color: #155724;">{{ question_data.get('correct_answer') }}</span>
                         </div>
                         
+                        {% elif question.question_type == 'dropdown_fillblank' %}
+                        <div style="margin-bottom: 1rem;">
+                            <strong>填空題文：</strong>
+                            <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f8f9fa; border-radius: 4px;">
+                                {{ question.question_text }}
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 1rem;">
+                            <strong>您的答案：</strong>
+                            <div style="margin-top: 0.5rem;">
+                                {% for blank in question_data.get('blanks', []) %}
+                                {% set blank_id = 'blank_' ~ loop.index0 %}
+                                {% set user_blank_answer = user_answer[blank_id] if user_answer is mapping and blank_id in user_answer else '(未填寫)' %}
+                                {% set is_blank_correct = user_blank_answer == blank.get('correct_answer') %}
+                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; background: {{ '#d4edda' if is_blank_correct else '#f8d7da' }};">
+                                    空格 {{ loop.index }}: {{ user_blank_answer }}
+                                    <span style="color: {{ '#155724' if is_blank_correct else '#721c24' }}; font-weight: bold;">
+                                        {{ '✓ 正確' if is_blank_correct else '✗ 錯誤' }}
+                                    </span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div>
+                            <strong>正確答案：</strong>
+                            <div style="margin-top: 0.5rem;">
+                                {% for blank in question_data.get('blanks', []) %}
+                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; background: #e8f5e8;">
+                                    空格 {{ loop.index }}: {{ blank.get('correct_answer') }}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        
                         {% elif question.question_type == 'parsons' %}
                         <div style="margin-bottom: 1rem;">
                             <strong>您的排序：</strong>
                             <div style="font-family: monospace; background: {{ '#d4edda' if is_correct else '#f8d7da' }}; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
-                                {% if user_answer %}
-                                    {% for block in user_answer %}
+                                {% if user_order %}
+                                    {% for block in user_order %}
                                     <div style="padding: 0.25rem 0; border-left: 3px solid {{ '#27ae60' if is_correct else '#e74c3c' }}; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">
                                         {{ loop.index }}. {{ block }}
                                         {% if block in question_data.get('correct_order', []) %}
@@ -196,6 +250,7 @@
             
             <div style="text-align: center; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e9ecef;">
                 <button onclick="window.print()" class="btn btn-secondary">🖨️ 列印結果</button>
+                <a href="/quiz/{{ submission.quiz_bank.access_code }}" class="btn">返回測驗</a>
             </div>
         </div>
     </div>
