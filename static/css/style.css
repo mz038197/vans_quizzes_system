@@ -423,8 +423,14 @@ body {
 
 .option-text {
     display: block;
-    white-space: pre-wrap;
+    white-space: pre !important;
+    font-family: 'Courier New', monospace !important;
+    font-size: 13px !important;
+    line-height: 1.4 !important;
     padding-left: 1.5rem;
+    text-indent: 0 !important;
+    margin-left: 0 !important;
+    overflow-x: auto;
 }
 
 .option-correct {

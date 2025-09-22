@@ -334,14 +334,155 @@ def submit_quiz(access_code):
         
         if question.question_type in ['single_choice', 'dropdown']:
             correct_answer = question_data.get('correct_answer')
-            # 調試信息
-            print(f"Question {question.id} ({question.question_type}):")
-            print(f"  User answer: '{user_answer}'")
-            print(f"  Correct answer: '{correct_answer}'")
-            print(f"  Match: {user_answer == correct_answer}")
             
+            # 調試信息
+            print(f"Question {question.id} ({question.question_type}): {question.title}")
+            print(f"  User answer: {repr(user_answer)} (type: {type(user_answer)})")
+            print(f"  Correct answer: {repr(correct_answer)} (type: {type(correct_answer)})")
+            
+            # 特殊處理：檢查是否是JSON轉義問題
+            if user_answer and correct_answer:
+                print(f"  User answer length: {len(str(user_answer))}")
+                print(f"  Correct answer length: {len(str(correct_answer))}")
+                print(f"  User answer first 100 chars: {repr(str(user_answer)[:100])}")
+                print(f"  Correct answer first 100 chars: {repr(str(correct_answer)[:100])}")
+            
+            # 多行文本比較策略
+            is_correct = False
+            comparison_method = ""
+            
+            # 1. 直接比較
             if user_answer == correct_answer:
+                is_correct = True
+                comparison_method = "exact_match"
+            
+            # 2. 字符串化後比較
+            elif str(user_answer) == str(correct_answer):
+                is_correct = True
+                comparison_method = "string_match"
+            
+            # 3. 標準化比較（去除前後空白）
+            elif str(user_answer).strip() == str(correct_answer).strip():
+                is_correct = True
+                comparison_method = "normalized_match"
+            
+            # 4. 換行符標準化比較
+            else:
+                import re
+                # 統一換行符為 \n
+                user_normalized = str(user_answer).replace('\r\n', '\n').replace('\r', '\n').strip() if user_answer else ""
+                correct_normalized = str(correct_answer).replace('\r\n', '\n').replace('\r', '\n').strip() if correct_answer else ""
+                
+                if user_normalized == correct_normalized:
+                    is_correct = True
+                    comparison_method = "newline_normalized_match"
+                
+                # 5. 深度清理比較（保持行結構但標準化空白）
+                elif not is_correct:
+                    # 分行處理，每行內部標準化空白，但保持行結構
+                    def normalize_multiline_code(text):
+                        if not text:
+                            return ""
+                        print(f"    Normalizing: {repr(text[:100])}")
+                        # 統一換行符
+                        text = text.replace('\r\n', '\n').replace('\r', '\n')
+                        lines = text.split('\n')
+                        normalized_lines = []
+                        for i, line in enumerate(lines):
+                            # 保持行首縮排，但標準化其他空白
+                            stripped = line.rstrip()  # 去除行尾空白
+                            if stripped:
+                                # 計算行首空白
+                                leading_spaces = len(line) - len(line.lstrip())
+                                # 將制表符轉換為4個空格
+                                content = line.lstrip().replace('\t', '    ')
+                                # 標準化內容中的多餘空白
+                                content = re.sub(r' +', ' ', content)
+                                normalized_lines.append(' ' * leading_spaces + content)
+                                print(f"    Line {i}: {repr(line)} -> {repr(' ' * leading_spaces + content)}")
+                            else:
+                                normalized_lines.append('')
+                                print(f"    Line {i}: empty")
+                        result = '\n'.join(normalized_lines).strip()
+                        print(f"    Result: {repr(result[:100])}")
+                        return result
+                    
+                    user_multiline_clean = normalize_multiline_code(user_answer)
+                    correct_multiline_clean = normalize_multiline_code(correct_answer)
+                    
+                    if user_multiline_clean == correct_multiline_clean:
+                        is_correct = True
+                        comparison_method = "multiline_normalized_match"
+                    
+                    # 6. 最後的降級比較（完全忽略空白結構）
+                    elif not is_correct:
+                        # 移除所有空白字符後比較
+                        user_no_whitespace = re.sub(r'\s+', '', str(user_answer)) if user_answer else ""
+                        correct_no_whitespace = re.sub(r'\s+', '', str(correct_answer)) if correct_answer else ""
+                        
+                        print(f"  Whitespace removed comparison:")
+                        print(f"    User: {repr(user_no_whitespace[:50])}")
+                        print(f"    Correct: {repr(correct_no_whitespace[:50])}")
+                        
+                        if user_no_whitespace == correct_no_whitespace:
+                            is_correct = True
+                            comparison_method = "whitespace_ignored_match"
+                        
+                        # 7. 終極比較：處理可能的JSON轉義問題
+                        elif not is_correct:
+                            try:
+                                # 嘗試解碼可能的JSON轉義
+                                import json as json_module
+                                user_decoded = user_answer
+                                correct_decoded = correct_answer
+                                
+                                # 如果看起來像JSON字符串，嘗試解碼
+                                if isinstance(user_answer, str) and (user_answer.startswith('"') or '\\n' in user_answer):
+                                    try:
+                                        user_decoded = json_module.loads('"' + user_answer.replace('"', '\\"') + '"')
+                                    except:
+                                        pass
+                                
+                                if isinstance(correct_answer, str) and (correct_answer.startswith('"') or '\\n' in correct_answer):
+                                    try:
+                                        correct_decoded = json_module.loads('"' + correct_answer.replace('"', '\\"') + '"')
+                                    except:
+                                        pass
+                                
+                                print(f"  JSON decode attempt:")
+                                print(f"    User decoded: {repr(user_decoded[:50])}")
+                                print(f"    Correct decoded: {repr(correct_decoded[:50])}")
+                                
+                                if user_decoded == correct_decoded:
+                                    is_correct = True
+                                    comparison_method = "json_decoded_match"
+                                
+                            except Exception as e:
+                                print(f"  JSON decode error: {e}")
+            
+            print(f"  Match result: {is_correct} (method: {comparison_method})")
+            
+            if is_correct:
                 score += question.points
+                print(f"  ✓ Correct! Points added: {question.points}")
+            else:
+                print(f"  ✗ Incorrect!")
+                # 詳細錯誤分析
+                if user_answer and correct_answer:
+                    print(f"  User length: {len(str(user_answer))}, Correct length: {len(str(correct_answer))}")
+                    
+                    # 顯示前50個字符的差異
+                    user_str = str(user_answer)
+                    correct_str = str(correct_answer)
+                    max_check = min(50, max(len(user_str), len(correct_str)))
+                    
+                    for i in range(max_check):
+                        u_char = user_str[i] if i < len(user_str) else '(end)'
+                        c_char = correct_str[i] if i < len(correct_str) else '(end)'
+                        
+                        if u_char != c_char:
+                            print(f"  First diff at pos {i}: user='{u_char}' (ord {ord(u_char) if u_char != '(end)' else 'N/A'}), correct='{c_char}' (ord {ord(c_char) if c_char != '(end)' else 'N/A'})")
+                            break
                 
         elif question.question_type == 'dropdown_fillblank':
             # 下拉選單填空題評分

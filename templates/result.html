@@ -67,9 +67,33 @@
                 <!-- 判斷答案是否正確 -->
                 {% if question.question_type in ['single_choice', 'dropdown'] %}
                     {% set correct_answer = question_data.get('correct_answer') %}
-                    {% set is_correct = (user_answer == correct_answer) %}
+                    
+                    <!-- 多行文本比較邏輯 -->
+                    {% set is_correct = false %}
+                    
+                    <!-- 1. 直接比較 -->
+                    {% if user_answer == correct_answer %}
+                        {% set is_correct = true %}
+                    
+                    <!-- 2. 字符串化後比較 -->
+                    {% elif (user_answer|string) == (correct_answer|string) %}
+                        {% set is_correct = true %}
+                    
+                    <!-- 3. 標準化比較（去除前後空白） -->
+                    {% elif (user_answer|string).strip() == (correct_answer|string).strip() %}
+                        {% set is_correct = true %}
+                    
+                    <!-- 4. 換行符標準化比較 -->
+                    {% else %}
+                        {% set user_normalized = (user_answer|string).replace('\r\n', '\n').replace('\r', '\n').strip() if user_answer else "" %}
+                        {% set correct_normalized = (correct_answer|string).replace('\r\n', '\n').replace('\r', '\n').strip() if correct_answer else "" %}
+                        {% if user_normalized == correct_normalized %}
+                            {% set is_correct = true %}
+                        {% endif %}
+                    {% endif %}
+                    
                     <!-- 調試信息 (隱藏顯示) -->
-                    <!-- Question {{ question.id }}: User='{{ user_answer }}', Correct='{{ correct_answer }}', Match={{ is_correct }} -->
+                    <!-- Question {{ question.id }}: User={{ user_answer|tojson }}, Correct={{ correct_answer|tojson }}, Match={{ is_correct }} -->
                 {% elif question.question_type == 'multiple_choice' %}
                     {% set correct_answers = question_data.get('correct_answers', []) %}
                     {% set user_answers_set = user_answer if user_answer is iterable and user_answer is not string else [] %}
@@ -135,9 +159,10 @@
                                 {% for option in question_data.options %}
                                 {% set is_user_choice = (option == user_answer) or (user_answer and option in user_answer) %}
                                 {% set is_correct_option = (option == question_data.get('correct_answer')) or (option in question_data.get('correct_answers', [])) %}
-                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; white-space: pre-wrap; 
-                                     background: {% if is_correct_option %}#d4edda{% elif is_user_choice %}#f8d7da{% else %}#f8f9fa{% endif %};">
-                                    {{ option }}
+                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; 
+                                     white-space: pre; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.4; 
+                                     text-indent: 0; margin-left: 0; overflow-x: auto;
+                                     background: {% if is_correct_option %}#d4edda{% elif is_user_choice %}#f8d7da{% else %}#f8f9fa{% endif %};">{{ option }}
                                     {% if is_correct_option %}
                                     <span style="color: #155724; font-weight: bold;"> (正確答案)</span>
                                     {% endif %}

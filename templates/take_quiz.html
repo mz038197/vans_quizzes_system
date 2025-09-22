@@ -62,7 +62,7 @@
                     {% if question.question_type == 'single_choice' %}
                     <div class="options-container">
                         {% for option in question.options %}
-                        <div class="option" onclick="selectSingleOption(this, '{{ question.id }}', {{ option|tojson }})">
+                        <div class="option" data-option-value="{{ option|e }}" onclick="selectSingleOption(this, '{{ question.id }}')">
                             <input type="radio" name="question-{{ question.id }}" value="{{ option }}">
                             <div class="option-text">{{ option }}</div>
                         </div>
@@ -73,7 +73,7 @@
                     {% elif question.question_type == 'multiple_choice' %}
                     <div class="options-container">
                         {% for option in question.options %}
-                        <div class="option" onclick="toggleMultipleOption(this, '{{ question.id }}', {{ option|tojson }})">
+                        <div class="option" data-option-value="{{ option|e }}" onclick="toggleMultipleOption(this, '{{ question.id }}')">
                             <input type="checkbox" name="question-{{ question.id }}" value="{{ option }}">
                             <div class="option-text">{{ option }}</div>
                         </div>
@@ -173,6 +173,13 @@ let totalQuestions = {{ questions|length }};
 let studentAnswers = {};
 let quizStarted = false;
 
+// 確保 studentAnswers 在全域範圍內可存取
+window.studentAnswers = studentAnswers;
+
+console.log('=== Quiz initialization ===');
+console.log('Total questions:', totalQuestions);
+console.log('Initial studentAnswers:', studentAnswers);
+
 // 儲存題目資料供 JavaScript 使用
 window.questionsData = {{ questions | tojson | safe }};
 
@@ -226,7 +233,10 @@ function previousQuestion() {
     }
 }
 
-function selectSingleOption(element, questionId, value) {
+function selectSingleOption(element, questionId) {
+    // 從 data 屬性讀取選項值
+    const value = element.getAttribute('data-option-value');
+    
     // 清除同組其他選項的選中狀態
     const container = element.parentNode;
     container.querySelectorAll('.option').forEach(opt => {
@@ -238,16 +248,46 @@ function selectSingleOption(element, questionId, value) {
     element.classList.add('selected');
     element.querySelector('input').checked = true;
     
-    // 儲存答案
+    // 儲存答案 - 調試信息
+    console.log(`Selected option for question ${questionId}:`, value);
+    console.log(`Value type: ${typeof value}, length: ${value ? value.length : 0}`);
+    console.log(`Value JSON:`, JSON.stringify(value));
+    console.log(`Value bytes:`, Array.from(new TextEncoder().encode(value || '')));
+    
+    // 多行檢查
+    if (value && value.includes('\n')) {
+        console.log(`Multi-line option detected:`);
+        const lines = value.split('\n');
+        lines.forEach((line, i) => {
+            console.log(`  Line ${i}: ${JSON.stringify(line)}`);
+        });
+    }
+    
+    // 確保 studentAnswers 對象存在
+    if (typeof studentAnswers === 'undefined') {
+        console.error('studentAnswers object is undefined!');
+        window.studentAnswers = {};
+    }
+    
     studentAnswers[questionId] = value;
+    console.log(`Stored answer for question ${questionId}:`, studentAnswers[questionId]);
+    console.log(`Current studentAnswers:`, studentAnswers);
 }
 
-function toggleMultipleOption(element, questionId, value) {
+function toggleMultipleOption(element, questionId) {
+    // 從 data 屬性讀取選項值
+    const value = element.getAttribute('data-option-value');
     const checkbox = element.querySelector('input');
     const isChecked = !checkbox.checked;
     
     checkbox.checked = isChecked;
     element.classList.toggle('selected', isChecked);
+    
+    // 確保 studentAnswers 對象存在
+    if (typeof studentAnswers === 'undefined') {
+        console.error('studentAnswers object is undefined!');
+        window.studentAnswers = {};
+    }
     
     // 儲存答案
     if (!studentAnswers[questionId]) {
@@ -261,6 +301,8 @@ function toggleMultipleOption(element, questionId, value) {
     } else {
         studentAnswers[questionId] = studentAnswers[questionId].filter(v => v !== value);
     }
+    
+    console.log(`Multiple choice answer for question ${questionId}:`, studentAnswers[questionId]);
 }
 
 // Parsons Puzzle 拖拉功能
@@ -505,6 +547,29 @@ async function submitQuiz() {
     
     const studentName = document.getElementById('student-name').value;
     const studentEmail = document.getElementById('student-email').value;
+    
+    // 調試：檢查答案收集情況
+    console.log('=== 提交前答案檢查 ===');
+    console.log('studentAnswers object:', studentAnswers);
+    console.log('Object keys:', Object.keys(studentAnswers));
+    console.log('Object values:', Object.values(studentAnswers));
+    console.log('JSON representation:', JSON.stringify(studentAnswers));
+    
+    // 檢查是否有空答案
+    if (Object.keys(studentAnswers).length === 0) {
+        console.error('ERROR: studentAnswers is empty!');
+        console.log('Attempting to collect answers from DOM...');
+        
+        // 嘗試從DOM收集答案
+        document.querySelectorAll('.option.selected').forEach(option => {
+            const questionId = option.closest('.question-card').dataset.questionId;
+            const value = option.getAttribute('data-option-value');
+            console.log(`Found selected option: Q${questionId} = ${value}`);
+            studentAnswers[questionId] = value;
+        });
+        
+        console.log('After DOM collection:', studentAnswers);
+    }
     
     try {
         const response = await fetch('/api/quiz/{{ quiz_bank.access_code }}/submit', {
