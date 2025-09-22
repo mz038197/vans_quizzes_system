@@ -368,9 +368,22 @@ def submit_quiz(access_code):
                 score += question.points
                 
         elif question.question_type == 'parsons':
+            # 處理程式排序題
             correct_order = question_data.get('correct_order', [])
-            user_order = user_answer if isinstance(user_answer, list) else []
-            if user_order == correct_order:
+            
+            # 檢查是否為新格式（字典格式）或舊格式（列表格式）
+            if isinstance(user_answer, dict):
+                # 新格式：將字典轉換為列表
+                user_order = []
+                for i in range(1, len(correct_order) + 1):
+                    if str(i) in user_answer:
+                        user_order.append(user_answer[str(i)])
+            else:
+                # 舊格式：直接使用列表
+                user_order = user_answer if isinstance(user_answer, list) else []
+            
+            # 比較順序是否正確
+            if len(user_order) == len(correct_order) and all(a == b for a, b in zip(user_order, correct_order)):
                 score += question.points
     
     # 儲存結果
