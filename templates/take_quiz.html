@@ -62,7 +62,7 @@
                     {% if question.question_type == 'single_choice' %}
                     <div class="options-container">
                         {% for option in question.options %}
-                        <div class="option" onclick="selectSingleOption(this, '{{ question.id }}', '{{ option }}')">
+                        <div class="option" onclick="selectSingleOption(this, '{{ question.id }}', {{ option|tojson }})">
                             <input type="radio" name="question-{{ question.id }}" value="{{ option }}">
                             <div class="option-text">{{ option }}</div>
                         </div>
@@ -73,7 +73,7 @@
                     {% elif question.question_type == 'multiple_choice' %}
                     <div class="options-container">
                         {% for option in question.options %}
-                        <div class="option" onclick="toggleMultipleOption(this, '{{ question.id }}', '{{ option }}')">
+                        <div class="option" onclick="toggleMultipleOption(this, '{{ question.id }}', {{ option|tojson }})">
                             <input type="checkbox" name="question-{{ question.id }}" value="{{ option }}">
                             <div class="option-text">{{ option }}</div>
                         </div>

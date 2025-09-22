@@ -66,7 +66,10 @@
                 
                 <!-- 判斷答案是否正確 -->
                 {% if question.question_type in ['single_choice', 'dropdown'] %}
-                    {% set is_correct = (user_answer == question_data.get('correct_answer')) %}
+                    {% set correct_answer = question_data.get('correct_answer') %}
+                    {% set is_correct = (user_answer == correct_answer) %}
+                    <!-- 調試信息 (隱藏顯示) -->
+                    <!-- Question {{ question.id }}: User='{{ user_answer }}', Correct='{{ correct_answer }}', Match={{ is_correct }} -->
                 {% elif question.question_type == 'multiple_choice' %}
                     {% set correct_answers = question_data.get('correct_answers', []) %}
                     {% set user_answers_set = user_answer if user_answer is iterable and user_answer is not string else [] %}
@@ -132,7 +135,7 @@
                                 {% for option in question_data.options %}
                                 {% set is_user_choice = (option == user_answer) or (user_answer and option in user_answer) %}
                                 {% set is_correct_option = (option == question_data.get('correct_answer')) or (option in question_data.get('correct_answers', [])) %}
-                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; 
+                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; white-space: pre-wrap; 
                                      background: {% if is_correct_option %}#d4edda{% elif is_user_choice %}#f8d7da{% else %}#f8f9fa{% endif %};">
                                     {{ option }}
                                     {% if is_correct_option %}

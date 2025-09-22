@@ -334,6 +334,12 @@ def submit_quiz(access_code):
         
         if question.question_type in ['single_choice', 'dropdown']:
             correct_answer = question_data.get('correct_answer')
+            # 調試信息
+            print(f"Question {question.id} ({question.question_type}):")
+            print(f"  User answer: '{user_answer}'")
+            print(f"  Correct answer: '{correct_answer}'")
+            print(f"  Match: {user_answer == correct_answer}")
+            
             if user_answer == correct_answer:
                 score += question.points
                 
