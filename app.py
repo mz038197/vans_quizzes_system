@@ -336,6 +336,7 @@ def submit_quiz(access_code):
             correct_answer = question_data.get('correct_answer')
             
             # 調試信息
+            # 注意：LaTeX 語法會保留在原始文本中進行比對，確保數學公式的準確性
             print(f"Question {question.id} ({question.question_type}): {question.title}")
             print(f"  User answer: {repr(user_answer)} (type: {type(user_answer)})")
             print(f"  Correct answer: {repr(correct_answer)} (type: {type(correct_answer)})")
@@ -509,6 +510,7 @@ def submit_quiz(access_code):
                 score += question.points
                 
         elif question.question_type == 'fill_blank':
+            # 填空題比對：LaTeX 語法會被保留並比對，確保數學公式準確性
             correct_answer = question_data.get('correct_answer', '').lower().strip()
             user_answer_clean = (user_answer or '').lower().strip()
             if user_answer_clean == correct_answer:

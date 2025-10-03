@@ -218,6 +218,11 @@ function showQuestion(index) {
         
         // 初始化下拉選單填空題
         initializeDropdownFillblank(questions[index]);
+        
+        // 重新渲染 MathJax
+        if (typeof MathJax !== 'undefined') {
+            MathJax.typesetPromise([questions[index]]).catch((err) => console.log('MathJax typeset error:', err));
+        }
     }
 }
 
@@ -623,6 +628,11 @@ document.addEventListener('DOMContentLoaded', function() {
             e.returnValue = '您還未提交測驗，確定要離開嗎？';
         }
     });
+    
+    // 初始渲染 MathJax
+    if (typeof MathJax !== 'undefined') {
+        MathJax.typesetPromise().catch((err) => console.log('MathJax typeset error:', err));
+    }
 });
 </script>
 

@@ -129,8 +129,11 @@
                 </div>
                 
                 <div class="form-group">
-                    <label for="question-text">題目內容 *</label>
-                    <textarea id="question-text" rows="4" required></textarea>
+                    <label for="question-text">題目內容 * <span style="color: #667eea; font-size: 0.9rem;">(支援 LaTeX 數學公式)</span></label>
+                    <textarea id="question-text" rows="4" required placeholder="例如：計算 $\int_0^1 x^2 dx$ 的值是多少？"></textarea>
+                    <p style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">
+                        💡 LaTeX 提示：使用 $...$ 表示行內公式，使用 $$...$$ 表示獨立公式。例如：$x^2 + y^2 = r^2$
+                    </p>
                 </div>
                 
                 <div class="form-group">
@@ -187,10 +190,10 @@ function handleQuestionTypeChange() {
         case 'multiple_choice':
             container.innerHTML = `
                 <div class="form-group">
-                    <label>選項 *</label>
+                    <label>選項 * <span style="color: #667eea; font-size: 0.9rem;">(支援 LaTeX 數學公式)</span></label>
                     <div id="options-container">
                         <div class="option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <textarea class="option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
+                            <textarea class="option-input" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)" style="flex: 1; min-height: 60px;"></textarea>
                             <label style="margin: 0; display: flex; align-items: center;">
                                 <input type="${type === 'single_choice' ? 'radio' : 'checkbox'}" name="correct-option" style="margin-right: 0.5rem;">
                                 正確
@@ -295,7 +298,7 @@ function addOption() {
     optionRow.className = 'option-row';
     optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
     optionRow.innerHTML = `
-        <textarea class="option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
+        <textarea class="option-input" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)" style="flex: 1; min-height: 60px;"></textarea>
         <label style="margin: 0; display: flex; align-items: center;">
             <input type="${isMultiple ? 'checkbox' : 'radio'}" name="correct-option" style="margin-right: 0.5rem;">
             正確
@@ -839,6 +842,12 @@ async function deleteQuestion(questionId) {
     }
 }
 
+// 重新渲染 MathJax，當頁面載入時
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof MathJax !== 'undefined') {
+        MathJax.typesetPromise().catch((err) => console.log('MathJax typeset error:', err));
+    }
+});
 
 </script>
 
