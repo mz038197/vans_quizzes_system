@@ -472,6 +472,13 @@ body {
     background: #fafafa;
 }
 
+.parsons-bank h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #666;
+    margin: 0 0 1rem 0;
+}
+
 .parsons-target {
     flex: 1;
     border: 2px dashed #667eea;
@@ -481,19 +488,41 @@ body {
     background: #f8f9ff;
 }
 
+.parsons-target h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #667eea;
+    margin: 0 0 1rem 0;
+}
+
 .code-block {
     background: #2d3748;
     color: #e2e8f0;
-    padding: 0.8rem 1rem;
-    margin: 0.5rem 0;
+    padding: 0.4rem 1rem;
+    margin: 0.3rem 0;
     border-radius: 6px;
     font-family: 'Courier New', monospace;
     cursor: move;
     transition: transform 0.2s, box-shadow 0.2s;
     user-select: none;
     position: relative;
-    white-space: pre-wrap;
-    line-height: 1.5;
+    line-height: 1.4;
+    font-size: 14px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    overflow-x: auto;
+    word-wrap: normal;
+    word-break: keep-all;
+    display: block;
+    tab-size: 4;
+    height: auto;
+    min-height: 0;
+}
+
+.code-block span[style*="color: #667eea"] {
+    display: inline-block;
+    min-width: 25px;
+    text-align: left;
+    font-weight: bold;
 }
 
 .code-block:hover {
@@ -573,10 +602,26 @@ body {
     margin: 0;
     width: 100%;
     cursor: default;
+    background: #2d3748;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    overflow-x: auto;
+    word-wrap: normal;
+    word-break: keep-all;
+    display: block;
+    tab-size: 4;
+    padding: 0.4rem 1rem;
+    height: auto;
+    min-height: 0;
+    line-height: 1.4;
 }
 
 .answer-slot .code-block:hover {
     transform: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.answer-slot.slot-occupied .code-block {
+    background: #2d3748;
 }
 
 /* 拖放時的視覺效果 */
@@ -665,6 +710,17 @@ body {
     
     .parsons-container {
         flex-direction: column;
+    }
+    
+    .parsons-preview-container {
+        flex-direction: column !important;
+    }
+    
+    .parsons-bank,
+    .parsons-target,
+    .parsons-preview-bank,
+    .parsons-preview-target {
+        min-height: 200px !important;
     }
     
     .stats-cards {
