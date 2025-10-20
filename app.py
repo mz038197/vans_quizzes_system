@@ -241,6 +241,21 @@ def toggle_quiz_bank(quiz_bank_id):
     
     return jsonify({'message': '操作成功', 'is_active': quiz_bank.is_active})
 
+@app.route('/api/quiz-bank/<int:quiz_bank_id>', methods=['DELETE'])
+@login_required
+def delete_quiz_bank(quiz_bank_id):
+    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
+    if quiz_bank.teacher_id != current_user.id:
+        return jsonify({'error': '無權限操作'}), 403
+    
+    try:
+        db.session.delete(quiz_bank)
+        db.session.commit()
+        return jsonify({'message': '題庫已成功刪除'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': '刪除失敗，請稍後再試'}), 500
+
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/questions', methods=['GET', 'POST'])
 @login_required
 def manage_questions(quiz_bank_id):
@@ -650,6 +665,23 @@ def view_submissions(quiz_bank_id):
         })
     
     return jsonify(submissions_data)
+
+@app.route('/api/submission/<int:submission_id>', methods=['DELETE'])
+@login_required
+def delete_submission(submission_id):
+    submission = Submission.query.get_or_404(submission_id)
+    quiz_bank = submission.quiz_bank
+    
+    if quiz_bank.teacher_id != current_user.id:
+        return jsonify({'error': '無權限操作'}), 403
+    
+    try:
+        db.session.delete(submission)
+        db.session.commit()
+        return jsonify({'message': '成績已成功刪除'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': '刪除失敗，請稍後再試'}), 500
 
 # 獲取當前環境
 @app.route('/api/environment')

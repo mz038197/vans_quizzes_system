@@ -93,6 +93,13 @@
                             {{ '停用題庫' if quiz_bank.is_active else '啟用題庫' }}
                         </button>
                     </div>
+                    <div style="margin-top: 0.5rem;">
+                        <button onclick="deleteQuizBank({{ quiz_bank.id }})" 
+                                class="btn btn-danger" 
+                                style="width: 100%; background-color: #dc3545;">
+                            <i class="fas fa-trash"></i> 刪除題庫
+                        </button>
+                    </div>
                     <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: 0.9rem; color: #666;">
                         <div><i class="fas fa-file-alt"></i> 題目數量：{{ quiz_bank.questions|length }} 題</div>
                         <div><i class="fas fa-users"></i> 作答次數：{{ quiz_bank.submissions|length }} 次</div>
@@ -168,6 +175,37 @@ async function toggleQuizBank(quizBankId, isActive) {
             location.reload();
         } else {
             alert('操作失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+
+async function deleteQuizBank(quizBankId) {
+    if (!confirm('確定要刪除這個題庫嗎？\n\n⚠️ 警告：此操作將永久刪除題庫及其所有題目，且無法復原！')) {
+        return;
+    }
+    
+    // 再次確認
+    if (!confirm('這是最後確認！\n刪除後所有相關的題目、學生作答紀錄都會被永久刪除。\n\n確定要繼續嗎？')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/quiz-bank/${quizBankId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.error || '刪除失敗，請稍後再試');
         }
     } catch (error) {
         alert('網路錯誤，請檢查連線');

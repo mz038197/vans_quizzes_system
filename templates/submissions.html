@@ -187,9 +187,14 @@ function displaySubmissionsTable() {
                 ${submission.submitted_at}
             </td>
             <td style="padding: 1rem; text-align: center;">
-                <a href="/result/${submission.id}" target="_blank" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
-                    查看詳情
-                </a>
+                <div style="display: flex; gap: 0.5rem; justify-content: center;">
+                    <a href="/result/${submission.id}" target="_blank" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
+                        查看詳情
+                    </a>
+                    <button onclick="deleteSubmission(${submission.id}, '${submission.student_name}')" class="btn btn-danger" style="padding: 6px 12px; font-size: 0.9rem;">
+                        🗑️ 刪除
+                    </button>
+                </div>
             </td>
         `;
         
@@ -268,6 +273,33 @@ function fallbackCopyTextToClipboard(text) {
     }
     
     document.body.removeChild(textArea);
+}
+
+async function deleteSubmission(submissionId, studentName) {
+    if (!confirm(`確定要刪除 ${studentName} 的成績嗎？\n\n⚠️ 此操作無法復原！`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/submission/${submissionId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert(result.message);
+            // 重新載入成績資料
+            loadSubmissions();
+        } else {
+            alert(result.error || '刪除失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
 }
 
 // 頁面載入時載入資料
