@@ -111,39 +111,21 @@
                         <div class="parsons-bank">
                             <h4 style="text-align: center; margin-bottom: 1rem; color: #666;">程式碼塊</h4>
                             <div id="code-bank-{{ question.id }}">
-                                {% if question.code_blocks %}
-                                    {# 新格式 #}
-                                    {% for label in question.code_blocks.keys() | sort %}
-                                    <div class="code-block" draggable="true" data-block="{{ question.code_blocks[label] }}" data-label="{{ label }}">
-                                        <div style="display: flex; align-items: flex-start;">
-                                            <span style="color: #667eea; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 20px; text-align: center; flex-shrink: 0;">{{ label }}</span>
-                                            <div style="flex-grow: 1; white-space: pre-wrap;">{{ question.code_blocks[label] | safe }}</div>
-                                        </div>
+                                {% for label in question.code_blocks.keys() | sort %}
+                                <div class="code-block" draggable="true" data-block="{{ question.code_blocks[label] }}" data-label="{{ label }}">
+                                    <div style="display: flex; align-items: flex-start;">
+                                        <span style="color: #667eea; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 20px; text-align: center; flex-shrink: 0;">{{ label }}</span>
+                                        <div style="flex-grow: 1; white-space: pre-wrap;">{{ question.code_blocks[label] | safe }}</div>
                                     </div>
-                                    {% endfor %}
-                                {% else %}
-                                    {# 舊格式兼容 #}
-                                    {% for block in question.correct_blocks %}
-                                    <div class="code-block correct-block" draggable="true" data-block="{{ block }}" data-type="correct">
-                                        <div style="text-align: left;">{{ block | safe }}</div>
-                                    </div>
-                                    {% endfor %}
-                                    
-                                    {% if question.distractor_blocks %}
-                                        {% for block in question.distractor_blocks %}
-                                        <div class="code-block distractor-block" draggable="true" data-block="{{ block }}" data-type="distractor">
-                                            <div style="text-align: left;">{{ block | safe }}</div>
-                                        </div>
-                                        {% endfor %}
-                                    {% endif %}
-                                {% endif %}
+                                </div>
+                                {% endfor %}
                             </div>
                         </div>
                         <div class="parsons-target">
                             <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea;">答題區 (請按正確順序排列)</h4>
                             <div id="code-target-{{ question.id }}" class="drop-zone">
                                 <!-- 根據設定的answer_slots產生空白區塊 -->
-                                {% set slots_count = question.answer_slots or question.correct_blocks|length %}
+                                {% set slots_count = question.answer_slots %}
                                 {% for i in range(slots_count) %}
                                 <div class="answer-slot" data-slot="{{ i + 1 }}">
                                     <div class="slot-number">{{ i + 1 }}</div>
@@ -554,17 +536,8 @@ function updateParsonsAnswer(questionId) {
         const block = slot.querySelector('.code-block');
         
         if (block) {
-            // 優先使用data-label（新格式），否則使用data-block（舊格式）
             const blockLabel = block.dataset.label;
-            const blockContent = block.dataset.block;
-            
-            if (blockLabel) {
-                // 新格式：儲存標籤
-                slotAnswers[slotNumber] = blockLabel;
-            } else {
-                // 舊格式：儲存內容
-                slotAnswers[slotNumber] = blockContent;
-            }
+            slotAnswers[slotNumber] = blockLabel;
         }
     });
     

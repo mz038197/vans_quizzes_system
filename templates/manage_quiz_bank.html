@@ -77,63 +77,38 @@
                             </div>
                         {% elif question.question_type == 'parsons' %}
                             <div style="margin-top: 1rem;">
-                                {% if data.code_blocks %}
-                                    {# 新格式 - 與學生看到的排版一致 #}
-                                    <div class="parsons-preview-container" style="display: flex; gap: 2rem; margin-top: 1rem;">
-                                        <div class="parsons-preview-bank" style="flex: 1; border: 2px dashed #ddd; border-radius: 8px; padding: 1rem; background: #fafafa;">
-                                            <h4 style="text-align: center; margin-bottom: 1rem; color: #666; font-size: 1rem;">可選程式碼塊</h4>
-                                            {% for label in data.code_blocks.keys() | sort %}
-                                            <div class="code-block-preview" style="background: #2d3748; color: #e2e8f0; padding: 0.4rem 1rem; margin: 0.3rem 0; border-radius: 6px; font-family: 'Courier New', monospace;  line-height: 1.4; font-size: 14px; overflow-x: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); height: auto; min-height: 0;">
+                                <div class="parsons-preview-container" style="display: flex; gap: 2rem; margin-top: 1rem;">
+                                    <div class="parsons-preview-bank" style="flex: 1; border: 2px dashed #ddd; border-radius: 8px; padding: 1rem; background: #fafafa;">
+                                        <h4 style="text-align: center; margin-bottom: 1rem; color: #666; font-size: 1rem;">可選程式碼塊</h4>
+                                        {% for label in data.code_blocks.keys() | sort %}
+                                        <div class="code-block-preview" style="background: #2d3748; color: #e2e8f0; padding: 0.4rem 1rem; margin: 0.3rem 0; border-radius: 6px; font-family: 'Courier New', monospace;  line-height: 1.4; font-size: 14px; overflow-x: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); height: auto; min-height: 0;">
+                                            <div style="display: flex; align-items: flex-start;">
+                                                <span style="color: #667eea; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 20px; text-align: center; flex-shrink: 0;">{{ label }}</span>
+                                                <div style="text-align: left; flex-grow: 1;white-space: pre-wrap;">{{ data.code_blocks[label] | safe }}</div>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="parsons-preview-target" style="flex: 1; border: 2px dashed #667eea; border-radius: 8px; padding: 1rem; background: #f8f9ff;">
+                                        <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea; font-size: 1rem;">答題區 (共 {{ data.answer_slots }} 個空格)</h4>
+                                        {% for i in range(1, data.answer_slots + 1) %}
+                                        {% set correct_label = data.slot_answers.get(i|string, '') %}
+                                        <div class="answer-slot-preview" style="border: 2px dashed #bbb; border-radius: 8px; margin: 0.5rem 0; min-height: 60px; display: flex; align-items: center; padding: 0.5rem; background: white;">
+                                            <div class="slot-number" style="min-width: 30px; height: 30px; background: #667eea; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; margin-right: 1rem;">{{ i }}</div>
+                                            {% if correct_label %}
+                                            <div class="answer-block" style="flex: 1; background: #e8f5e8; color: #2d3748; padding: 0.4rem 1rem; border-radius: 6px; font-family: 'Courier New', monospace; line-height: 1.4; border: 2px solid #27ae60; font-size: 14px; overflow-x: auto; height: auto; min-height: 0;">
                                                 <div style="display: flex; align-items: flex-start;">
-                                                    <span style="color: #667eea; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 20px; text-align: center; flex-shrink: 0;">{{ label }}</span>
-                                                    <div style="text-align: left; flex-grow: 1;white-space: pre-wrap;">{{ data.code_blocks[label] | safe }}</div>
+                                                    <span style="color: #27ae60; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 30px; text-align: center; flex-shrink: 0;">✓ {{ correct_label }}</span>
+                                                    <div style="text-align: left; flex-grow: 1; white-space: pre;">{{ data.code_blocks.get(correct_label, '') | safe }}</div>
                                                 </div>
                                             </div>
-                                            {% endfor %}
+                                            {% else %}
+                                            <div style="flex: 1; color: #999; font-style: italic;">將程式碼塊拖拉到這裡</div>
+                                            {% endif %}
                                         </div>
-                                        <div class="parsons-preview-target" style="flex: 1; border: 2px dashed #667eea; border-radius: 8px; padding: 1rem; background: #f8f9ff;">
-                                            <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea; font-size: 1rem;">答題區 (共 {{ data.answer_slots }} 個空格)</h4>
-                                            {% for i in range(1, data.answer_slots + 1) %}
-                                            {% set correct_label = data.slot_answers.get(i|string, '') %}
-                                            <div class="answer-slot-preview" style="border: 2px dashed #bbb; border-radius: 8px; margin: 0.5rem 0; min-height: 60px; display: flex; align-items: center; padding: 0.5rem; background: white;">
-                                                <div class="slot-number" style="min-width: 30px; height: 30px; background: #667eea; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; margin-right: 1rem;">{{ i }}</div>
-                                                {% if correct_label %}
-                                                <div class="answer-block" style="flex: 1; background: #e8f5e8; color: #2d3748; padding: 0.4rem 1rem; border-radius: 6px; font-family: 'Courier New', monospace; line-height: 1.4; border: 2px solid #27ae60; font-size: 14px; overflow-x: auto; height: auto; min-height: 0;">
-                                                    <div style="display: flex; align-items: flex-start;">
-                                                        <span style="color: #27ae60; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 30px; text-align: center; flex-shrink: 0;">✓ {{ correct_label }}</span>
-                                                        <div style="text-align: left; flex-grow: 1; white-space: pre;">{{ data.code_blocks.get(correct_label, '') | safe }}</div>
-                                                    </div>
-                                                </div>
-                                                {% else %}
-                                                <div style="flex: 1; color: #999; font-style: italic;">將程式碼塊拖拉到這裡</div>
-                                                {% endif %}
-                                            </div>
-                                            {% endfor %}
-                                        </div>
+                                        {% endfor %}
                                     </div>
-                                {% else %}
-                                    {# 舊格式兼容顯示 #}
-                                    <div style="display: flex; gap: 1rem;">
-                                        <div style="flex: 1;">
-                                            <strong style="color: #27ae60;">正確程式碼塊：</strong>
-                                            <div style="font-family: monospace; background: #e8f5e8; padding: 1rem; border-radius: 4px; margin-top: 0.5rem;">
-                                                {% for block in data.correct_blocks %}
-                                                <div style="border-left: 3px solid #27ae60; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">{{ loop.index }}. {{ block }}</div>
-                                                {% endfor %}
-                                            </div>
-                                        </div>
-                                        {% if data.distractor_blocks %}
-                                        <div style="flex: 1;">
-                                            <strong style="color: #e74c3c;">干擾項：</strong>
-                                            <div style="font-family: monospace; background: #ffeaea; padding: 1rem; border-radius: 4px; margin-top: 0.5rem;">
-                                                {% for block in data.distractor_blocks %}
-                                                <div style="border-left: 3px solid #e74c3c; padding-left: 0.5rem; margin: 0.25rem 0; white-space: pre-wrap; font-family: monospace;">❌ {{ block }}</div>
-                                                {% endfor %}
-                                            </div>
-                                        </div>
-                                        {% endif %}
-                                    </div>
-                                {% endif %}
+                                </div>
                             </div>
                         {% endif %}
                     {% endif %}
@@ -880,37 +855,9 @@ async function editQuestion(questionId) {
                     const codeBlocksContainer = document.getElementById('code-blocks-container');
                     codeBlocksContainer.innerHTML = '';
                     
-                    // 處理新舊格式兼容
-                    let codeBlocks = {};
-                    let answerSlots = 3;
-                    let slotAnswers = {};
-                    
-                    // 新格式
-                    if (data.code_blocks) {
-                        codeBlocks = data.code_blocks;
-                        answerSlots = data.answer_slots || Object.keys(data.code_blocks).length;
-                        slotAnswers = data.slot_answers || {};
-                    }
-                    // 舊格式兼容
-                    else if (data.correct_blocks) {
-                        // 將舊格式轉換為新格式
-                        data.correct_blocks.forEach((block, index) => {
-                            const label = String.fromCharCode(65 + index);
-                            codeBlocks[label] = block;
-                            slotAnswers[(index + 1).toString()] = label;
-                        });
-                        
-                        // 添加干擾項
-                        if (data.distractor_blocks) {
-                            const startIndex = data.correct_blocks.length;
-                            data.distractor_blocks.forEach((block, index) => {
-                                const label = String.fromCharCode(65 + startIndex + index);
-                                codeBlocks[label] = block;
-                            });
-                        }
-                        
-                        answerSlots = data.correct_blocks.length;
-                    }
+                    let codeBlocks = data.code_blocks || {};
+                    let answerSlots = data.answer_slots || Object.keys(data.code_blocks).length;
+                    let slotAnswers = data.slot_answers || {};
                     
                     // 添加程式碼塊
                     const labels = Object.keys(codeBlocks).sort();

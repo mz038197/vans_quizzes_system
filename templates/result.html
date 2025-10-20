@@ -103,58 +103,20 @@
                     {% set user_answer_clean = (user_answer or '').lower().strip() %}
                     {% set is_correct = (user_answer_clean == correct_answer) %}
                 {% elif question.question_type == 'parsons' %}
-                    {# 新格式：使用slot_answers比對 #}
-                    {% if question_data.get('slot_answers') %}
-                        {% set correct_slot_answers = question_data.get('slot_answers', {}) %}
-                        {% set user_slot_answers = user_answer.get('slot_answers', {}) if user_answer is mapping else {} %}
-                        
-                        {# 檢查每個空格的答案是否正確 #}
-                        {% set is_correct = true %}
-                        {% for slot_num, correct_label in correct_slot_answers.items() %}
-                            {% if user_slot_answers.get(slot_num) != correct_label %}
-                                {% set is_correct = false %}
-                            {% endif %}
-                        {% endfor %}
-                        
-                        {# 確保所有空格都有答案 #}
-                        {% if user_slot_answers|length != correct_slot_answers|length %}
+                    {% set correct_slot_answers = question_data.get('slot_answers', {}) %}
+                    {% set user_slot_answers = user_answer.get('slot_answers', {}) if user_answer is mapping else {} %}
+                    
+                    {# 檢查每個空格的答案是否正確 #}
+                    {% set is_correct = true %}
+                    {% for slot_num, correct_label in correct_slot_answers.items() %}
+                        {% if user_slot_answers.get(slot_num) != correct_label %}
                             {% set is_correct = false %}
                         {% endif %}
+                    {% endfor %}
                     
-                    {# 舊格式：使用correct_order比對 #}
-                    {% else %}
-                        {% set correct_order = question_data.get('correct_order', []) %}
-                        
-                        {% set user_order = [] %}
-                        
-                        {# 處理新的複合格式 #}
-                        {% if user_answer is mapping and user_answer.order is defined %}
-                            {% set user_order = user_answer.order if user_answer.order is iterable and user_answer.order is not string else [] %}
-                        
-                        {# 處理舊的字典格式 #}
-                        {% elif user_answer is mapping %}
-                            {% for i in range(1, (correct_order|length) + 1) %}
-                                {% if user_answer[i|string] is defined %}
-                                    {% set _ = user_order.append(user_answer[i|string]) %}
-                                {% endif %}
-                            {% endfor %}
-                        
-                        {# 處理列表格式 #}
-                        {% else %}
-                            {% set user_order = user_answer if user_answer is iterable and user_answer is not string else [] %}
-                        {% endif %}
-                        
-                        {# 檢查答案是否正確 #}
-                        {% set is_correct = (user_order|length == correct_order|length) and user_order == correct_order %}
-                        
-                        {# 特別處理：如果答案格式不對但內容相同，也算正確 #}
-                        {% if not is_correct and user_order|length == correct_order|length %}
-                            {% set user_set = user_order|sort %}
-                            {% set correct_set = correct_order|sort %}
-                            {% if user_set == correct_set %}
-                                {% set is_correct = true %}
-                            {% endif %}
-                        {% endif %}
+                    {# 確保所有空格都有答案 #}
+                    {% if user_slot_answers|length != correct_slot_answers|length %}
+                        {% set is_correct = false %}
                     {% endif %}
                 {% endif %}
                 
@@ -250,8 +212,6 @@
                         </div>
                         
                         {% elif question.question_type == 'parsons' %}
-                        {# 新格式 #}
-                        {% if question_data.get('code_blocks') %}
                         <div style="margin-bottom: 1rem;">
                             <strong>可選程式碼塊：</strong>
                             <div style="font-family: monospace; background: #f8f9fa; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
@@ -310,64 +270,6 @@
                                 {% endfor %}
                             </div>
                         </div>
-                        
-                        {# 舊格式 #}
-                        {% else %}
-                        <div style="margin-bottom: 1rem;">
-                            <strong>您的排序：</strong>
-                            <div style="font-family: monospace; background: {{ '#d4edda' if is_correct else '#f8d7da' }}; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
-                                {% if user_order %}
-                                    {% for block in user_order %}
-                                    <div style="padding: 0.15rem 0; border-left: 3px solid {{ '#27ae60' if is_correct else '#e74c3c' }}; padding-left: 0.5rem; margin: 0.15rem 0; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.4; height: auto; min-height: 0;">
-                                        <div style="display: flex; align-items: flex-start;">
-                                            <span style="flex-shrink: 0; margin-right: 0.5rem;">{{ loop.index }}.</span>
-                                            <div style="text-align: left; flex-grow: 1;">{{ block | safe }}</div>
-                                        </div>
-                                        {% if block in question_data.get('correct_order', []) %}
-                                            {% if question_data.get('correct_order', []).index(block) == loop.index - 1 %}
-                                            <span style="color: #27ae60; margin-left: 1rem;">✓ 位置正確</span>
-                                            {% else %}
-                                            <span style="color: #f39c12; margin-left: 1rem;">⚠ 位置錯誤</span>
-                                            {% endif %}
-                                        {% else %}
-                                            <span style="color: #e74c3c; margin-left: 1rem;">✗ 這是干擾項</span>
-                                        {% endif %}
-                                    </div>
-                                    {% endfor %}
-                                {% else %}
-                                    <div style="color: #721c24;">(未完成排序)</div>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div>
-                            <strong>正確順序：</strong>
-                            <div style="font-family: monospace; background: #e8f5e8; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
-                                {% for block in question_data.get('correct_order', []) %}
-                                <div style="padding: 0.15rem 0; border-left: 3px solid #27ae60; padding-left: 0.5rem; margin: 0.15rem 0; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.4; height: auto; min-height: 0;">
-                                    <div style="display: flex; align-items: flex-start;">
-                                        <span style="flex-shrink: 0; margin-right: 0.5rem;">{{ loop.index }}.</span>
-                                        <div style="text-align: left; flex-grow: 1;">{{ block | safe }}</div>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% if question_data.get('distractor_blocks') %}
-                        <div style="margin-top: 1rem;">
-                            <strong>干擾項：</strong>
-                            <div style="font-family: monospace; background: #ffeaea; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
-                                {% for block in question_data.get('distractor_blocks', []) %}
-                                <div style="padding: 0.15rem 0; border-left: 3px solid #e74c3c; padding-left: 0.5rem; margin: 0.15rem 0; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.4; height: auto; min-height: 0;">
-                                    <div style="display: flex; align-items: flex-start;">
-                                        <span style="flex-shrink: 0; margin-right: 0.5rem;">❌</span>
-                                        <div style="text-align: left; flex-grow: 1;">{{ block | safe }}</div>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endif %}
-                        {% endif %}
                         {% endif %}
                     </div>
                 </div>
