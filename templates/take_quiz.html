@@ -363,7 +363,7 @@ function initializeDropdownFillblank(questionElement) {
         const blank = questionData.blanks[blankIndex];
         if (!blank) return match;
         
-        let selectHTML = `<select id="blank_${blankIndex}_q${questionId}" onchange="saveDropdownFillblankAnswer(${questionId}, ${blankIndex}, this.value)" style="margin: 0 0.25rem; padding: 0.25rem; border: 1px solid #ddd; border-radius: 3px; font-size: 1rem;">`;
+        let selectHTML = `<select id="blank_${blankIndex}_q${questionId}" onchange="saveDropdownFillblankAnswer(${questionId}, ${blankIndex}, this.value)" style="margin: 0 0.25rem; padding: 0.25rem; border: 1px solid #ddd; border-radius: 3px; font-size: 1rem; font-family: Consolas, monospace;">`;
         selectHTML += '<option value="">請選擇...</option>';
         
         blank.options.forEach(option => {
