@@ -518,42 +518,73 @@ def submit_quiz(access_code):
                 
         elif question.question_type == 'parsons':
             # 處理程式排序題
-            correct_order = question_data.get('correct_order', [])
+            print(f"Question {question.id} - Parsons type")
+            print(f"  Question data: {question_data}")
+            print(f"  User answer: {user_answer}")
             
-            # 檢查答案格式並提取答案
-            user_order = []
+            # 新格式：使用slot_answers比對
+            if 'slot_answers' in question_data and isinstance(user_answer, dict) and 'slot_answers' in user_answer:
+                correct_slot_answers = question_data.get('slot_answers', {})
+                user_slot_answers = user_answer.get('slot_answers', {})
+                
+                print(f"  New format - Correct slot answers: {correct_slot_answers}")
+                print(f"  New format - User slot answers: {user_slot_answers}")
+                
+                # 比較每個空格的答案是否正確
+                all_correct = True
+                for slot_num, correct_label in correct_slot_answers.items():
+                    user_label = user_slot_answers.get(str(slot_num))
+                    print(f"    Slot {slot_num}: user={user_label}, correct={correct_label}")
+                    if user_label != correct_label:
+                        all_correct = False
+                        break
+                
+                if all_correct and len(user_slot_answers) == len(correct_slot_answers):
+                    score += question.points
+                    print(f"  ✓ Correct! Points added: {question.points}")
+                else:
+                    print(f"  ✗ Incorrect!")
             
-            # 新的複合格式 {order: [...], slots: {...}}
-            if isinstance(user_answer, dict) and 'order' in user_answer:
-                user_order = user_answer['order'] if isinstance(user_answer['order'], list) else []
-            
-            # 舊的字典格式 {1: "code1", 2: "code2", ...}
-            elif isinstance(user_answer, dict) and not 'order' in user_answer:
-                # 將字典轉換為列表
-                for i in range(1, len(correct_order) + 1):
-                    if str(i) in user_answer:
-                        user_order.append(user_answer[str(i)])
-                    elif i in user_answer:
-                        user_order.append(user_answer[i])
-            
-            # 列表格式 ["code1", "code2", ...]
-            elif isinstance(user_answer, list):
-                user_order = user_answer
-            
-            # 輸出調試資訊
-            print(f"Question {question.id} - User answer format: {type(user_answer)}")
-            print(f"Question {question.id} - User order: {user_order}")
-            print(f"Question {question.id} - Correct order: {correct_order}")
-            
-            # 比較順序是否正確
-            # 1. 檢查長度是否相同
-            # 2. 檢查每個元素是否相同
-            if len(user_order) == len(correct_order) and all(a == b for a, b in zip(user_order, correct_order)):
-                score += question.points
-            # 特別處理：如果答案格式不對但內容相同，也算正確
-            elif set(user_order) == set(correct_order) and len(user_order) == len(correct_order):
-                # 檢查是否只是順序不同但內容完全相同
-                score += question.points
+            # 舊格式兼容：使用correct_order比對
+            elif 'correct_order' in question_data:
+                correct_order = question_data.get('correct_order', [])
+                
+                # 檢查答案格式並提取答案
+                user_order = []
+                
+                # 新的複合格式 {order: [...], slots: {...}}
+                if isinstance(user_answer, dict) and 'order' in user_answer:
+                    user_order = user_answer['order'] if isinstance(user_answer['order'], list) else []
+                
+                # 字典格式 {1: "code1", 2: "code2", ...}
+                elif isinstance(user_answer, dict) and 'slot_answers' in user_answer:
+                    # 從slot_answers提取順序
+                    slot_answers = user_answer['slot_answers']
+                    sorted_slots = sorted([int(k) for k in slot_answers.keys()])
+                    user_order = [slot_answers[str(slot)] for slot in sorted_slots]
+                
+                # 舊的字典格式 {1: "code1", 2: "code2", ...}
+                elif isinstance(user_answer, dict):
+                    # 將字典轉換為列表
+                    for i in range(1, len(correct_order) + 1):
+                        if str(i) in user_answer:
+                            user_order.append(user_answer[str(i)])
+                        elif i in user_answer:
+                            user_order.append(user_answer[i])
+                
+                # 列表格式 ["code1", "code2", ...]
+                elif isinstance(user_answer, list):
+                    user_order = user_answer
+                
+                print(f"  Old format - User order: {user_order}")
+                print(f"  Old format - Correct order: {correct_order}")
+                
+                # 比較順序是否正確
+                if len(user_order) == len(correct_order) and all(a == b for a, b in zip(user_order, correct_order)):
+                    score += question.points
+                    print(f"  ✓ Correct! Points added: {question.points}")
+                else:
+                    print(f"  ✗ Incorrect!")
     
     # 儲存結果
     submission = Submission(

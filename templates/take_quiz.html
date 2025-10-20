@@ -111,24 +111,22 @@
                         <div class="parsons-bank">
                             <h4 style="text-align: center; margin-bottom: 1rem; color: #666;">程式碼塊</h4>
                             <div id="code-bank-{{ question.id }}">
-                                <!-- 正確的程式碼塊 -->
-                                {% for block in question.correct_blocks %}
-                                <div class="code-block correct-block" draggable="true" data-block="{{ block }}" data-type="correct">{{ block }}</div>
+                                {% for label in question.code_blocks.keys() | sort %}
+                                <div class="code-block" draggable="true" data-block="{{ question.code_blocks[label] }}" data-label="{{ label }}">
+                                    <div style="display: flex; align-items: flex-start;">
+                                        <span style="color: #667eea; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 20px; text-align: center; flex-shrink: 0;">{{ label }}</span>
+                                        <div style="flex-grow: 1; white-space: pre-wrap;">{{ question.code_blocks[label] | safe }}</div>
+                                    </div>
+                                </div>
                                 {% endfor %}
-                                
-                                <!-- 干擾項程式碼塊 -->
-                                {% if question.distractor_blocks %}
-                                    {% for block in question.distractor_blocks %}
-                                    <div class="code-block distractor-block" draggable="true" data-block="{{ block }}" data-type="distractor">{{ block }}</div>
-                                    {% endfor %}
-                                {% endif %}
                             </div>
                         </div>
                         <div class="parsons-target">
                             <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea;">答題區 (請按正確順序排列)</h4>
                             <div id="code-target-{{ question.id }}" class="drop-zone">
-                                <!-- 根據正確程式碼塊數量產生空白區塊 -->
-                                {% for i in range(question.answer_slots or question.correct_blocks|length) %}
+                                <!-- 根據設定的answer_slots產生空白區塊 -->
+                                {% set slots_count = question.answer_slots %}
+                                {% for i in range(slots_count) %}
                                 <div class="answer-slot" data-slot="{{ i + 1 }}">
                                     <div class="slot-number">{{ i + 1 }}</div>
                                     <div class="slot-content">將程式碼塊拖拉到這裡</div>
@@ -365,7 +363,7 @@ function initializeDropdownFillblank(questionElement) {
         const blank = questionData.blanks[blankIndex];
         if (!blank) return match;
         
-        let selectHTML = `<select id="blank_${blankIndex}_q${questionId}" onchange="saveDropdownFillblankAnswer(${questionId}, ${blankIndex}, this.value)" style="margin: 0 0.25rem; padding: 0.25rem; border: 1px solid #ddd; border-radius: 3px; font-size: 1rem;">`;
+        let selectHTML = `<select id="blank_${blankIndex}_q${questionId}" onchange="saveDropdownFillblankAnswer(${questionId}, ${blankIndex}, this.value)" style="margin: 0 0.25rem; padding: 0.25rem; border: 1px solid #ddd; border-radius: 3px; font-size: 1rem; font-family: Consolas, monospace;">`;
         selectHTML += '<option value="">請選擇...</option>';
         
         blank.options.forEach(option => {
@@ -444,6 +442,32 @@ function handleSlotDrop(e, questionId) {
     clonedBlock.classList.remove('dragging');
     clonedBlock.draggable = false;
     
+    // 確保代碼塊樣式正確
+    clonedBlock.style.wordBreak = 'keep-all';
+    clonedBlock.style.display = 'block';
+    clonedBlock.style.width = '100%';
+    clonedBlock.style.overflow = 'auto';
+    clonedBlock.style.padding = '0.4rem 1rem';
+    clonedBlock.style.height = 'auto';
+    clonedBlock.style.minHeight = '0';
+    clonedBlock.style.lineHeight = '1.4';
+    
+    // 重新組織內部結構以確保左對齊
+    const originalContent = clonedBlock.innerHTML;
+    const labelMatch = originalContent.match(/<span[^>]*>(.*?)<\/span>([\s\S]*)/);
+    
+    if (labelMatch) {
+        const label = labelMatch[1];
+        const codeContent = labelMatch[2];
+        
+        clonedBlock.innerHTML = `
+            <div style="display: flex; align-items: flex-start;">
+                <span style="color: #667eea; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 20px; text-align: center; flex-shrink: 0;">${label}</span>
+                <div style="text-align: left; flex-grow: 1;">${codeContent}</div>
+            </div>
+        `;
+    }
+    
     // 隱藏原始的提示文字
     const slotContent = targetSlot.querySelector('.slot-content');
     slotContent.style.display = 'none';
@@ -462,7 +486,15 @@ function handleSlotDrop(e, questionId) {
 function addRemoveButton(codeBlock, slot, questionId) {
     const removeBtn = document.createElement('button');
     removeBtn.textContent = '✕';
-    removeBtn.style.cssText = 'position: absolute; top: 5px; right: 5px; background: #e74c3c; color: white; border: none; border-radius: 3px; width: 20px; height: 20px; cursor: pointer; font-size: 12px; z-index: 10;';
+    removeBtn.style.cssText = 'position: absolute; top: 8px; right: 8px; background: #e74c3c; color: white; border: none; border-radius: 50%; width: 24px; height: 24px; cursor: pointer; font-size: 14px; z-index: 10; display: flex; align-items: center; justify-content: center; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);';
+    removeBtn.onmouseenter = () => {
+        removeBtn.style.background = '#c0392b';
+        removeBtn.style.transform = 'scale(1.1)';
+    };
+    removeBtn.onmouseleave = () => {
+        removeBtn.style.background = '#e74c3c';
+        removeBtn.style.transform = 'scale(1)';
+    };
     removeBtn.onclick = (e) => {
         e.stopPropagation();
         codeBlock.remove();
@@ -476,6 +508,7 @@ function addRemoveButton(codeBlock, slot, questionId) {
     };
     
     codeBlock.style.position = 'relative';
+    codeBlock.style.paddingRight = '35px'; // 為刪除按鈕預留空間
     codeBlock.appendChild(removeBtn);
 }
 
@@ -495,8 +528,7 @@ function updateParsonsAnswer(questionId) {
     const targetZone = document.querySelector(`#code-target-${questionId}`);
     const answerSlots = targetZone.querySelectorAll('.answer-slot');
     
-    // 使用兩種格式儲存答案，確保兼容性
-    const order = [];
+    // 新格式：收集每個空格的標籤(A, B, C...)和內容
     const slotAnswers = {};
     
     answerSlots.forEach(slot => {
@@ -504,23 +536,14 @@ function updateParsonsAnswer(questionId) {
         const block = slot.querySelector('.code-block');
         
         if (block) {
-            const blockContent = block.dataset.block;
-            order.push(blockContent);
-            slotAnswers[slotNumber] = blockContent;
-        } else {
-            order.push(null); // 空白區塊
+            const blockLabel = block.dataset.label;
+            slotAnswers[slotNumber] = blockLabel;
         }
     });
     
-    // 移除末尾的空值，只保留有內容的部分
-    while (order.length > 0 && order[order.length - 1] === null) {
-        order.pop();
-    }
-    
-    // 使用字典格式儲存答案，包含空格編號和內容
+    // 儲存答案
     studentAnswers[questionId] = {
-        order: order.filter(item => item !== null),
-        slots: slotAnswers
+        slot_answers: slotAnswers
     };
     
     // 在控制台輸出答案，方便調試
