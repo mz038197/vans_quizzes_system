@@ -5,9 +5,38 @@
 {% block content %}
 <div class="page-header">
     <h1><i class="fas fa-tachometer-alt"></i> 教學儀表板</h1>
-    <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-lg">
-        <i class="fas fa-plus"></i> 建立題庫
-    </a>
+    <div>
+        <button onclick="showCreateFolderModal()" class="btn btn-lg">
+            <i class="fas fa-folder-plus"></i> 建立資料夾
+        </button>
+        <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-lg">
+            <i class="fas fa-plus"></i> 建立題庫
+        </a>
+    </div>
+</div>
+
+<!-- 創建資料夾的模態框 -->
+<div id="createFolderModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>建立新資料夾</h2>
+            <span class="close" onclick="closeCreateFolderModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="folderName">資料夾名稱</label>
+                <input type="text" id="folderName" class="form-control" placeholder="請輸入資料夾名稱" required>
+            </div>
+            <div class="form-group">
+                <label for="folderDescription">資料夾描述 (選填)</label>
+                <textarea id="folderDescription" class="form-control" placeholder="請輸入資料夾描述"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button onclick="createFolder()" class="btn">建立資料夾</button>
+            <button onclick="closeCreateFolderModal()" class="btn btn-secondary">取消</button>
+        </div>
+    </div>
 </div>
 
 <div class="stats-cards">
@@ -17,7 +46,23 @@
         </div>
         <div class="stat-content">
             <div class="stat-title">題庫總數</div>
-            <div class="stat-value">{{ quiz_banks|length }}</div>
+            <div class="stat-value">
+                {% set total_quiz_banks = quiz_banks|length %}
+                {% for folder in folders %}
+                    {% set total_quiz_banks = total_quiz_banks + folder.quiz_banks_list|length %}
+                {% endfor %}
+                {{ total_quiz_banks }}
+            </div>
+        </div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon yellow">
+            <i class="fas fa-folder"></i>
+        </div>
+        <div class="stat-content">
+            <div class="stat-title">資料夾數量</div>
+            <div class="stat-value">{{ folders|length }}</div>
         </div>
     </div>
     
@@ -27,7 +72,18 @@
         </div>
         <div class="stat-content">
             <div class="stat-title">題目總數</div>
-            <div class="stat-value">{% set total_questions = 0 %}{% for bank in quiz_banks %}{% set total_questions = total_questions + bank.questions|length %}{% endfor %}{{ total_questions }}</div>
+            <div class="stat-value">
+                {% set total_questions = 0 %}
+                {% for bank in quiz_banks %}
+                    {% set total_questions = total_questions + bank.questions|length %}
+                {% endfor %}
+                {% for folder in folders %}
+                    {% for bank in folder.quiz_banks_list %}
+                        {% set total_questions = total_questions + bank.questions|length %}
+                    {% endfor %}
+                {% endfor %}
+                {{ total_questions }}
+            </div>
         </div>
     </div>
     
@@ -37,92 +93,549 @@
         </div>
         <div class="stat-content">
             <div class="stat-title">學生人數</div>
-            <div class="stat-value">{% set total_submissions = 0 %}{% for bank in quiz_banks %}{% set total_submissions = total_submissions + bank.submissions|length %}{% endfor %}{{ total_submissions }}</div>
-        </div>
-    </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon orange">
-            <i class="fas fa-chart-line"></i>
-        </div>
-        <div class="stat-content">
-            <div class="stat-title">平均分數</div>
-            <div class="stat-value">100%</div>
+            <div class="stat-value">
+                {% set total_submissions = 0 %}
+                {% for bank in quiz_banks %}
+                    {% set total_submissions = total_submissions + bank.submissions|length %}
+                {% endfor %}
+                {% for folder in folders %}
+                    {% for bank in folder.quiz_banks_list %}
+                        {% set total_submissions = total_submissions + bank.submissions|length %}
+                    {% endfor %}
+                {% endfor %}
+                {{ total_submissions }}
+            </div>
         </div>
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header">
-        <h2><i class="fas fa-book"></i> 我的題庫</h2>
-        <a href="{{ url_for('create_quiz_bank') }}" class="btn">
-            <i class="fas fa-plus"></i> 新增題庫
-        </a>
+<div class="dashboard-container">
+    <!-- 資料夾區域 -->
+    <div class="card">
+        <div class="card-header">
+            <h2><i class="fas fa-folder"></i> 我的資料夾</h2>
+            <button onclick="showCreateFolderModal()" class="btn">
+                <i class="fas fa-folder-plus"></i> 新增資料夾
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="folders-container" id="folders-container">
+                {% if folders %}
+                    {% for folder in folders %}
+                    <div class="folder-card" id="folder-{{ folder.id }}">
+                        <div class="folder-header" onclick="toggleFolderContent('folder-content-{{ folder.id }}')">
+                            <div class="folder-title">
+                                <i class="fas fa-folder"></i> {{ folder.name }}
+                            </div>
+                            <div class="folder-actions">
+                                <button onclick="showCreateQuizInFolderModal({{ folder.id }}, '{{ folder.name }}')" class="btn btn-sm">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                                <button onclick="editFolder({{ folder.id }}, '{{ folder.name }}', '{{ folder.description }}')" class="btn btn-sm">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button onclick="deleteFolder({{ folder.id }})" class="btn btn-sm btn-danger">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="folder-content" id="folder-content-{{ folder.id }}">
+                            <div class="folder-description">
+                                {{ folder.description if folder.description else '暫無描述' }}
+                            </div>
+                            <div class="quiz-banks-grid folder-quiz-banks" id="folder-quiz-banks-{{ folder.id }}" ondrop="dropQuizBank(event, {{ folder.id }})" ondragover="allowDrop(event)">
+                                {% if folder.quiz_banks_list %}
+                                    {% for quiz_bank in folder.quiz_banks_list %}
+                                    <div class="quiz-bank-card" draggable="true" ondragstart="dragQuizBank(event, {{ quiz_bank.id }})" id="quiz-bank-{{ quiz_bank.id }}">
+                                        <div class="quiz-bank-title">{{ quiz_bank.title }}</div>
+                                        <div class="quiz-bank-description">
+                                            {{ quiz_bank.description if quiz_bank.description else '暫無描述' }}
+                                        </div>
+                                        <div class="quiz-bank-info">
+                                            <span><i class="far fa-calendar-alt"></i> {{ quiz_bank.created_at.strftime('%Y-%m-%d') }}</span>
+                                            <span class="access-code">{{ quiz_bank.access_code }}</span>
+                                        </div>
+                                        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                            <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="btn" style="flex: 1; text-align: center;">
+                                                <i class="fas fa-cog"></i> 管理題目
+                                            </a>
+                                            <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" style="flex: 1; text-align: center;">
+                                                <i class="fas fa-chart-bar"></i> 查看成績
+                                            </a>
+                                        </div>
+                                        <div style="margin-top: 0.5rem;">
+                                            <button onclick="copyQuizLink('{{ quiz_bank.access_code }}')" class="btn btn-secondary" style="width: 100%;">
+                                                <i class="fas fa-link"></i> 複製題庫連結
+                                            </button>
+                                        </div>
+                                        <div style="margin-top: 0.5rem;">
+                                            <button onclick="toggleQuizBank({{ quiz_bank.id }}, {{ quiz_bank.is_active|lower }})" 
+                                                    class="btn {{ 'btn-danger' if quiz_bank.is_active else 'btn-success' }}" 
+                                                    style="width: 100%;">
+                                                <i class="fas fa-{{ 'lock' if quiz_bank.is_active else 'lock-open' }}"></i>
+                                                {{ '停用題庫' if quiz_bank.is_active else '啟用題庫' }}
+                                            </button>
+                                        </div>
+                                        <div style="margin-top: 0.5rem;">
+                                            <button onclick="moveQuizBankOutOfFolder({{ quiz_bank.id }})" class="btn btn-secondary" style="width: 100%;">
+                                                <i class="fas fa-arrow-up"></i> 移出資料夾
+                                            </button>
+                                        </div>
+                                        <div style="margin-top: 0.5rem;">
+                                            <button onclick="deleteQuizBank({{ quiz_bank.id }})" 
+                                                    class="btn btn-danger" 
+                                                    style="width: 100%; background-color: #dc3545;">
+                                                <i class="fas fa-trash"></i> 刪除題庫
+                                            </button>
+                                        </div>
+                                        <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: 0.9rem; color: #666;">
+                                            <div><i class="fas fa-file-alt"></i> 題目數量：{{ quiz_bank.questions|length }} 題</div>
+                                            <div><i class="fas fa-users"></i> 作答次數：{{ quiz_bank.submissions|length }} 次</div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="empty-folder-message">
+                                        <i class="fas fa-info-circle"></i> 此資料夾尚未包含任何題庫。您可以將題庫拖放到此處，或點擊「+」按鈕在此資料夾中建立新題庫。
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-folders-message">
+                        <i class="fas fa-folder-open"></i>
+                        <p>您還沒有建立任何資料夾</p>
+                        <button onclick="showCreateFolderModal()" class="btn">
+                            <i class="fas fa-folder-plus"></i> 建立第一個資料夾
+                        </button>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
-    <div class="card-body">
-        {% if quiz_banks %}
-            <div class="quiz-banks-grid">
-                {% for quiz_bank in quiz_banks %}
-                <div class="quiz-bank-card">
-                    <div class="quiz-bank-title">{{ quiz_bank.title }}</div>
-                    <div class="quiz-bank-description">
-                        {{ quiz_bank.description if quiz_bank.description else '暫無描述' }}
+
+    <!-- 題庫區域 -->
+    <div class="card">
+        <div class="card-header">
+            <h2><i class="fas fa-book"></i> 我的題庫</h2>
+            <a href="{{ url_for('create_quiz_bank') }}" class="btn">
+                <i class="fas fa-plus"></i> 新增題庫
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="quiz-banks-container" id="main-quiz-banks" ondrop="dropQuizBank(event, null)" ondragover="allowDrop(event)">
+                {% if quiz_banks %}
+                    <div class="quiz-banks-grid">
+                        {% for quiz_bank in quiz_banks %}
+                        <div class="quiz-bank-card" draggable="true" ondragstart="dragQuizBank(event, {{ quiz_bank.id }})" id="quiz-bank-{{ quiz_bank.id }}">
+                            <div class="quiz-bank-title">{{ quiz_bank.title }}</div>
+                            <div class="quiz-bank-description">
+                                {{ quiz_bank.description if quiz_bank.description else '暫無描述' }}
+                            </div>
+                            <div class="quiz-bank-info">
+                                <span><i class="far fa-calendar-alt"></i> {{ quiz_bank.created_at.strftime('%Y-%m-%d') }}</span>
+                                <span class="access-code">{{ quiz_bank.access_code }}</span>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="btn" style="flex: 1; text-align: center;">
+                                    <i class="fas fa-cog"></i> 管理題目
+                                </a>
+                                <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" style="flex: 1; text-align: center;">
+                                    <i class="fas fa-chart-bar"></i> 查看成績
+                                </a>
+                            </div>
+                            <div style="margin-top: 0.5rem;">
+                                <button onclick="copyQuizLink('{{ quiz_bank.access_code }}')" class="btn btn-secondary" style="width: 100%;">
+                                    <i class="fas fa-link"></i> 複製題庫連結
+                                </button>
+                            </div>
+                            <div style="margin-top: 0.5rem;">
+                                <button onclick="toggleQuizBank({{ quiz_bank.id }}, {{ quiz_bank.is_active|lower }})" 
+                                        class="btn {{ 'btn-danger' if quiz_bank.is_active else 'btn-success' }}" 
+                                        style="width: 100%;">
+                                    <i class="fas fa-{{ 'lock' if quiz_bank.is_active else 'lock-open' }}"></i>
+                                    {{ '停用題庫' if quiz_bank.is_active else '啟用題庫' }}
+                                </button>
+                            </div>
+                            <div style="margin-top: 0.5rem;">
+                                <button onclick="showMoveToFolderModal({{ quiz_bank.id }})" class="btn btn-secondary" style="width: 100%;">
+                                    <i class="fas fa-folder-open"></i> 移動到資料夾
+                                </button>
+                            </div>
+                            <div style="margin-top: 0.5rem;">
+                                <button onclick="deleteQuizBank({{ quiz_bank.id }})" 
+                                        class="btn btn-danger" 
+                                        style="width: 100%; background-color: #dc3545;">
+                                    <i class="fas fa-trash"></i> 刪除題庫
+                                </button>
+                            </div>
+                            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: 0.9rem; color: #666;">
+                                <div><i class="fas fa-file-alt"></i> 題目數量：{{ quiz_bank.questions|length }} 題</div>
+                                <div><i class="fas fa-users"></i> 作答次數：{{ quiz_bank.submissions|length }} 次</div>
+                            </div>
+                        </div>
+                        {% endfor %}
                     </div>
-                    <div class="quiz-bank-info">
-                        <span><i class="far fa-calendar-alt"></i> {{ quiz_bank.created_at.strftime('%Y-%m-%d') }}</span>
-                        <span class="access-code">{{ quiz_bank.access_code }}</span>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                        <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="btn" style="flex: 1; text-align: center;">
-                            <i class="fas fa-cog"></i> 管理題目
+                {% else %}
+                    <div style="text-align: center; padding: 3rem; background: #f8f9fa; border-radius: 2px;">
+                        <div style="font-size: 3rem; color: #d9d9d9; margin-bottom: 1rem;">
+                            <i class="fas fa-book"></i>
+                        </div>
+                        <h3 style="color: #666; margin-bottom: 1rem;">還沒有題庫</h3>
+                        <p style="color: #888; margin-bottom: 2rem;">開始建立您的第一個題庫吧！</p>
+                        <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-lg">
+                            <i class="fas fa-plus"></i> 建立題庫
                         </a>
-                        <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" style="flex: 1; text-align: center;">
-                            <i class="fas fa-chart-bar"></i> 查看成績
-                        </a>
                     </div>
-                    <div style="margin-top: 0.5rem;">
-                        <button onclick="copyQuizLink('{{ quiz_bank.access_code }}')" class="btn btn-secondary" style="width: 100%;">
-                            <i class="fas fa-link"></i> 複製題庫連結
-                        </button>
-                    </div>
-                    <div style="margin-top: 0.5rem;">
-                        <button onclick="toggleQuizBank({{ quiz_bank.id }}, {{ quiz_bank.is_active|lower }})" 
-                                class="btn {{ 'btn-danger' if quiz_bank.is_active else 'btn-success' }}" 
-                                style="width: 100%;">
-                            <i class="fas fa-{{ 'lock' if quiz_bank.is_active else 'lock-open' }}"></i>
-                            {{ '停用題庫' if quiz_bank.is_active else '啟用題庫' }}
-                        </button>
-                    </div>
-                    <div style="margin-top: 0.5rem;">
-                        <button onclick="deleteQuizBank({{ quiz_bank.id }})" 
-                                class="btn btn-danger" 
-                                style="width: 100%; background-color: #dc3545;">
-                            <i class="fas fa-trash"></i> 刪除題庫
-                        </button>
-                    </div>
-                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: 0.9rem; color: #666;">
-                        <div><i class="fas fa-file-alt"></i> 題目數量：{{ quiz_bank.questions|length }} 題</div>
-                        <div><i class="fas fa-users"></i> 作答次數：{{ quiz_bank.submissions|length }} 次</div>
-                    </div>
-                </div>
-                {% endfor %}
+                {% endif %}
             </div>
-        {% else %}
-            <div style="text-align: center; padding: 3rem; background: #f8f9fa; border-radius: 2px;">
-                <div style="font-size: 3rem; color: #d9d9d9; margin-bottom: 1rem;">
-                    <i class="fas fa-book"></i>
-                </div>
-                <h3 style="color: #666; margin-bottom: 1rem;">還沒有題庫</h3>
-                <p style="color: #888; margin-bottom: 2rem;">開始建立您的第一個題庫吧！</p>
-                <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-lg">
-                    <i class="fas fa-plus"></i> 建立題庫
-                </a>
+        </div>
+    </div>
+</div>
+
+<!-- 在資料夾內建立題庫的模態框 -->
+<div id="createQuizInFolderModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>在 <span id="folderNameForQuiz"></span> 中建立題庫</h2>
+            <span class="close" onclick="closeCreateQuizInFolderModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="quizTitle">題庫名稱</label>
+                <input type="text" id="quizTitle" class="form-control" placeholder="請輸入題庫名稱" required>
             </div>
-        {% endif %}
+            <div class="form-group">
+                <label for="quizDescription">題庫描述 (選填)</label>
+                <textarea id="quizDescription" class="form-control" placeholder="請輸入題庫描述"></textarea>
+            </div>
+            <input type="hidden" id="folderIdForQuiz">
+        </div>
+        <div class="modal-footer">
+            <button onclick="createQuizInFolder()" class="btn">建立題庫</button>
+            <button onclick="closeCreateQuizInFolderModal()" class="btn btn-secondary">取消</button>
+        </div>
+    </div>
+</div>
+
+<!-- 編輯資料夾的模態框 -->
+<div id="editFolderModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>編輯資料夾</h2>
+            <span class="close" onclick="closeEditFolderModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="editFolderName">資料夾名稱</label>
+                <input type="text" id="editFolderName" class="form-control" placeholder="請輸入資料夾名稱" required>
+            </div>
+            <div class="form-group">
+                <label for="editFolderDescription">資料夾描述 (選填)</label>
+                <textarea id="editFolderDescription" class="form-control" placeholder="請輸入資料夾描述"></textarea>
+            </div>
+            <input type="hidden" id="editFolderId">
+        </div>
+        <div class="modal-footer">
+            <button onclick="updateFolder()" class="btn">更新資料夾</button>
+            <button onclick="closeEditFolderModal()" class="btn btn-secondary">取消</button>
+        </div>
+    </div>
+</div>
+
+<!-- 移動題庫到資料夾的模態框 -->
+<div id="moveToFolderModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>移動題庫到資料夾</h2>
+            <span class="close" onclick="closeMoveToFolderModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="selectFolder">選擇資料夾</label>
+                <select id="selectFolder" class="form-control">
+                    {% for folder in folders %}
+                    <option value="{{ folder.id }}">{{ folder.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <input type="hidden" id="moveQuizBankId">
+        </div>
+        <div class="modal-footer">
+            <button onclick="moveQuizBankToFolder()" class="btn">移動</button>
+            <button onclick="closeMoveToFolderModal()" class="btn btn-secondary">取消</button>
+        </div>
     </div>
 </div>
 
 <script>
+// 模態框相關函數
+function showCreateFolderModal() {
+    document.getElementById('createFolderModal').style.display = 'block';
+}
+
+function closeCreateFolderModal() {
+    document.getElementById('createFolderModal').style.display = 'none';
+    document.getElementById('folderName').value = '';
+    document.getElementById('folderDescription').value = '';
+}
+
+function showCreateQuizInFolderModal(folderId, folderName) {
+    event.stopPropagation(); // 防止點擊事件傳播到父元素
+    document.getElementById('folderIdForQuiz').value = folderId;
+    document.getElementById('folderNameForQuiz').textContent = folderName;
+    document.getElementById('createQuizInFolderModal').style.display = 'block';
+}
+
+function closeCreateQuizInFolderModal() {
+    document.getElementById('createQuizInFolderModal').style.display = 'none';
+    document.getElementById('quizTitle').value = '';
+    document.getElementById('quizDescription').value = '';
+}
+
+function showMoveToFolderModal(quizBankId) {
+    document.getElementById('moveQuizBankId').value = quizBankId;
+    document.getElementById('moveToFolderModal').style.display = 'block';
+}
+
+function closeMoveToFolderModal() {
+    document.getElementById('moveToFolderModal').style.display = 'none';
+}
+
+function editFolder(folderId, folderName, folderDescription) {
+    event.stopPropagation(); // 防止點擊事件傳播到父元素
+    document.getElementById('editFolderId').value = folderId;
+    document.getElementById('editFolderName').value = folderName;
+    document.getElementById('editFolderDescription').value = folderDescription || '';
+    document.getElementById('editFolderModal').style.display = 'block';
+}
+
+function closeEditFolderModal() {
+    document.getElementById('editFolderModal').style.display = 'none';
+}
+
+// 資料夾展開/收起功能
+function toggleFolderContent(contentId) {
+    const content = document.getElementById(contentId);
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+    } else {
+        content.style.display = 'none';
+    }
+}
+
+// API 相關函數
+async function createFolder() {
+    const name = document.getElementById('folderName').value.trim();
+    const description = document.getElementById('folderDescription').value.trim();
+    
+    if (!name) {
+        alert('請輸入資料夾名稱');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/folders', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name, description })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.error || '建立資料夾失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+
+async function updateFolder() {
+    const folderId = document.getElementById('editFolderId').value;
+    const name = document.getElementById('editFolderName').value.trim();
+    const description = document.getElementById('editFolderDescription').value.trim();
+    
+    if (!name) {
+        alert('請輸入資料夾名稱');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/folders/${folderId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ name, description })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.error || '更新資料夾失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+
+async function deleteFolder(folderId) {
+    event.stopPropagation(); // 防止點擊事件傳播到父元素
+    
+    if (!confirm('確定要刪除這個資料夾嗎？\n\n注意：資料夾中的題庫不會被刪除，而是會移回主題庫列表。')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/folders/${folderId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.error || '刪除資料夾失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+
+async function createQuizInFolder() {
+    const folderId = document.getElementById('folderIdForQuiz').value;
+    const title = document.getElementById('quizTitle').value.trim();
+    const description = document.getElementById('quizDescription').value.trim();
+    
+    if (!title) {
+        alert('請輸入題庫名稱');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/create-quiz-bank', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ title, description, folder_id: folderId })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.error || '建立題庫失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+
+// 拖放相關函數
+function dragQuizBank(event, quizBankId) {
+    event.dataTransfer.setData('quizBankId', quizBankId);
+}
+
+function allowDrop(event) {
+    event.preventDefault();
+}
+
+async function dropQuizBank(event, folderId) {
+    event.preventDefault();
+    const quizBankId = event.dataTransfer.getData('quizBankId');
+    
+    // 移動題庫到資料夾或從資料夾中移出
+    try {
+        const response = await fetch(`/api/quiz-bank/${quizBankId}/move-to-folder`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ folder_id: folderId })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            // 成功移動後重新載入頁面
+            location.reload();
+        } else {
+            alert(result.error || '移動題庫失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+
+async function moveQuizBankToFolder() {
+    const quizBankId = document.getElementById('moveQuizBankId').value;
+    const folderId = document.getElementById('selectFolder').value;
+    
+    try {
+        const response = await fetch(`/api/quiz-bank/${quizBankId}/move-to-folder`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ folder_id: folderId })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.error || '移動題庫失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+
+async function moveQuizBankOutOfFolder(quizBankId) {
+    try {
+        const response = await fetch(`/api/quiz-bank/${quizBankId}/move-to-folder`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ folder_id: null })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            alert(result.message);
+            location.reload();
+        } else {
+            alert(result.error || '移出資料夾失敗，請稍後再試');
+        }
+    } catch (error) {
+        alert('網路錯誤，請檢查連線');
+    }
+}
+
+// 原有函數
 function copyQuizLink(accessCode) {
     const link = window.location.origin + '/quiz/' + accessCode;
     
@@ -211,5 +724,13 @@ async function deleteQuizBank(quizBankId) {
         alert('網路錯誤，請檢查連線');
     }
 }
+
+// 初始化：顯示所有資料夾內容
+document.addEventListener('DOMContentLoaded', function() {
+    const folderContents = document.querySelectorAll('.folder-content');
+    folderContents.forEach(content => {
+        content.style.display = 'block';
+    });
+});
 </script>
 {% endblock %}

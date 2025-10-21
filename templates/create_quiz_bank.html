@@ -19,6 +19,16 @@
             <textarea id="description" name="description" rows="4" placeholder="描述這個題庫的內容和目的..."></textarea>
         </div>
         
+        <div class="form-group">
+            <label for="folder">選擇資料夾 (選填)</label>
+            <select id="folder" name="folder">
+                <option value="">不放入資料夾</option>
+                {% for folder in folders %}
+                <option value="{{ folder.id }}">{{ folder.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
         <div style="display: flex; gap: 1rem;">
             <button type="submit" class="btn" style="flex: 1;">
                 <span id="create-text">建立題庫</span>
@@ -65,7 +75,8 @@ document.getElementById('create-quiz-form').addEventListener('submit', async fun
             },
             body: JSON.stringify({
                 title: title,
-                description: description
+                description: description,
+                folder_id: document.getElementById('folder').value || null
             })
         });
         

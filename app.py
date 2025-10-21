@@ -64,6 +64,17 @@ class User(UserMixin, db.Model):
     
     # 關聯
     quiz_banks = db.relationship('QuizBank', backref='owner', lazy=True)
+    folders = db.relationship('Folder', backref='owner', lazy=True)
+
+class Folder(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    
+    # 關聯
+    quiz_banks = db.relationship('QuizBank', backref='folder', lazy=True)
 
 class QuizBank(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -73,6 +84,7 @@ class QuizBank(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    folder_id = db.Column(db.Integer, db.ForeignKey('folder.id'), nullable=True)
     
     # 關聯
     questions = db.relationship('Question', backref='quiz_bank', lazy=True, cascade='all, delete-orphan')
@@ -169,8 +181,15 @@ def logout():
 @app.route('/teacher-dashboard')
 @login_required
 def teacher_dashboard():
-    quiz_banks = QuizBank.query.filter_by(teacher_id=current_user.id).all()
-    return render_template('teacher_dashboard.html', quiz_banks=quiz_banks)
+    # 获取所有题库和文件夹
+    quiz_banks = QuizBank.query.filter_by(teacher_id=current_user.id, folder_id=None).all()
+    folders = Folder.query.filter_by(teacher_id=current_user.id).all()
+    
+    # 为每个文件夹获取其中的题库
+    for folder in folders:
+        folder.quiz_banks_list = QuizBank.query.filter_by(folder_id=folder.id).all()
+    
+    return render_template('teacher_dashboard.html', quiz_banks=quiz_banks, folders=folders)
 
 @app.route('/create-quiz-bank', methods=['GET', 'POST'])
 @login_required
@@ -179,12 +198,20 @@ def create_quiz_bank():
         data = request.get_json()
         title = data.get('title')
         description = data.get('description', '')
+        folder_id = data.get('folder_id')
+        
+        # 檢查folder_id是否有效
+        if folder_id:
+            folder = Folder.query.get(folder_id)
+            if not folder or folder.teacher_id != current_user.id:
+                folder_id = None
         
         quiz_bank = QuizBank(
             title=title,
             description=description,
             access_code=generate_access_code(),
-            teacher_id=current_user.id
+            teacher_id=current_user.id,
+            folder_id=folder_id
         )
         db.session.add(quiz_bank)
         db.session.commit()
@@ -192,10 +219,13 @@ def create_quiz_bank():
         return jsonify({
             'message': '題庫建立成功',
             'quiz_bank_id': quiz_bank.id,
-            'access_code': quiz_bank.access_code
+            'access_code': quiz_bank.access_code,
+            'folder_id': quiz_bank.folder_id
         })
     
-    return render_template('create_quiz_bank.html')
+    # 獲取教師的所有文件夾，用於前端選擇
+    folders = Folder.query.filter_by(teacher_id=current_user.id).all()
+    return render_template('create_quiz_bank.html', folders=folders)
 
 @app.route('/quiz-bank/<int:quiz_bank_id>')
 @login_required
@@ -682,6 +712,117 @@ def delete_submission(submission_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': '刪除失敗，請稍後再試'}), 500
+
+# 文件夾相關API
+@app.route('/api/folders', methods=['GET', 'POST'])
+@login_required
+def manage_folders():
+    if request.method == 'GET':
+        folders = Folder.query.filter_by(teacher_id=current_user.id).all()
+        folders_data = []
+        for folder in folders:
+            folders_data.append({
+                'id': folder.id,
+                'name': folder.name,
+                'description': folder.description,
+                'created_at': folder.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'quiz_banks_count': len(folder.quiz_banks)
+            })
+        return jsonify(folders_data)
+    
+    elif request.method == 'POST':
+        data = request.get_json()
+        name = data.get('name')
+        description = data.get('description', '')
+        
+        if not name:
+            return jsonify({'error': '文件夾名稱不能為空'}), 400
+        
+        folder = Folder(
+            name=name,
+            description=description,
+            teacher_id=current_user.id
+        )
+        
+        db.session.add(folder)
+        db.session.commit()
+        
+        return jsonify({
+            'message': '文件夾建立成功',
+            'folder_id': folder.id,
+            'name': folder.name
+        })
+
+@app.route('/api/folders/<int:folder_id>', methods=['GET', 'PUT', 'DELETE'])
+@login_required
+def manage_folder(folder_id):
+    folder = Folder.query.get_or_404(folder_id)
+    
+    if folder.teacher_id != current_user.id:
+        return jsonify({'error': '無權限操作'}), 403
+    
+    if request.method == 'GET':
+        quiz_banks = QuizBank.query.filter_by(folder_id=folder_id).all()
+        quiz_banks_data = []
+        for quiz_bank in quiz_banks:
+            quiz_banks_data.append({
+                'id': quiz_bank.id,
+                'title': quiz_bank.title,
+                'description': quiz_bank.description,
+                'access_code': quiz_bank.access_code,
+                'is_active': quiz_bank.is_active,
+                'created_at': quiz_bank.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'questions_count': len(quiz_bank.questions)
+            })
+        
+        return jsonify({
+            'folder': {
+                'id': folder.id,
+                'name': folder.name,
+                'description': folder.description,
+                'created_at': folder.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            },
+            'quiz_banks': quiz_banks_data
+        })
+    
+    elif request.method == 'PUT':
+        data = request.get_json()
+        folder.name = data.get('name', folder.name)
+        folder.description = data.get('description', folder.description)
+        
+        db.session.commit()
+        return jsonify({'message': '文件夾更新成功'})
+    
+    elif request.method == 'DELETE':
+        # 將文件夾中的題庫設為無文件夾
+        for quiz_bank in folder.quiz_banks:
+            quiz_bank.folder_id = None
+        
+        db.session.delete(folder)
+        db.session.commit()
+        return jsonify({'message': '文件夾刪除成功'})
+
+@app.route('/api/quiz-bank/<int:quiz_bank_id>/move-to-folder', methods=['PUT'])
+@login_required
+def move_quiz_bank_to_folder(quiz_bank_id):
+    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
+    
+    if quiz_bank.teacher_id != current_user.id:
+        return jsonify({'error': '無權限操作'}), 403
+    
+    data = request.get_json()
+    folder_id = data.get('folder_id')
+    
+    # 如果folder_id為None，表示將題庫移出文件夾
+    if folder_id is not None:
+        folder = Folder.query.get_or_404(folder_id)
+        if folder.teacher_id != current_user.id:
+            return jsonify({'error': '無權限操作'}), 403
+    
+    quiz_bank.folder_id = folder_id
+    db.session.commit()
+    
+    return jsonify({'message': '題庫移動成功'})
 
 # 獲取當前環境
 @app.route('/api/environment')
