@@ -140,8 +140,26 @@
                             <strong>選項：</strong>
                             <div style="margin-top: 0.5rem;">
                                 {% for option in question_data.options %}
-                                {% set is_user_choice = (option == user_answer) or (user_answer and option in user_answer) %}
-                                {% set is_correct_option = (option == question_data.get('correct_answer')) or (option in question_data.get('correct_answers', [])) %}
+                                {% if question.question_type == 'single_choice' %}
+                                    {# 对单选题进行更健壮的比较 #}
+                                    {% set option_clean = (option|string).strip() %}
+                                    {% set user_answer_clean = (user_answer|string).strip() %}
+                                    {% set is_user_choice = option_clean == user_answer_clean %}
+                                    
+                                    {# 调试信息（注释掉） #}
+                                    {# <!-- Debug: option="{{option_clean}}", user="{{user_answer_clean}}", match={{is_user_choice}} --> #}
+                                {% else %}
+                                    {# 多选题比较 #}
+                                    {% set is_user_choice = (user_answer and (option in user_answer)) %}
+                                {% endif %}
+                                {% if question.question_type == 'single_choice' %}
+                                    {# 单选题正确答案比较 #}
+                                    {% set correct_answer = question_data.get('correct_answer') %}
+                                    {% set is_correct_option = (option|string).strip() == (correct_answer|string).strip() %}
+                                {% else %}
+                                    {# 多选题正确答案比较 #}
+                                    {% set is_correct_option = option in question_data.get('correct_answers', []) %}
+                                {% endif %}
                                 <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; 
                                      white-space: pre; font-family: Consolas, monospace; font-size: 13px; line-height: 1.4; 
                                      text-indent: 0; margin-left: 0; overflow-x: auto;
@@ -219,7 +237,7 @@
                                 <div style="padding: 0.15rem 0; border-left: 3px solid #667eea; padding-left: 0.5rem; margin: 0.15rem 0; overflow-x: auto; font-family: Consolas, monospace; font-size: 14px; line-height: 1.4; height: auto; min-height: 0;">
                                     <div style="display: flex; align-items: flex-start;">
                                         <strong style="display: inline-block; width: 30px; flex-shrink: 0;">{{ label }}:</strong>
-                                        <div style="text-align: left; flex-grow: 1;">{{ question_data.code_blocks[label] | safe }}</div>
+                                        <div style="text-align: left; flex-grow: 1; white-space: pre;">{{ question_data.code_blocks[label] | safe }}</div>
                                     </div>
                                 </div>
                                 {% endfor %}
@@ -238,7 +256,7 @@
                                         {% if user_label %}
                                             <div style="display: flex; align-items: flex-start;">
                                                 <span style="color: #667eea; font-weight: bold; display: inline-block; width: 30px; flex-shrink: 0;">{{ user_label }}</span>
-                                                <div style="text-align: left; flex-grow: 1;">{{ question_data.code_blocks.get(user_label, '(未知)') | safe }}</div>
+                                                <div style="text-align: left; flex-grow: 1; white-space: pre;">{{ question_data.code_blocks.get(user_label, '(未知)') | safe }}</div>
                                             </div>
                                             {% if is_slot_correct %}
                                             <span style="color: #27ae60; margin-left: 1rem;">✓ 正確</span>
@@ -264,7 +282,7 @@
                                     <strong>空格 {{ i }}:</strong> 
                                     <div style="display: flex; align-items: flex-start;">
                                         <span style="color: #667eea; font-weight: bold; display: inline-block; width: 30px; flex-shrink: 0;">{{ correct_label }}</span>
-                                        <div style="text-align: left; flex-grow: 1;">{{ question_data.code_blocks.get(correct_label, '') | safe }}</div>
+                                        <div style="text-align: left; flex-grow: 1; white-space: pre;">{{ question_data.code_blocks.get(correct_label, '') | safe }}</div>
                                     </div>
                                 </div>
                                 {% endfor %}
