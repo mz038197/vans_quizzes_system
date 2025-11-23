@@ -673,27 +673,27 @@ body {
 /* 固定程式碼塊樣式（學生頁面 - 只讀） */
 .answer-slot[data-fixed="true"] {
     position: relative;
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
-    border: 2px solid #667eea !important;
+    background: transparent !important;
+    border: none !important;
     cursor: not-allowed;
+    padding: 0.5rem 0;
+    min-height: auto;
 }
 
 .answer-slot[data-fixed="true"]:hover {
-    border-color: #667eea !important;
-    background: linear-gradient(135deg, #f0f4ff 0%, #e6efff 100%) !important;
+    border: none !important;
+    background: transparent !important;
     transform: none;
 }
 
 .answer-slot[data-fixed="true"] .slot-number {
-    background: #667eea;
-    color: white;
+    display: none; /* 固定區塊不顯示編號 */
 }
 
 .fixed-code-block {
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 0.9rem;
-    line-height: 1.5;
-    opacity: 0.95;
+    line-height: 1.4;
 }
 
 .fixed-label {

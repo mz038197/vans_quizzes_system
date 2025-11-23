@@ -113,10 +113,7 @@
                             <div id="code-bank-{{ question.id }}">
                                 {% for label in question.code_blocks.keys() | sort %}
                                 <div class="code-block" draggable="true" data-block="{{ question.code_blocks[label] }}" data-label="{{ label }}">
-                                    <div style="display: flex; align-items: flex-start;">
-                                        <span style="color: #667eea; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 20px; text-align: center; flex-shrink: 0;">{{ label }}</span>
-                                        <div style="flex-grow: 1; white-space: pre-wrap;">{{ question.code_blocks[label] | safe }}</div>
-                                    </div>
+                                    <div style="white-space: pre-wrap;">{{ question.code_blocks[label] | safe }}</div>
                                 </div>
                                 {% endfor %}
                             </div>
@@ -129,15 +126,13 @@
                                 {% for i in range(slots_count) %}
                                 {% set is_fixed = question.fixed_blocks and ((i + 1)|string in question.fixed_blocks) %}
                                 <div class="answer-slot" data-slot="{{ i + 1 }}" {% if is_fixed %}data-fixed="true"{% endif %}>
-                                    <div class="slot-number">{{ i + 1 }}</div>
-                                    
                                     {% if is_fixed %}
-                                    <!-- 固定程式碼塊（只讀顯示） -->
+                                    <!-- 固定程式碼塊（只讀顯示，樣式跟左側程式碼塊一致） -->
                                     {% set fixed = question.fixed_blocks[(i + 1)|string] %}
-                                    <div class="fixed-code-block" style="flex: 1; width: 100%; padding: 0.75rem 1rem; font-family: Consolas, monospace; background: #f8f9fa; border: 2px solid #667eea; border-radius: 6px; white-space: pre-wrap; color: #333; line-height: 1.5; pointer-events: none; user-select: none;">{{ fixed.content }}</div>
-                                    <div class="fixed-label" style="position: absolute; top: 8px; right: 8px; background: #667eea; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">固定</div>
+                                    <div class="fixed-code-block" style="flex: 1; width: 100%; padding: 0.4rem 1rem; font-family: Consolas, monospace; background: #2d3748; color: #e2e8f0; border-radius: 6px; white-space: pre-wrap; line-height: 1.4; pointer-events: none; user-select: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">{{ fixed.content }}</div>
+                                    <div class="fixed-label" style="position: absolute; top: 8px; right: 8px; background: #667eea; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; z-index: 10;">固定</div>
                                     {% else %}
-                                    <!-- 普通可拖拉區塊 -->
+                                    <!-- 普通可拖拉區塊（不顯示編號） -->
                                     <div class="slot-content">將程式碼塊拖拉到這裡</div>
                                     {% endif %}
                                 </div>
@@ -466,7 +461,7 @@ function handleSlotDrop(e, questionId) {
     clonedBlock.classList.remove('dragging');
     clonedBlock.draggable = false;
     
-    // 確保代碼塊樣式正確
+    // 確保代碼塊樣式正確（不顯示標籤）
     clonedBlock.style.wordBreak = 'keep-all';
     clonedBlock.style.display = 'block';
     clonedBlock.style.width = '100%';
@@ -475,22 +470,6 @@ function handleSlotDrop(e, questionId) {
     clonedBlock.style.height = 'auto';
     clonedBlock.style.minHeight = '0';
     clonedBlock.style.lineHeight = '1.4';
-    
-    // 重新組織內部結構以確保左對齊
-    const originalContent = clonedBlock.innerHTML;
-    const labelMatch = originalContent.match(/<span[^>]*>(.*?)<\/span>([\s\S]*)/);
-    
-    if (labelMatch) {
-        const label = labelMatch[1];
-        const codeContent = labelMatch[2];
-        
-        clonedBlock.innerHTML = `
-            <div style="display: flex; align-items: flex-start;">
-                <span style="color: #667eea; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 20px; text-align: center; flex-shrink: 0;">${label}</span>
-                <div style="text-align: left; flex-grow: 1;">${codeContent}</div>
-            </div>
-        `;
-    }
     
     // 隱藏原始的提示文字
     const slotContent = targetSlot.querySelector('.slot-content');

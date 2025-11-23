@@ -81,12 +81,7 @@
                                     <div class="parsons-preview-bank" style="flex: 1; border: 2px dashed #ddd; border-radius: 8px; padding: 1rem; background: #fafafa;">
                                         <h4 style="text-align: center; margin-bottom: 1rem; color: #666; font-size: 1rem;">可選程式碼塊</h4>
                                         {% for label in data.code_blocks.keys() | sort %}
-                                        <div class="code-block-preview" style="background: #2d3748; color: #e2e8f0; padding: 0.4rem 1rem; margin: 0.3rem 0; border-radius: 6px; font-family: Consolas, monospace;  line-height: 1.4; font-size: 14px; overflow-x: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); height: auto; min-height: 0;">
-                                            <div style="display: flex; align-items: flex-start;">
-                                                <span style="color: #667eea; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 20px; text-align: center; flex-shrink: 0;">{{ label }}</span>
-                                                <div style="text-align: left; flex-grow: 1;white-space: pre-wrap;">{{ data.code_blocks[label] | safe }}</div>
-                                            </div>
-                                        </div>
+                                        <div class="code-block-preview" style="background: #2d3748; color: #e2e8f0; padding: 0.4rem 1rem; margin: 0.3rem 0; border-radius: 6px; font-family: Consolas, monospace;  line-height: 1.4; font-size: 14px; overflow-x: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); height: auto; min-height: 0; white-space: pre-wrap;">{{ data.code_blocks[label] | safe }}</div>
                                         {% endfor %}
                                     </div>
                                     <div class="parsons-preview-target" style="flex: 1; border: 2px dashed #667eea; border-radius: 8px; padding: 1rem; background: #f8f9ff;">
@@ -95,11 +90,10 @@
                                         {% set correct_label = data.slot_answers.get(i|string, '') %}
                                         {% set is_fixed = data.fixed_blocks and (i|string in data.fixed_blocks) %}
                                         <div class="answer-slot-preview" style="border: 2px {% if is_fixed %}solid #667eea{% else %}dashed #bbb{% endif %}; border-radius: 8px; margin: 0.5rem 0; min-height: 60px; display: flex; align-items: center; padding: 0.5rem; background: {% if is_fixed %}#f0f4ff{% else %}white{% endif %}; position: relative;">
-                                            <div class="slot-number" style="min-width: 30px; height: 30px; background: #667eea; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; margin-right: 1rem;">{{ i }}</div>
                                             {% if is_fixed %}
                                             <!-- 固定區塊 -->
                                             {% set fixed = data.fixed_blocks[i|string] %}
-                                            <div style="flex: 1; background: #f8f9fa; padding: 0.5rem 1rem; border-radius: 6px; font-family: Consolas, monospace; line-height: 1.4; color: #333; white-space: pre-wrap; font-size: 14px;">{{ fixed.content | safe }}</div>
+                                            <div style="flex: 1; background: #2d3748; color: #e2e8f0; padding: 0.4rem 1rem; border-radius: 6px; font-family: Consolas, monospace; line-height: 1.4; white-space: pre-wrap; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">{{ fixed.content | safe }}</div>
                                             <div style="position: absolute; top: 8px; right: 8px; background: #667eea; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">固定</div>
                                             {% elif correct_label %}
                                             <div class="answer-block" style="flex: 1; background: #e8f5e8; color: #2d3748; padding: 0.4rem 1rem; border-radius: 6px; font-family: Consolas, monospace; line-height: 1.4; border: 2px solid #27ae60; font-size: 14px; overflow-x: auto; height: auto; min-height: 0;">
