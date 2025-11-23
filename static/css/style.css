@@ -670,6 +670,77 @@ body {
     transform: scale(1.05);
 }
 
+/* 固定程式碼塊樣式（學生頁面 - 只讀） */
+.answer-slot[data-fixed="true"] {
+    position: relative;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+    border: 2px solid #667eea !important;
+    cursor: not-allowed;
+}
+
+.answer-slot[data-fixed="true"]:hover {
+    border-color: #667eea !important;
+    background: linear-gradient(135deg, #f0f4ff 0%, #e6efff 100%) !important;
+    transform: none;
+}
+
+.answer-slot[data-fixed="true"] .slot-number {
+    background: #667eea;
+    color: white;
+}
+
+.fixed-code-block {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    opacity: 0.95;
+}
+
+.fixed-label {
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.3);
+}
+
+/* 老師編輯頁面 - 固定區塊編輯樣式 */
+.fixed-block-item {
+    animation: fadeIn 0.3s ease-in;
+    transition: all 0.3s;
+}
+
+.fixed-block-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+@keyframes fadeIn {
+    from { 
+        opacity: 0; 
+        transform: translateY(-10px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+.fixed-block-item textarea {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+    transition: border-color 0.3s;
+}
+
+.fixed-block-item textarea:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.btn-icon {
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    transform: scale(1.1);
+}
+
 /* 響應式設計 */
 @media (max-width: 992px) {
     .stats-cards {

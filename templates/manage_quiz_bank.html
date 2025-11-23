@@ -93,9 +93,15 @@
                                         <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea; font-size: 1rem;">答題區 (共 {{ data.answer_slots }} 個空格)</h4>
                                         {% for i in range(1, data.answer_slots + 1) %}
                                         {% set correct_label = data.slot_answers.get(i|string, '') %}
-                                        <div class="answer-slot-preview" style="border: 2px dashed #bbb; border-radius: 8px; margin: 0.5rem 0; min-height: 60px; display: flex; align-items: center; padding: 0.5rem; background: white;">
+                                        {% set is_fixed = data.fixed_blocks and (i|string in data.fixed_blocks) %}
+                                        <div class="answer-slot-preview" style="border: 2px {% if is_fixed %}solid #667eea{% else %}dashed #bbb{% endif %}; border-radius: 8px; margin: 0.5rem 0; min-height: 60px; display: flex; align-items: center; padding: 0.5rem; background: {% if is_fixed %}#f0f4ff{% else %}white{% endif %}; position: relative;">
                                             <div class="slot-number" style="min-width: 30px; height: 30px; background: #667eea; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; margin-right: 1rem;">{{ i }}</div>
-                                            {% if correct_label %}
+                                            {% if is_fixed %}
+                                            <!-- 固定區塊 -->
+                                            {% set fixed = data.fixed_blocks[i|string] %}
+                                            <div style="flex: 1; background: #f8f9fa; padding: 0.5rem 1rem; border-radius: 6px; font-family: Consolas, monospace; line-height: 1.4; color: #333; white-space: pre-wrap; font-size: 14px;">{{ fixed.content | safe }}</div>
+                                            <div style="position: absolute; top: 8px; right: 8px; background: #667eea; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">固定</div>
+                                            {% elif correct_label %}
                                             <div class="answer-block" style="flex: 1; background: #e8f5e8; color: #2d3748; padding: 0.4rem 1rem; border-radius: 6px; font-family: Consolas, monospace; line-height: 1.4; border: 2px solid #27ae60; font-size: 14px; overflow-x: auto; height: auto; min-height: 0;">
                                                 <div style="display: flex; align-items: flex-start;">
                                                     <span style="color: #27ae60; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 30px; text-align: center; flex-shrink: 0;">✓ {{ correct_label }}</span>
@@ -288,11 +294,21 @@ function handleQuestionTypeChange() {
                         <div id="answer-slots-container"></div>
                     </div>
                     
+                    <label>固定程式碼塊設定（選填）</label>
+                    <div style="background: #fff8e6; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 2px dashed #ffb84d;">
+                        <p style="color: #996600; font-size: 0.9rem; margin-bottom: 1rem;">
+                            💡 設定在答題區中固定顯示的程式碼（學生無法修改，用於提供上下文）
+                        </p>
+                        <div id="fixed-blocks-container"></div>
+                        <button type="button" onclick="addFixedBlock()" class="btn btn-secondary" style="margin-top: 0.5rem;">+ 新增固定區塊</button>
+                    </div>
+                    
                     <p style="color: #666; font-size: 0.9rem; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
                         <strong>📝 說明：</strong><br>
                         • 先設定所有可供選擇的程式碼塊（標記為A、B、C...）<br>
                         • 設定答案區有多少個空格<br>
-                        • 為每個空格選擇正確的程式碼塊<br>
+                        • 為每個空格選擇正確的程式碼塊或設定為固定區塊<br>
+                        • 固定區塊會在答題區固定顯示，學生無法修改<br>
                         • 學生需要從程式碼塊中選擇並按順序拖拉到答案區對應的空格
                     </p>
                 </div>
@@ -417,6 +433,45 @@ function updateAnswerSlots() {
         slotDiv.innerHTML = selectHTML;
         container.appendChild(slotDiv);
     }
+}
+
+// 添加固定區塊的函數
+function addFixedBlock() {
+    const container = document.getElementById('fixed-blocks-container');
+    const index = container.children.length;
+    
+    const blockDiv = document.createElement('div');
+    blockDiv.className = 'fixed-block-item';
+    blockDiv.style.cssText = 'border: 2px dashed #667eea; padding: 1rem; margin-bottom: 1rem; border-radius: 6px; background: #f8f9fa;';
+    
+    blockDiv.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <label style="font-weight: bold; color: #667eea;">固定區塊 ${index + 1}</label>
+            <button type="button" onclick="removeFixedBlock(this)" class="btn-icon" style="color: #e74c3c; background: none; border: none; font-size: 1.5rem; cursor: pointer;">✕</button>
+        </div>
+        <div class="form-group" style="margin-bottom: 0.8rem;">
+            <label>放置在第幾個位置？*</label>
+            <input type="number" class="fixed-block-position" min="1" placeholder="例如：3" required style="width: 100%; padding: 0.5rem;">
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+            <label>程式碼內容 *</label>
+            <textarea class="fixed-block-content" rows="4" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem;"></textarea>
+        </div>
+    `;
+    
+    container.appendChild(blockDiv);
+}
+
+function removeFixedBlock(button) {
+    button.closest('.fixed-block-item').remove();
+    // 重新編號
+    const container = document.getElementById('fixed-blocks-container');
+    Array.from(container.children).forEach((item, index) => {
+        const label = item.querySelector('label');
+        if (label && label.textContent.startsWith('固定區塊')) {
+            label.textContent = `固定區塊 ${index + 1}`;
+        }
+    });
 }
 
 // 下拉選單填空題型函數
@@ -601,17 +656,46 @@ function collectFormData() {
             
             // 收集答案區空格的正確答案
             const slotAnswers = {};
+            
+            // 先收集固定區塊的位置
+            const fixedBlockPositions = new Set();
+            const fixedBlockItems = document.querySelectorAll('.fixed-block-item');
+            fixedBlockItems.forEach(item => {
+                const position = item.querySelector('.fixed-block-position').value;
+                if (position) {
+                    fixedBlockPositions.add(position);
+                }
+            });
+            
+            // 收集答案時，跳過固定區塊的位置
             Array.from(slotSelects).forEach((select) => {
                 const slotNumber = select.dataset.slot;
                 const answer = select.value;
-                if (answer) {
+                
+                // 跳過固定區塊的位置
+                if (answer && !fixedBlockPositions.has(slotNumber)) {
                     slotAnswers[slotNumber] = answer;
+                }
+            });
+            
+            // 收集固定程式碼塊
+            const fixedBlocks = {};
+            fixedBlockItems.forEach(item => {
+                const position = item.querySelector('.fixed-block-position').value;
+                const content = item.querySelector('.fixed-block-content').value;
+                
+                if (position && content) {
+                    fixedBlocks[position] = {
+                        content: content,
+                        display_label: false
+                    };
                 }
             });
             
             questionData.code_blocks = codeBlocks; // {A: "code1", B: "code2", C: "code3"}
             questionData.answer_slots = slotSelects.length; // 答案區空格數量
             questionData.slot_answers = slotAnswers; // {1: "A", 2: "C", 3: "B"}
+            questionData.fixed_blocks = fixedBlocks; // {2: {content: "...", display_label: false}}
             break;
     }
     
@@ -698,11 +782,15 @@ function validateFormData(data) {
                 alert('請為每個空格設定正確答案');
                 return false;
             }
-            // 檢查是否所有空格都有答案
+            // 檢查是否所有【非固定】空格都有答案
             const totalSlots = data.question_data.answer_slots;
             const answeredSlots = Object.keys(data.question_data.slot_answers).length;
-            if (answeredSlots < totalSlots) {
-                alert(`請為所有 ${totalSlots} 個空格設定正確答案（目前只設定了 ${answeredSlots} 個）`);
+            const fixedBlocks = data.question_data.fixed_blocks || {};
+            const fixedSlotsCount = Object.keys(fixedBlocks).length;
+            const requiredAnswers = totalSlots - fixedSlotsCount; // 總空格數 - 固定區塊數
+            
+            if (requiredAnswers > 0 && answeredSlots < requiredAnswers) {
+                alert(`請為所有可拖拉空格設定正確答案（需要 ${requiredAnswers} 個，目前設定了 ${answeredSlots} 個）`);
                 return false;
             }
             break;
@@ -858,6 +946,7 @@ async function editQuestion(questionId) {
                     let codeBlocks = data.code_blocks || {};
                     let answerSlots = data.answer_slots || Object.keys(data.code_blocks).length;
                     let slotAnswers = data.slot_answers || {};
+                    let fixedBlocks = data.fixed_blocks || {};
                     
                     // 添加程式碼塊
                     const labels = Object.keys(codeBlocks).sort();
@@ -888,6 +977,38 @@ async function editQuestion(questionId) {
                             }
                         });
                     }, 100);
+                    
+                    // 載入固定區塊
+                    if (fixedBlocks && Object.keys(fixedBlocks).length > 0) {
+                        setTimeout(() => {
+                            const fixedBlocksContainer = document.getElementById('fixed-blocks-container');
+                            fixedBlocksContainer.innerHTML = '';
+                            
+                            Object.keys(fixedBlocks).forEach((position, index) => {
+                                const fixed = fixedBlocks[position];
+                                const blockDiv = document.createElement('div');
+                                blockDiv.className = 'fixed-block-item';
+                                blockDiv.style.cssText = 'border: 2px dashed #667eea; padding: 1rem; margin-bottom: 1rem; border-radius: 6px; background: #f8f9fa;';
+                                
+                                blockDiv.innerHTML = `
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                        <label style="font-weight: bold; color: #667eea;">固定區塊 ${index + 1}</label>
+                                        <button type="button" onclick="removeFixedBlock(this)" class="btn-icon" style="color: #e74c3c; background: none; border: none; font-size: 1.5rem; cursor: pointer;">✕</button>
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0.8rem;">
+                                        <label>放置在第幾個位置？*</label>
+                                        <input type="number" class="fixed-block-position" min="1" placeholder="例如：3" required style="width: 100%; padding: 0.5rem;" value="${position}">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>程式碼內容 *</label>
+                                        <textarea class="fixed-block-content" rows="4" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem;">${fixed.content}</textarea>
+                                    </div>
+                                `;
+                                
+                                fixedBlocksContainer.appendChild(blockDiv);
+                            });
+                        }, 150);
+                    }
                     
                     break;
             }

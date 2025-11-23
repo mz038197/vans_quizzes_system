@@ -127,9 +127,19 @@
                                 <!-- 根據設定的answer_slots產生空白區塊 -->
                                 {% set slots_count = question.answer_slots %}
                                 {% for i in range(slots_count) %}
-                                <div class="answer-slot" data-slot="{{ i + 1 }}">
+                                {% set is_fixed = question.fixed_blocks and ((i + 1)|string in question.fixed_blocks) %}
+                                <div class="answer-slot" data-slot="{{ i + 1 }}" {% if is_fixed %}data-fixed="true"{% endif %}>
                                     <div class="slot-number">{{ i + 1 }}</div>
+                                    
+                                    {% if is_fixed %}
+                                    <!-- 固定程式碼塊（只讀顯示） -->
+                                    {% set fixed = question.fixed_blocks[(i + 1)|string] %}
+                                    <div class="fixed-code-block" style="flex: 1; width: 100%; padding: 0.75rem 1rem; font-family: Consolas, monospace; background: #f8f9fa; border: 2px solid #667eea; border-radius: 6px; white-space: pre-wrap; color: #333; line-height: 1.5; pointer-events: none; user-select: none;">{{ fixed.content }}</div>
+                                    <div class="fixed-label" style="position: absolute; top: 8px; right: 8px; background: #667eea; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">固定</div>
+                                    {% else %}
+                                    <!-- 普通可拖拉區塊 -->
                                     <div class="slot-content">將程式碼塊拖拉到這裡</div>
+                                    {% endif %}
                                 </div>
                                 {% endfor %}
                             </div>
@@ -411,8 +421,15 @@ function handleSlotDragOver(e) {
 
 function handleSlotDragEnter(e) {
     e.preventDefault();
-    if (draggedElement && !e.currentTarget.querySelector('.code-block')) {
-        e.currentTarget.classList.add('slot-highlight');
+    const targetSlot = e.currentTarget;
+    
+    // 固定區塊不顯示拖拉高亮效果
+    if (targetSlot.dataset.fixed === 'true') {
+        return;
+    }
+    
+    if (draggedElement && !targetSlot.querySelector('.code-block')) {
+        targetSlot.classList.add('slot-highlight');
     }
 }
 
@@ -430,6 +447,13 @@ function handleSlotDrop(e, questionId) {
     if (!draggedElement) return;
     
     const targetSlot = e.currentTarget;
+    
+    // 禁止在固定區塊上拖放
+    if (targetSlot.dataset.fixed === 'true') {
+        targetSlot.classList.remove('slot-highlight');
+        alert('此位置是固定的程式碼區塊，無法放置其他程式碼');
+        return;
+    }
     
     // 檢查這個區塊是否已經有程式碼塊
     if (targetSlot.querySelector('.code-block')) {
@@ -528,13 +552,18 @@ function updateParsonsAnswer(questionId) {
     const targetZone = document.querySelector(`#code-target-${questionId}`);
     const answerSlots = targetZone.querySelectorAll('.answer-slot');
     
-    // 新格式：收集每個空格的標籤(A, B, C...)和內容
+    // 收集每個空格的標籤(A, B, C...)
     const slotAnswers = {};
     
     answerSlots.forEach(slot => {
         const slotNumber = slot.dataset.slot;
-        const block = slot.querySelector('.code-block');
         
+        // 跳過固定區塊
+        if (slot.dataset.fixed === 'true') {
+            return;
+        }
+        
+        const block = slot.querySelector('.code-block');
         if (block) {
             const blockLabel = block.dataset.label;
             slotAnswers[slotNumber] = blockLabel;

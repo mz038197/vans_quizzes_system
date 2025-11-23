@@ -541,24 +541,34 @@ def submit_quiz(access_code):
             if 'slot_answers' in question_data and isinstance(user_answer, dict) and 'slot_answers' in user_answer:
                 correct_slot_answers = question_data.get('slot_answers', {})
                 user_slot_answers = user_answer.get('slot_answers', {})
+                fixed_blocks = question_data.get('fixed_blocks', {})  # 獲取固定區塊
                 
                 print(f"  New format - Correct slot answers: {correct_slot_answers}")
                 print(f"  New format - User slot answers: {user_slot_answers}")
+                print(f"  Fixed blocks positions: {list(fixed_blocks.keys())}")
+                
+                # 過濾掉固定區塊位置的正確答案（防止老師誤設定）
+                correct_slot_answers_filtered = {
+                    slot: label for slot, label in correct_slot_answers.items()
+                    if slot not in fixed_blocks
+                }
+                print(f"  Filtered correct answers (excluding fixed blocks): {correct_slot_answers_filtered}")
                 
                 # 比較每個空格的答案是否正確
                 all_correct = True
-                for slot_num, correct_label in correct_slot_answers.items():
+                for slot_num, correct_label in correct_slot_answers_filtered.items():
                     user_label = user_slot_answers.get(str(slot_num))
                     print(f"    Slot {slot_num}: user={user_label}, correct={correct_label}")
                     if user_label != correct_label:
                         all_correct = False
                         break
                 
-                if all_correct and len(user_slot_answers) == len(correct_slot_answers):
+                # 檢查數量是否匹配（使用過濾後的正確答案）
+                if all_correct and len(user_slot_answers) == len(correct_slot_answers_filtered):
                     score += question.points
                     print(f"  ✓ Correct! Points added: {question.points}")
                 else:
-                    print(f"  ✗ Incorrect!")
+                    print(f"  ✗ Incorrect! Expected {len(correct_slot_answers_filtered)} answers, got {len(user_slot_answers)}")
             
             # 舊格式兼容：使用correct_order比對
             elif 'correct_order' in question_data:
