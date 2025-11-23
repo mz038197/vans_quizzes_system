@@ -123,14 +123,21 @@
                             <div id="code-target-{{ question.id }}" class="drop-zone">
                                 <!-- 根據設定的answer_slots產生空白區塊 -->
                                 {% set slots_count = question.answer_slots %}
+                                {% set slot_indents = question.slot_indents or {} %}
                                 {% for i in range(slots_count) %}
-                                {% set is_fixed = question.fixed_blocks and ((i + 1)|string in question.fixed_blocks) %}
-                                <div class="answer-slot" data-slot="{{ i + 1 }}" {% if is_fixed %}data-fixed="true"{% endif %}>
+                                {% set slot_num = (i + 1)|string %}
+                                {% set is_fixed = question.fixed_blocks and (slot_num in question.fixed_blocks) %}
+                                {% set indent_level = slot_indents.get(slot_num, 0) if slot_indents else 0 %}
+                                {% if is_fixed %}
+                                    {% set fixed = question.fixed_blocks[slot_num] %}
+                                    {% set fixed_indent = fixed.indent if fixed.indent is defined else 0 %}
+                                    {% set indent_level = fixed_indent %}
+                                {% endif %}
+                                {% set indent_px = indent_level * 20 %}
+                                <div class="answer-slot" data-slot="{{ i + 1 }}" {% if is_fixed %}data-fixed="true"{% endif %} style="margin-left: {{ indent_px }}px;">
                                     {% if is_fixed %}
                                     <!-- 固定程式碼塊（只讀顯示，樣式跟左側程式碼塊一致） -->
-                                    {% set fixed = question.fixed_blocks[(i + 1)|string] %}
                                     <div class="fixed-code-block" style="flex: 1; width: 100%; padding: 0.4rem 1rem; font-family: Consolas, monospace; background: #2d3748; color: #e2e8f0; border-radius: 6px; white-space: pre-wrap; line-height: 1.4; pointer-events: none; user-select: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">{{ fixed.content }}</div>
-                                    <div class="fixed-label" style="position: absolute; top: 8px; right: 8px; background: #667eea; color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: bold; z-index: 10;">固定</div>
                                     {% else %}
                                     <!-- 普通可拖拉區塊（不顯示編號） -->
                                     <div class="slot-content">將程式碼塊拖拉到這裡</div>

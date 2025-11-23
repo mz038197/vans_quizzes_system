@@ -546,6 +546,7 @@ body {
 }
 
 /* 答案區塊樣式 */
+/* 注意：縮排通過內聯樣式的 margin-left 實現，每個縮排級別為 20px */
 .answer-slot {
     border: 2px dashed #bbb;
     border-radius: 8px;
@@ -673,16 +674,14 @@ body {
 /* 固定程式碼塊樣式（學生頁面 - 只讀） */
 .answer-slot[data-fixed="true"] {
     position: relative;
-    background: transparent !important;
-    border: none !important;
     cursor: not-allowed;
-    padding: 0.5rem 0;
-    min-height: auto;
+    padding: 0.5rem;
+    min-height: 60px;
+    /* 保持與普通槽位相同的外框顏色 */
 }
 
 .answer-slot[data-fixed="true"]:hover {
-    border: none !important;
-    background: transparent !important;
+    /* 保持與普通槽位相同的hover效果 */
     transform: none;
 }
 
