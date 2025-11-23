@@ -86,15 +86,22 @@
                                     </div>
                                     <div class="parsons-preview-target" style="flex: 1; border: 2px dashed #667eea; border-radius: 8px; padding: 1rem; background: #f8f9ff;">
                                         <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea; font-size: 1rem;">答題區 (共 {{ data.answer_slots }} 個空格)</h4>
+                                        {% set slot_indents = data.slot_indents or {} %}
                                         {% for i in range(1, data.answer_slots + 1) %}
-                                        {% set correct_label = data.slot_answers.get(i|string, '') %}
-                                        {% set is_fixed = data.fixed_blocks and (i|string in data.fixed_blocks) %}
-                                        <div class="answer-slot-preview" style="border: 2px {% if is_fixed %}solid #667eea{% else %}dashed #bbb{% endif %}; border-radius: 8px; margin: 0.5rem 0; min-height: 60px; display: flex; align-items: center; padding: 0.5rem; background: {% if is_fixed %}#f0f4ff{% else %}white{% endif %}; position: relative;">
+                                        {% set slot_num = i|string %}
+                                        {% set correct_label = data.slot_answers.get(slot_num, '') %}
+                                        {% set is_fixed = data.fixed_blocks and (slot_num in data.fixed_blocks) %}
+                                        {% set indent_level = slot_indents.get(slot_num, 0) if slot_indents else 0 %}
+                                        {% if is_fixed %}
+                                            {% set fixed = data.fixed_blocks[slot_num] %}
+                                            {% set fixed_indent = fixed.indent if fixed.indent is defined else 0 %}
+                                            {% set indent_level = fixed_indent %}
+                                        {% endif %}
+                                        {% set indent_px = indent_level * 20 %}
+                                        <div class="answer-slot-preview" style="border: 2px dashed #bbb; border-radius: 8px; margin: 0.5rem 0; min-height: 60px; display: flex; align-items: center; padding: 0.5rem; background: white; position: relative; margin-left: {{ indent_px }}px;">
                                             {% if is_fixed %}
                                             <!-- 固定區塊 -->
-                                            {% set fixed = data.fixed_blocks[i|string] %}
                                             <div style="flex: 1; background: #2d3748; color: #e2e8f0; padding: 0.4rem 1rem; border-radius: 6px; font-family: Consolas, monospace; line-height: 1.4; white-space: pre-wrap; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">{{ fixed.content | safe }}</div>
-                                            <div style="position: absolute; top: 8px; right: 8px; background: #667eea; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;">固定</div>
                                             {% elif correct_label %}
                                             <div class="answer-block" style="flex: 1; background: #e8f5e8; color: #2d3748; padding: 0.4rem 1rem; border-radius: 6px; font-family: Consolas, monospace; line-height: 1.4; border: 2px solid #27ae60; font-size: 14px; overflow-x: auto; height: auto; min-height: 0;">
                                                 <div style="display: flex; align-items: flex-start;">
@@ -272,7 +279,7 @@ function handleQuestionTypeChange() {
                     <div id="code-blocks-container" style="background: #e8f5e8; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                         <div class="code-block-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
                             <span style="min-width: 30px; color: #666;">A</span>
-                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;"></textarea>
+                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
                             <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
                         </div>
                     </div>
@@ -282,10 +289,16 @@ function handleQuestionTypeChange() {
                     <div style="background: #f0f7ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                         <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
                             <label style="margin: 0;">答案區空格數量：</label>
-                            <input type="number" id="answer-slots-count" min="1" value="3" style="width: 80px;" onchange="updateAnswerSlots()">
-                            <button type="button" onclick="updateAnswerSlots()" class="btn btn-secondary" style="padding: 6px 12px;">更新空格</button>
+                            <input type="number" id="answer-slots-count" min="1" value="3" style="width: 80px;" onchange="updateAnswerSlots(); updateParsonsPreview();">
+                            <span style="color: #666; font-size: 0.9rem;">（自動更新）</span>
+                            <span id="parsons-completion-status" style="margin-left: auto; padding: 0.3rem 0.8rem; border-radius: 4px; font-size: 0.9rem; font-weight: 500;"></span>
                         </div>
                         <div id="answer-slots-container"></div>
+                    </div>
+                    
+                    <label>即時預覽</label>
+                    <div id="parsons-preview-container" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #ddd; min-height: 200px;">
+                        <p style="color: #999; text-align: center; margin: 2rem 0;">請先設定程式碼塊和答案區空格</p>
                     </div>
                     
                     <label>固定程式碼塊設定（選填）</label>
@@ -307,6 +320,10 @@ function handleQuestionTypeChange() {
                     </p>
                 </div>
             `;
+            // 初始化预览和完成度检查
+            setTimeout(() => {
+                updateAnswerSlots();
+            }, 100);
             break;
             
         default:
@@ -364,11 +381,12 @@ function addCodeBlock() {
     blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
     blockRow.innerHTML = `
         <span style="min-width: 30px; color: #667eea; font-weight: bold;">${blockLabel}</span>
-        <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;"></textarea>
+        <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
         <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
     `;
     container.appendChild(blockRow);
     updateAnswerSlots();
+    updateParsonsPreview();
 }
 
 function removeCodeBlock(button) {
@@ -378,8 +396,14 @@ function removeCodeBlock(button) {
     Array.from(container.children).forEach((row, index) => {
         const labelSpan = row.querySelector('span');
         if (labelSpan) labelSpan.textContent = String.fromCharCode(65 + index);
+        // 更新textarea的oninput事件
+        const textarea = row.querySelector('.code-block-input');
+        if (textarea) {
+            textarea.setAttribute('oninput', 'updateAnswerSlots(); updateParsonsPreview();');
+        }
     });
     updateAnswerSlots();
+    updateParsonsPreview();
 }
 
 function updateAnswerSlots() {
@@ -400,10 +424,14 @@ function updateAnswerSlots() {
         return;
     }
     
-    // 保存現有的選擇
+    // 保存現有的選擇和縮排
     const currentSelections = {};
+    const currentIndents = {};
     container.querySelectorAll('.slot-answer-select').forEach((select, index) => {
         currentSelections[index + 1] = select.value;
+    });
+    container.querySelectorAll('.slot-indent-input').forEach((input, index) => {
+        currentIndents[index + 1] = input.value || '0';
     });
     
     container.innerHTML = '';
@@ -424,9 +452,28 @@ function updateAnswerSlots() {
         });
         
         selectHTML += '</select>';
+        selectHTML += `
+            <label style="min-width: 60px; margin: 0; color: #666; font-size: 0.9rem;">縮排：</label>
+            <input type="number" class="slot-indent-input" data-slot="${i}" min="0" max="10" value="${currentIndents[i] || '0'}" style="width: 60px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;" title="縮排級別（0-10，每個級別約20px）" onchange="updateParsonsPreview();">
+        `;
         slotDiv.innerHTML = selectHTML;
+        
+        // 为select添加change事件监听
+        const selectElement = slotDiv.querySelector('.slot-answer-select');
+        if (selectElement) {
+            selectElement.addEventListener('change', function() {
+                updateParsonsPreview();
+                // 检查完成度
+                checkParsonsCompletion();
+            });
+        }
+        
         container.appendChild(slotDiv);
     }
+    
+    // 初始化预览和完成度检查
+    updateParsonsPreview();
+    checkParsonsCompletion();
 }
 
 // 添加固定區塊的函數
@@ -445,15 +492,21 @@ function addFixedBlock() {
         </div>
         <div class="form-group" style="margin-bottom: 0.8rem;">
             <label>放置在第幾個位置？*</label>
-            <input type="number" class="fixed-block-position" min="1" placeholder="例如：3" required style="width: 100%; padding: 0.5rem;">
+            <input type="number" class="fixed-block-position" min="1" placeholder="例如：3" required style="width: 100%; padding: 0.5rem;" onchange="updateParsonsPreview(); checkParsonsCompletion();">
+        </div>
+        <div class="form-group" style="margin-bottom: 0.8rem;">
+            <label>縮排級別（0-10）</label>
+            <input type="number" class="fixed-block-indent" min="0" max="10" value="0" placeholder="0" style="width: 100%; padding: 0.5rem;" title="縮排級別（0-10，每個級別約20px）" onchange="updateParsonsPreview();">
         </div>
         <div class="form-group" style="margin-bottom: 0;">
             <label>程式碼內容 *</label>
-            <textarea class="fixed-block-content" rows="4" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem;"></textarea>
+            <textarea class="fixed-block-content" rows="4" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem;" oninput="updateParsonsPreview();"></textarea>
         </div>
     `;
     
     container.appendChild(blockDiv);
+    updateParsonsPreview();
+    checkParsonsCompletion();
 }
 
 function removeFixedBlock(button) {
@@ -466,6 +519,139 @@ function removeFixedBlock(button) {
             label.textContent = `固定區塊 ${index + 1}`;
         }
     });
+    updateParsonsPreview();
+    checkParsonsCompletion();
+}
+
+// 實時預覽答案區效果
+function updateParsonsPreview() {
+    const previewContainer = document.getElementById('parsons-preview-container');
+    if (!previewContainer) return;
+    
+    const codeBlockInputs = document.querySelectorAll('.code-block-input');
+    const slotSelects = document.querySelectorAll('.slot-answer-select');
+    const indentInputs = document.querySelectorAll('.slot-indent-input');
+    const fixedBlockItems = document.querySelectorAll('.fixed-block-item');
+    
+    // 收集程式碼塊
+    const codeBlocks = {};
+    Array.from(codeBlockInputs).forEach((input, index) => {
+        const label = String.fromCharCode(65 + index);
+        const content = input.value.trim();
+        if (content) {
+            codeBlocks[label] = content;
+        }
+    });
+    
+    if (Object.keys(codeBlocks).length === 0 || slotSelects.length === 0) {
+        previewContainer.innerHTML = '<p style="color: #999; text-align: center; margin: 2rem 0;">請先設定程式碼塊和答案區空格</p>';
+        return;
+    }
+    
+    // 收集固定區塊
+    const fixedBlocks = {};
+    fixedBlockItems.forEach(item => {
+        const position = item.querySelector('.fixed-block-position')?.value;
+        const content = item.querySelector('.fixed-block-content')?.value;
+        const indentInput = item.querySelector('.fixed-block-indent');
+        const indentLevel = indentInput ? (parseInt(indentInput.value) || 0) : 0;
+        
+        if (position && content) {
+            fixedBlocks[position] = {
+                content: content,
+                indent: indentLevel
+            };
+        }
+    });
+    
+    // 生成預覽HTML
+    let previewHTML = '<div style="display: flex; gap: 1rem; flex-direction: column;">';
+    previewHTML += '<h4 style="margin: 0 0 0.5rem 0; color: #667eea; font-size: 0.9rem;">答題區預覽</h4>';
+    
+    Array.from(slotSelects).forEach((select, index) => {
+        const slotNum = (index + 1).toString();
+        const selectedAnswer = select.value;
+        const indentInput = Array.from(indentInputs).find(input => input.dataset.slot === slotNum);
+        const indentLevel = indentInput ? (parseInt(indentInput.value) || 0) : 0;
+        const indentPx = indentLevel * 20;
+        const isFixed = fixedBlocks[slotNum];
+        
+        previewHTML += '<div style="display: flex; align-items: center; margin-bottom: 0.5rem;">';
+        previewHTML += `<span style="min-width: 60px; color: #666; font-size: 0.85rem;">空格 ${slotNum}：</span>`;
+        previewHTML += `<div style="flex: 1; margin-left: ${indentPx}px; border: 2px dashed #bbb; border-radius: 6px; padding: 0.5rem; background: white; min-height: 40px; display: flex; align-items: center;">`;
+        
+        if (isFixed) {
+            const preview = isFixed.content.substring(0, 50) + (isFixed.content.length > 50 ? '...' : '');
+            previewHTML += `<span style="font-family: Consolas, monospace; font-size: 0.85rem; color: #2d3748; background: #f0f0f0; padding: 0.3rem 0.6rem; border-radius: 4px;">${preview}</span>`;
+            previewHTML += '<span style="margin-left: 0.5rem; color: #667eea; font-size: 0.75rem;">[固定]</span>';
+        } else if (selectedAnswer && codeBlocks[selectedAnswer]) {
+            const preview = codeBlocks[selectedAnswer].substring(0, 50) + (codeBlocks[selectedAnswer].length > 50 ? '...' : '');
+            previewHTML += `<span style="font-family: Consolas, monospace; font-size: 0.85rem; color: #27ae60;">${preview}</span>`;
+            previewHTML += `<span style="margin-left: 0.5rem; color: #27ae60; font-size: 0.75rem; font-weight: bold;">[${selectedAnswer}]</span>`;
+        } else {
+            previewHTML += '<span style="color: #999; font-style: italic; font-size: 0.85rem;">未設定</span>';
+        }
+        
+        previewHTML += '</div>';
+        previewHTML += '</div>';
+    });
+    
+    previewHTML += '</div>';
+    previewContainer.innerHTML = previewHTML;
+}
+
+// 檢查完成度
+function checkParsonsCompletion() {
+    const statusElement = document.getElementById('parsons-completion-status');
+    if (!statusElement) return;
+    
+    const codeBlockInputs = document.querySelectorAll('.code-block-input');
+    const slotSelects = document.querySelectorAll('.slot-answer-select');
+    const fixedBlockItems = document.querySelectorAll('.fixed-block-item');
+    
+    // 計算固定區塊數量
+    const fixedPositions = new Set();
+    fixedBlockItems.forEach(item => {
+        const position = item.querySelector('.fixed-block-position')?.value;
+        if (position) {
+            fixedPositions.add(position);
+        }
+    });
+    
+    // 計算已設定的答案數量
+    let answeredCount = 0;
+    const missingSlots = [];
+    Array.from(slotSelects).forEach((select, index) => {
+        const slotNum = (index + 1).toString();
+        if (!fixedPositions.has(slotNum) && select.value) {
+            answeredCount++;
+        } else if (!fixedPositions.has(slotNum) && !select.value) {
+            missingSlots.push(slotNum);
+        }
+    });
+    
+    const totalSlots = slotSelects.length;
+    const requiredAnswers = totalSlots - fixedPositions.size;
+    const codeBlocksCount = Array.from(codeBlockInputs).filter(input => input.value.trim()).length;
+    
+    // 更新狀態顯示
+    if (codeBlocksCount < 2) {
+        statusElement.textContent = '⚠️ 至少需要2個程式碼塊';
+        statusElement.style.background = '#fff3cd';
+        statusElement.style.color = '#856404';
+    } else if (requiredAnswers > 0 && answeredCount < requiredAnswers) {
+        statusElement.textContent = `⚠️ 還有 ${requiredAnswers - answeredCount} 個空格未設定（空格：${missingSlots.join(', ')}）`;
+        statusElement.style.background = '#fff3cd';
+        statusElement.style.color = '#856404';
+    } else if (requiredAnswers > 0 && answeredCount === requiredAnswers) {
+        statusElement.textContent = '✓ 所有空格已設定完成';
+        statusElement.style.background = '#d4edda';
+        statusElement.style.color = '#155724';
+    } else {
+        statusElement.textContent = '✓ 設定完成';
+        statusElement.style.background = '#d4edda';
+        statusElement.style.color = '#155724';
+    }
 }
 
 // 下拉選單填空題型函數
@@ -648,8 +834,17 @@ function collectFormData() {
                 }
             });
             
-            // 收集答案區空格的正確答案
+            // 收集答案區空格的正確答案和縮排
             const slotAnswers = {};
+            const slotIndents = {};
+            
+            // 收集每個空格的縮排級別
+            const indentInputs = document.querySelectorAll('.slot-indent-input');
+            Array.from(indentInputs).forEach((input) => {
+                const slotNumber = input.dataset.slot;
+                const indentLevel = parseInt(input.value) || 0;
+                slotIndents[slotNumber] = indentLevel;
+            });
             
             // 先收集固定區塊的位置
             const fixedBlockPositions = new Set();
@@ -672,16 +867,19 @@ function collectFormData() {
                 }
             });
             
-            // 收集固定程式碼塊
+            // 收集固定程式碼塊（包含縮排）
             const fixedBlocks = {};
             fixedBlockItems.forEach(item => {
                 const position = item.querySelector('.fixed-block-position').value;
                 const content = item.querySelector('.fixed-block-content').value;
+                const indentInput = item.querySelector('.fixed-block-indent');
+                const indentLevel = indentInput ? (parseInt(indentInput.value) || 0) : 0;
                 
                 if (position && content) {
                     fixedBlocks[position] = {
                         content: content,
-                        display_label: false
+                        display_label: false,
+                        indent: indentLevel
                     };
                 }
             });
@@ -689,7 +887,8 @@ function collectFormData() {
             questionData.code_blocks = codeBlocks; // {A: "code1", B: "code2", C: "code3"}
             questionData.answer_slots = slotSelects.length; // 答案區空格數量
             questionData.slot_answers = slotAnswers; // {1: "A", 2: "C", 3: "B"}
-            questionData.fixed_blocks = fixedBlocks; // {2: {content: "...", display_label: false}}
+            questionData.slot_indents = slotIndents; // {1: 0, 2: 1, 3: 2} 縮排級別
+            questionData.fixed_blocks = fixedBlocks; // {2: {content: "...", display_label: false, indent: 1}}
             break;
     }
     
@@ -769,24 +968,58 @@ function validateFormData(data) {
             
         case 'parsons':
             if (!data.question_data.code_blocks || Object.keys(data.question_data.code_blocks).length < 2) {
-                alert('至少需要2個程式碼塊');
+                alert('❌ 至少需要2個程式碼塊才能建立程式碼排序題');
                 return false;
             }
-            if (!data.question_data.slot_answers || Object.keys(data.question_data.slot_answers).length === 0) {
-                alert('請為每個空格設定正確答案');
-                return false;
-            }
+            
             // 檢查是否所有【非固定】空格都有答案
             const totalSlots = data.question_data.answer_slots;
-            const answeredSlots = Object.keys(data.question_data.slot_answers).length;
+            const answeredSlots = data.question_data.slot_answers || {};
             const fixedBlocks = data.question_data.fixed_blocks || {};
-            const fixedSlotsCount = Object.keys(fixedBlocks).length;
-            const requiredAnswers = totalSlots - fixedSlotsCount; // 總空格數 - 固定區塊數
+            const fixedSlotNumbers = new Set(Object.keys(fixedBlocks));
             
-            if (requiredAnswers > 0 && answeredSlots < requiredAnswers) {
-                alert(`請為所有可拖拉空格設定正確答案（需要 ${requiredAnswers} 個，目前設定了 ${answeredSlots} 個）`);
+            // 找出缺少答案的空格
+            const missingSlots = [];
+            for (let i = 1; i <= totalSlots; i++) {
+                const slotNum = i.toString();
+                if (!fixedSlotNumbers.has(slotNum) && !answeredSlots[slotNum]) {
+                    missingSlots.push(slotNum);
+                }
+            }
+            
+            if (missingSlots.length > 0) {
+                const missingList = missingSlots.join('、');
+                alert(`❌ 以下空格尚未設定正確答案：空格 ${missingList}\n\n請為所有可拖拉的空格選擇對應的程式碼塊。`);
+                // 高亮顯示缺少答案的空格
+                setTimeout(() => {
+                    missingSlots.forEach(slotNum => {
+                        const select = document.querySelector(`.slot-answer-select[data-slot="${slotNum}"]`);
+                        if (select) {
+                            select.style.borderColor = '#e74c3c';
+                            select.style.borderWidth = '2px';
+                            select.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            setTimeout(() => {
+                                select.style.borderColor = '';
+                                select.style.borderWidth = '';
+                            }, 3000);
+                        }
+                    });
+                }, 100);
                 return false;
             }
+            
+            // 檢查固定區塊的位置是否有效
+            const fixedBlockPositions = Object.keys(fixedBlocks);
+            const invalidPositions = fixedBlockPositions.filter(pos => {
+                const posNum = parseInt(pos);
+                return isNaN(posNum) || posNum < 1 || posNum > totalSlots;
+            });
+            
+            if (invalidPositions.length > 0) {
+                alert(`❌ 固定區塊的位置設定錯誤：位置 ${invalidPositions.join('、')}\n\n位置必須在 1 到 ${totalSlots} 之間。`);
+                return false;
+            }
+            
             break;
     }
     
@@ -940,6 +1173,7 @@ async function editQuestion(questionId) {
                     let codeBlocks = data.code_blocks || {};
                     let answerSlots = data.answer_slots || Object.keys(data.code_blocks).length;
                     let slotAnswers = data.slot_answers || {};
+                    let slotIndents = data.slot_indents || {};
                     let fixedBlocks = data.fixed_blocks || {};
                     
                     // 添加程式碼塊
@@ -950,7 +1184,7 @@ async function editQuestion(questionId) {
                         blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
                         blockRow.innerHTML = `
                             <span style="min-width: 30px; color: #667eea; font-weight: bold;">${label}</span>
-                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;">${codeBlocks[label]}</textarea>
+                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;" oninput="updateAnswerSlots(); updateParsonsPreview();">${codeBlocks[label]}</textarea>
                             <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
                         `;
                         codeBlocksContainer.appendChild(blockRow);
@@ -970,6 +1204,18 @@ async function editQuestion(questionId) {
                                 select.value = slotAnswers[slotNum];
                             }
                         });
+                        
+                        // 設定每個空格的縮排
+                        Object.keys(slotIndents).forEach(slotNum => {
+                            const indentInput = document.querySelector(`.slot-indent-input[data-slot="${slotNum}"]`);
+                            if (indentInput) {
+                                indentInput.value = slotIndents[slotNum];
+                            }
+                        });
+                        
+                        // 更新預覽和完成度
+                        updateParsonsPreview();
+                        checkParsonsCompletion();
                     }, 100);
                     
                     // 載入固定區塊
@@ -984,6 +1230,7 @@ async function editQuestion(questionId) {
                                 blockDiv.className = 'fixed-block-item';
                                 blockDiv.style.cssText = 'border: 2px dashed #667eea; padding: 1rem; margin-bottom: 1rem; border-radius: 6px; background: #f8f9fa;';
                                 
+                                const indentLevel = fixed.indent !== undefined ? fixed.indent : 0;
                                 blockDiv.innerHTML = `
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
                                         <label style="font-weight: bold; color: #667eea;">固定區塊 ${index + 1}</label>
@@ -991,16 +1238,24 @@ async function editQuestion(questionId) {
                                     </div>
                                     <div class="form-group" style="margin-bottom: 0.8rem;">
                                         <label>放置在第幾個位置？*</label>
-                                        <input type="number" class="fixed-block-position" min="1" placeholder="例如：3" required style="width: 100%; padding: 0.5rem;" value="${position}">
+                                        <input type="number" class="fixed-block-position" min="1" placeholder="例如：3" required style="width: 100%; padding: 0.5rem;" value="${position}" onchange="updateParsonsPreview(); checkParsonsCompletion();">
+                                    </div>
+                                    <div class="form-group" style="margin-bottom: 0.8rem;">
+                                        <label>縮排級別（0-10）</label>
+                                        <input type="number" class="fixed-block-indent" min="0" max="10" value="${indentLevel}" placeholder="0" style="width: 100%; padding: 0.5rem;" title="縮排級別（0-10，每個級別約20px）" onchange="updateParsonsPreview();">
                                     </div>
                                     <div class="form-group" style="margin-bottom: 0;">
                                         <label>程式碼內容 *</label>
-                                        <textarea class="fixed-block-content" rows="4" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem;">${fixed.content}</textarea>
+                                        <textarea class="fixed-block-content" rows="4" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem;" oninput="updateParsonsPreview();">${fixed.content}</textarea>
                                     </div>
                                 `;
                                 
                                 fixedBlocksContainer.appendChild(blockDiv);
                             });
+                            
+                            // 更新預覽和完成度
+                            updateParsonsPreview();
+                            checkParsonsCompletion();
                         }, 150);
                     }
                     
