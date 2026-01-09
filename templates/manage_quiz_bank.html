@@ -11,6 +11,7 @@
         </div>
         <div style="display: flex; gap: 1rem;">
             <button onclick="showAddQuestionModal()" class="btn">➕ 新增題目</button>
+            <a href="{{ url_for('export_quiz_bank_pdf', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" title="導出題庫為PDF文件">📄 導出PDF</a>
             <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary">📊 查看成績</a>
             <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-secondary">← 返回</a>
         </div>

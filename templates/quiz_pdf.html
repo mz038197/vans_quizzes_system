@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ quiz_bank.title }} - 題庫列印</title>
+    
+    <!-- MathJax for LaTeX rendering -->
+    <script>
+        MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            svg: {
+                fontCache: 'global'
+            },
+            startup: {
+                ready: function () {
+                    MathJax.startup.defaultReady();
+                    MathJax.startup.promise.then(function () {
+                        console.log('MathJax rendering complete');
+                        document.getElementById('loading-status').textContent = 'MathJax 渲染完成，準備生成 PDF...';
+                    });
+                }
+            }
+        };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+    
+    <!-- html2pdf.js for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: "Microsoft JhengHei", "微軟正黑體", "Noto Sans TC", "PingFang TC", sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #333;
+            background: #f0f0f0;
+        }
+        
+        /* 控制面板 */
+        .control-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #667eea;
+            color: white;
+            padding: 15px 20px;
+            z-index: 1000;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .control-panel h2 {
+            font-size: 16pt;
+        }
+        
+        .control-panel .buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .control-panel button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11pt;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        
+        .btn-pdf {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .btn-pdf:hover {
+            background: #219a52;
+        }
+        
+        .btn-print {
+            background: white;
+            color: #667eea;
+        }
+        
+        .btn-print:hover {
+            background: #f0f0f0;
+        }
+        
+        .btn-back {
+            background: rgba(255,255,255,0.2);
+            color: white;
+        }
+        
+        .btn-back:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        #loading-status {
+            font-size: 10pt;
+            opacity: 0.9;
+        }
+        
+        /* PDF 內容區域 */
+        .pdf-container {
+            max-width: 210mm;
+            margin: 80px auto 30px auto;
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        
+        .pdf-content {
+            padding: 20mm;
+        }
+        
+        /* 標題區 */
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            font-size: 20pt;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .header .description {
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .header .info {
+            font-size: 10pt;
+            color: #888;
+        }
+        
+        /* 學生資訊 */
+        .student-info {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-bottom: 25px;
+            background: #fafafa;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .student-info-item {
+            display: flex;
+            align-items: center;
+        }
+        
+        .student-info-item label {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .student-info-item .blank {
+            display: inline-block;
+            width: 150px;
+            border-bottom: 1px solid #333;
+            height: 20px;
+        }
+        
+        /* 題目 */
+        .question {
+            margin-bottom: 25px;
+            page-break-inside: avoid;
+        }
+        
+        .question-header {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+            display: flex;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .question-number {
+            display: inline-block;
+            background: #333;
+            color: white;
+            padding: 2px 10px;
+            border-radius: 3px;
+            font-size: 11pt;
+            flex-shrink: 0;
+        }
+        
+        .question-title {
+            flex: 1;
+        }
+        
+        .question-meta {
+            font-size: 10pt;
+            color: #666;
+            font-weight: normal;
+        }
+        
+        .question-type {
+            background: #e8e8e8;
+            padding: 2px 8px;
+            border-radius: 3px;
+        }
+        
+        .question-points {
+            color: #e74c3c;
+        }
+        
+        .question-text {
+            margin-bottom: 12px;
+            padding: 12px;
+            background: #f8f8f8;
+            border-left: 4px solid #667eea;
+            white-space: pre-wrap;
+            font-family: "Microsoft JhengHei", Consolas, monospace;
+            line-height: 1.8;
+        }
+        
+        /* 選項 */
+        .options {
+            margin-left: 15px;
+        }
+        
+        .option {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .option-label {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 28px;
+            border: 2px solid #333;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+        
+        .option-radio {
+            border-radius: 50%;
+        }
+        
+        .option-checkbox {
+            border-radius: 4px;
+        }
+        
+        .option-text {
+            flex: 1;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+        
+        .correct-answer-mark {
+            color: #27ae60;
+            font-weight: bold;
+            margin-left: 10px;
+            background: #e8f5e8;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 10pt;
+        }
+        
+        .answer-section {
+            margin-top: 15px;
+            padding: 12px;
+            background: #e8f5e8;
+            border-left: 4px solid #27ae60;
+            border-radius: 4px;
+        }
+        
+        .answer-section strong {
+            color: #27ae60;
+        }
+        
+        .answer-content {
+            margin-top: 5px;
+            color: #333;
+            font-weight: bold;
+        }
+        
+        /* 填空題 */
+        .fill-blank-answer {
+            margin-top: 12px;
+            padding: 12px;
+            border: 1px dashed #999;
+            background: #fafafa;
+        }
+        
+        .fill-blank-answer label {
+            font-weight: bold;
+        }
+        
+        .fill-blank-line {
+            display: inline-block;
+            width: 250px;
+            border-bottom: 1px solid #333;
+            margin-left: 10px;
+        }
+        
+        /* 下拉填空 */
+        .dropdown-fillblank-section {
+            margin-top: 12px;
+        }
+        
+        .dropdown-fillblank-text {
+            padding: 12px;
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            line-height: 2.2;
+            margin-bottom: 15px;
+        }
+        
+        .blank-placeholder {
+            display: inline-block;
+            min-width: 80px;
+            border-bottom: 2px solid #667eea;
+            margin: 0 5px;
+            text-align: center;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .blanks-options {
+            padding: 12px;
+            background: #f0f7ff;
+            border-radius: 5px;
+        }
+        
+        .blank-option-group {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+        }
+        
+        .blank-option-group strong {
+            color: #667eea;
+        }
+        
+        .blank-option-item {
+            display: inline-block;
+            margin: 4px 8px;
+            padding: 4px 12px;
+            background: #f8f8f8;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        /* 程式排序題 */
+        .parsons-container {
+            margin-top: 12px;
+        }
+        
+        .code-blocks-bank {
+            border: 2px dashed #27ae60;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f0fff0;
+            border-radius: 8px;
+        }
+        
+        .code-blocks-bank h4 {
+            font-size: 11pt;
+            color: #27ae60;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+        
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 10px 15px;
+            margin: 8px 0;
+            border-radius: 6px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 10pt;
+            white-space: pre-wrap;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        
+        .code-block-label {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 2px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 10pt;
+            flex-shrink: 0;
+        }
+        
+        .code-block-content {
+            flex: 1;
+            white-space: pre-wrap;
+        }
+        
+        .answer-slots {
+            border: 2px dashed #667eea;
+            padding: 15px;
+            background: #f8f9ff;
+            border-radius: 8px;
+        }
+        
+        .answer-slots h4 {
+            font-size: 11pt;
+            color: #667eea;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+        
+        .answer-slot {
+            border: 2px dashed #bbb;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 10px 0;
+            min-height: 45px;
+            background: white;
+        }
+        
+        .answer-slot-number {
+            font-size: 10pt;
+            color: #666;
+            margin-bottom: 6px;
+            font-weight: bold;
+        }
+        
+        .fixed-block {
+            background: #e8e8e8;
+            color: #333;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 10pt;
+            white-space: pre-wrap;
+        }
+        
+        .fixed-label {
+            font-size: 9pt;
+            color: #888;
+            margin-left: 8px;
+            font-style: italic;
+        }
+        
+        .slot-blank {
+            color: #999;
+            font-style: italic;
+        }
+        
+        /* 頁尾 */
+        .footer {
+            margin-top: 40px;
+            padding-top: 15px;
+            border-top: 1px solid #ccc;
+            text-align: center;
+            font-size: 10pt;
+            color: #999;
+        }
+        
+        /* 列印樣式 */
+        @media print {
+            body {
+                background: white;
+            }
+            
+            .control-panel {
+                display: none !important;
+            }
+            
+            .pdf-container {
+                margin: 0;
+                box-shadow: none;
+                max-width: none;
+            }
+            
+            .pdf-content {
+                padding: 15mm;
+            }
+            
+            .question {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="control-panel">
+        <div>
+            <h2>📄 {{ quiz_bank.title }}</h2>
+            <span id="loading-status">正在載入 MathJax...</span>
+        </div>
+        <div class="buttons">
+            <button class="btn-pdf" onclick="generatePDF()">📥 下載 PDF</button>
+            <button class="btn-print" onclick="window.print()">🖨️ 列印</button>
+            <button class="btn-back" onclick="history.back()">← 返回</button>
+        </div>
+    </div>
+    
+    <div class="pdf-container">
+        <div class="pdf-content" id="pdf-content">
+            <div class="header">
+                <h1>{{ quiz_bank.title }}</h1>
+                {% if quiz_bank.description %}
+                <p class="description">{{ quiz_bank.description }}</p>
+                {% endif %}
+                <p class="info">題庫代碼：{{ quiz_bank.access_code }} | 共 {{ questions|length }} 題</p>
+            </div>
+            
+            <div class="student-info">
+                <div class="student-info-item">
+                    <label>姓名：</label>
+                    <span class="blank"></span>
+                </div>
+                <div class="student-info-item">
+                    <label>日期：</label>
+                    <span class="blank"></span>
+                </div>
+                <div class="student-info-item">
+                    <label>得分：</label>
+                    <span class="blank"></span>
+                </div>
+            </div>
+            
+            {% for question in questions %}
+            <div class="question">
+                <div class="question-header">
+                    <span class="question-number">{{ loop.index }}</span>
+                    <span class="question-title">{{ question.title }}</span>
+                    <span class="question-meta">
+                        <span class="question-type">{{ get_question_type_name(question.question_type) }}</span>
+                        <span class="question-points">{{ question.points }} 分</span>
+                    </span>
+                </div>
+                
+                <div class="question-text">{{ question.question_text }}</div>
+                
+                {% if question.question_type == 'single_choice' and question.data %}
+                    <div class="options">
+                        {% for option in question.data.options %}
+                        <div class="option">
+                            <span class="option-label option-radio">{{ 'ABCDEFGHIJ'[loop.index0] }}</span>
+                            <span class="option-text">{{ option }}</span>
+                            {% if option == question.data.correct_answer %}
+                            <span class="correct-answer-mark">✓ 正確答案</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="answer-section">
+                        <strong>正確答案：</strong>
+                        <span class="answer-content">{{ 'ABCDEFGHIJ'[question.data.options.index(question.data.correct_answer)] if question.data.correct_answer in question.data.options else '未設定' }}</span>
+                    </div>
+                    
+                {% elif question.question_type == 'multiple_choice' and question.data %}
+                    <div class="options">
+                        {% for option in question.data.options %}
+                        <div class="option">
+                            <span class="option-label option-checkbox">{{ 'ABCDEFGHIJ'[loop.index0] }}</span>
+                            <span class="option-text">{{ option }}</span>
+                            {% if option in question.data.correct_answers %}
+                            <span class="correct-answer-mark">✓ 正確答案</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="answer-section">
+                        <strong>正確答案：</strong>
+                        <span class="answer-content">
+                            {% for ans in question.data.correct_answers %}
+                                {{ 'ABCDEFGHIJ'[question.data.options.index(ans)] if ans in question.data.options else '?' }}{% if not loop.last %}、{% endif %}
+                            {% endfor %}
+                        </span>
+                    </div>
+                    
+                {% elif question.question_type == 'fill_blank' %}
+                    <div class="fill-blank-answer">
+                        <label>答案：</label>
+                        <span class="fill-blank-line"></span>
+                    </div>
+                    {% if question.data and question.data.correct_answer %}
+                    <div class="answer-section">
+                        <strong>正確答案：</strong>
+                        <span class="answer-content">{{ question.data.correct_answer }}</span>
+                    </div>
+                    {% endif %}
+                    
+                {% elif question.question_type == 'dropdown' and question.data %}
+                    <div class="options">
+                        {% for option in question.data.options %}
+                        <div class="option">
+                            <span class="option-label option-radio">{{ 'ABCDEFGHIJ'[loop.index0] }}</span>
+                            <span class="option-text">{{ option }}</span>
+                            {% if option == question.data.correct_answer %}
+                            <span class="correct-answer-mark">✓ 正確答案</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="answer-section">
+                        <strong>正確答案：</strong>
+                        <span class="answer-content">{{ 'ABCDEFGHIJ'[question.data.options.index(question.data.correct_answer)] if question.data.correct_answer in question.data.options else '未設定' }}</span>
+                    </div>
+                    
+                {% elif question.question_type == 'dropdown_fillblank' and question.data %}
+                    <div class="dropdown-fillblank-section">
+                        <p style="font-weight: bold; margin-bottom: 10px;">請從各空格的選項中選擇正確答案填入：</p>
+                        <div class="dropdown-fillblank-text">
+                            {% set text = question.data.fillblank_text %}
+                            {% set parts = text.split('{{}}') %}
+                            {% for part in parts %}
+                                {{ part }}{% if not loop.last %}<span class="blank-placeholder">（{{ loop.index }}）</span>{% endif %}
+                            {% endfor %}
+                        </div>
+                        <div class="blanks-options">
+                            <p style="font-weight: bold; margin-bottom: 10px;">各空格選項：</p>
+                            {% for blank in question.data.blanks %}
+                            <div class="blank-option-group">
+                                <strong>空格（{{ loop.index }}）：</strong>
+                                {% for opt in blank.options %}
+                                <span class="blank-option-item{% if opt == blank.correct_answer %}" style="background: #e8f5e8; border-color: #27ae60; font-weight: bold;">{{ opt }} ✓{% else %}">{{ opt }}{% endif %}</span>
+                                {% endfor %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="answer-section">
+                        <strong>正確答案：</strong>
+                        <div class="answer-content">
+                            {% for blank in question.data.blanks %}
+                            空格（{{ loop.index }}）：{{ blank.correct_answer }}{% if not loop.last %}　|　{% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                {% elif question.question_type == 'parsons' and question.data %}
+                    <div class="parsons-container">
+                        <div class="code-blocks-bank">
+                            <h4>📦 可選程式碼塊</h4>
+                            {% for label in question.data.code_blocks.keys()|sort %}
+                            <div class="code-block">
+                                <span class="code-block-label">{{ label }}</span>
+                                <span class="code-block-content">{{ question.data.code_blocks[label] }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <div class="answer-slots">
+                            <h4>📝 答題區（請填入程式碼塊標籤 A, B, C...）</h4>
+                            {% set fixed_blocks = question.data.fixed_blocks or {} %}
+                            {% set slot_indents = question.data.slot_indents or {} %}
+                            {% set slot_answers = question.data.slot_answers or {} %}
+                            {% for i in range(1, question.data.answer_slots + 1) %}
+                            {% set slot_num = i | string %}
+                            {% set indent_level = slot_indents.get(slot_num, 0) if slot_indents else 0 %}
+                            {% set indent_px = indent_level * 25 %}
+                            <div class="answer-slot" style="margin-left: {{ indent_px }}px;">
+                                <div class="answer-slot-number">第 {{ i }} 行：</div>
+                                {% if slot_num in fixed_blocks %}
+                                    {% set fixed = fixed_blocks[slot_num] %}
+                                    <div class="fixed-block">{{ fixed.content }}<span class="fixed-label">（固定）</span></div>
+                                {% elif slot_num in slot_answers %}
+                                    <span style="color: #27ae60; font-weight: bold; background: #e8f5e8; padding: 4px 12px; border-radius: 4px;">
+                                        正確答案：{{ slot_answers[slot_num] }} - {{ question.data.code_blocks[slot_answers[slot_num]] }}
+                                    </span>
+                                {% else %}
+                                    <span class="slot-blank">填入標籤：________</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="answer-section">
+                        <strong>正確答案順序：</strong>
+                        <div class="answer-content" style="margin-top: 8px;">
+                            {% set slot_answers = question.data.slot_answers or {} %}
+                            {% set fixed_blocks = question.data.fixed_blocks or {} %}
+                            {% for i in range(1, question.data.answer_slots + 1) %}
+                            {% set slot_num = i | string %}
+                            {% if slot_num in fixed_blocks %}
+                            第 {{ i }} 行：<span style="color: #999; font-style: italic;">（固定程式碼塊）</span>
+                            {% elif slot_num in slot_answers %}
+                            第 {{ i }} 行：<span style="color: #27ae60;">{{ slot_answers[slot_num] }}</span>
+                            {% endif %}
+                            {% if not loop.last %}<br>{% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            
+            <div class="footer">
+                <p>—— 試卷結束 ——</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 等待 MathJax 渲染完成後啟用 PDF 生成
+        function generatePDF() {
+            const element = document.getElementById('pdf-content');
+            const statusEl = document.getElementById('loading-status');
+            statusEl.textContent = '正在生成 PDF，請稍候...';
+            
+            const opt = {
+                margin: [10, 10, 10, 10],
+                filename: 'quiz_{{ quiz_bank.access_code }}.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { 
+                    scale: 2,
+                    useCORS: true,
+                    logging: false
+                },
+                jsPDF: { 
+                    unit: 'mm', 
+                    format: 'a4', 
+                    orientation: 'portrait' 
+                },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+            
+            html2pdf().set(opt).from(element).save().then(function() {
+                statusEl.textContent = 'PDF 下載完成！';
+            }).catch(function(error) {
+                statusEl.textContent = 'PDF 生成失敗：' + error;
+                console.error('PDF generation error:', error);
+            });
+        }
+        
+        // 頁面載入完成後更新狀態
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                document.getElementById('loading-status').textContent = '準備就緒，可以下載 PDF 或列印';
+            }, 1500);
+        });
+    </script>
+</body>
+</html>
+
