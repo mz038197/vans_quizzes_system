@@ -1,10 +1,9 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 import json
-import uuid
 from datetime import datetime
 import os
 import sys
@@ -700,6 +699,36 @@ def get_environment():
         'environment': ENVIRONMENT,
         'database_type': 'PostgreSQL' if ENVIRONMENT == 'production' else 'SQLite'
     })
+
+# PDF 導出功能（使用前端渲染）
+@app.route('/quiz-bank/<int:quiz_bank_id>/export-pdf')
+@login_required
+def export_quiz_bank_pdf(quiz_bank_id):
+    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
+    if quiz_bank.teacher_id != current_user.id:
+        return redirect(url_for('teacher_dashboard'))
+    
+    questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
+    
+    # 準備題目資料
+    questions_data = []
+    for q in questions:
+        question_data = {
+            'id': q.id,
+            'title': q.title,
+            'question_text': q.question_text,
+            'question_type': q.question_type,
+            'points': q.points
+        }
+        if q.question_data:
+            question_data['data'] = json.loads(q.question_data)
+        questions_data.append(question_data)
+    
+    # 渲染可列印的頁面（前端會用 html2pdf.js 生成 PDF）
+    return render_template('quiz_pdf.html', 
+                           quiz_bank=quiz_bank, 
+                           questions=questions_data,
+                           get_question_type_name=get_question_type_name)
 
 if __name__ == '__main__':
     with app.app_context():
