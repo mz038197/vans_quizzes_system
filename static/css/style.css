@@ -143,6 +143,14 @@ body {
     min-height: 80px;
 }
 
+.form-group input[type="file"] {
+    height: auto;
+    min-height: 42px;
+    padding: 0.55rem 0.8rem;
+    line-height: 1.4;
+    cursor: pointer;
+}
+
 .form-group input:hover,
 .form-group textarea:hover,
 .form-group select:hover {
