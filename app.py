@@ -583,12 +583,15 @@ def draw_practice_quiz(access_code):
 @app.route('/api/import-quiz-md/preview', methods=['POST'])
 @login_required
 def preview_import_quiz_md():
-    uploaded = request.files.get('file')
-    if not uploaded or not uploaded.filename:
-        return jsonify({'success': False, 'errors': ['請上傳 .md 檔案']}), 400
+    try:
+        uploaded = request.files.get('file')
+        if not uploaded or not uploaded.filename:
+            return jsonify({'success': False, 'errors': ['請上傳 .md 檔案']}), 400
 
-    content = uploaded.read().decode('utf-8-sig')
-    parsed = parse_md_quiz(content)
+        content = uploaded.read().decode('utf-8-sig')
+        parsed = parse_md_quiz(content)
+    except Exception as exc:
+        return jsonify({'success': False, 'errors': [f'解析失敗：{exc}']}), 500
     if parsed['errors']:
         return jsonify({'success': False, 'errors': parsed['errors']}), 400
 
@@ -803,20 +806,17 @@ def export_quiz_bank_pdf(quiz_bank_id):
                            questions=questions_data,
                            get_question_type_name=get_question_type_name)
 
-if __name__ == '__main__':
+def initialize_database():
     with app.app_context():
         db.create_all()
         ensure_schema_updates()
-    
+
+initialize_database()
+
+if __name__ == '__main__':
     # 根據環境決定運行方式
     if ENVIRONMENT == 'development':
         app.run(debug=True, host='0.0.0.0', port=5000)
     # 生產環境下，由 Gunicorn 啟動應用，這裡不需要 app.run()
 else:
-    # 只在設置了特定環境變量時初始化數據庫
-    should_init_db = os.environ.get('INIT_DB', 'false').lower() == 'true'
-    if should_init_db:
-        with app.app_context():
-            db.create_all()
-            ensure_schema_updates()
-            print("數據庫初始化完成")
+    pass

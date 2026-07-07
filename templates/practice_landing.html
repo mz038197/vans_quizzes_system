@@ -23,7 +23,7 @@
             <div style="margin-bottom: 1.5rem;">
                 <h3>分類比例</h3>
                 <ul style="line-height: 1.8;">
-                    {% for category, ratio in category_ratios.items() %}
+                    {% for category, ratio in (category_ratios or {}).items() %}
                     <li><strong>{{ category }}</strong>：{{ ratio }}%</li>
                     {% endfor %}
                 </ul>
