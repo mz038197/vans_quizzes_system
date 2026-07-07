@@ -3,36 +3,88 @@
 {% block title %}新增題庫 - 線上題庫系統{% endblock %}
 
 {% block content %}
-<div class="form-container" style="max-width: 600px;">
+<div class="form-container" style="max-width: 760px;">
     <h2 style="text-align: center; margin-bottom: 2rem; color: #333;">📝 建立新題庫</h2>
-    
+
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem;">
+        <button type="button" class="btn btn-secondary tab-btn active" data-tab="manual" onclick="switchTab('manual')">手動建立</button>
+        <button type="button" class="btn btn-secondary tab-btn" data-tab="import" onclick="switchTab('import')">從 MD 匯入</button>
+    </div>
+
     <div id="alert-container"></div>
-    
-    <form id="create-quiz-form">
+
+    <div id="manual-tab">
+        <form id="create-quiz-form">
+            <div class="form-group">
+                <label for="title">題庫標題 *</label>
+                <input type="text" id="title" name="title" required placeholder="例如：程式設計基礎測驗">
+            </div>
+
+            <div class="form-group">
+                <label for="description">題庫描述</label>
+                <textarea id="description" name="description" rows="4" placeholder="描述這個題庫的內容和目的..."></textarea>
+            </div>
+
+            <div style="display: flex; gap: 1rem;">
+                <button type="submit" class="btn" style="flex: 1;">
+                    <span id="create-text">建立題庫</span>
+                    <span id="create-loading" class="loading" style="display: none;"></span>
+                </button>
+                <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-secondary" style="flex: 1; text-align: center; line-height: 1.5;">取消</a>
+            </div>
+        </form>
+    </div>
+
+    <div id="import-tab" style="display: none;">
         <div class="form-group">
-            <label for="title">題庫標題 *</label>
-            <input type="text" id="title" name="title" required placeholder="例如：程式設計基礎測驗">
+            <label for="md-file">上傳 Markdown 檔案 *</label>
+            <input type="file" id="md-file" accept=".md,text/markdown">
         </div>
-        
-        <div class="form-group">
-            <label for="description">題庫描述</label>
-            <textarea id="description" name="description" rows="4" placeholder="描述這個題庫的內容和目的..."></textarea>
-        </div>
-        
-        <div style="display: flex; gap: 1rem;">
-            <button type="submit" class="btn" style="flex: 1;">
-                <span id="create-text">建立題庫</span>
-                <span id="create-loading" class="loading" style="display: none;"></span>
+
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+            <button type="button" class="btn btn-secondary" onclick="downloadTemplate()">下載範本</button>
+            <button type="button" class="btn" onclick="previewImport()">
+                <span id="preview-text">預覽匯入</span>
+                <span id="preview-loading" class="loading" style="display: none;"></span>
             </button>
-            <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-secondary" style="flex: 1; text-align: center; line-height: 1.5;">取消</a>
         </div>
-    </form>
-    
+
+        <div id="import-preview" style="display: none;">
+            <div class="card" style="margin-bottom: 1rem;">
+                <div class="card-header">
+                    <h3 style="margin: 0;">預覽結果</h3>
+                </div>
+                <div class="card-body">
+                    <div id="import-summary"></div>
+                    <div style="overflow-x: auto; margin-top: 1rem;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #f8f9fa;">
+                                    <th style="padding: 0.75rem; text-align: left;">題號</th>
+                                    <th style="padding: 0.75rem; text-align: left;">標題</th>
+                                    <th style="padding: 0.75rem; text-align: left;">題型</th>
+                                    <th style="padding: 0.75rem; text-align: left;">分類</th>
+                                    <th style="padding: 0.75rem; text-align: center;">分數</th>
+                                </tr>
+                            </thead>
+                            <tbody id="import-preview-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" class="btn" id="confirm-import-btn" onclick="confirmImport()" disabled>
+                <span id="confirm-text">確認建立</span>
+                <span id="confirm-loading" class="loading" style="display: none;"></span>
+            </button>
+        </div>
+    </div>
+
     <div style="margin-top: 2rem; padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
         <h4 style="color: #333; margin-bottom: 1rem;">💡 建立題庫後您可以：</h4>
         <ul style="color: #666; line-height: 1.6;">
             <li>新增各種類型的題目（單選、多選、填空、程式碼排序等）</li>
-            <li>設定每題的分數和正確答案</li>
+            <li>設定每次隨機練習的題數與分類比例</li>
             <li>獲得專屬的題庫代碼，分享給學生</li>
             <li>查看學生的作答結果和成績統計</li>
         </ul>
@@ -40,74 +92,156 @@
 </div>
 
 <script>
-document.getElementById('create-quiz-form').addEventListener('submit', async function(e) {
-    e.preventDefault();
-    
-    const title = document.getElementById('title').value.trim();
-    const description = document.getElementById('description').value.trim();
-    
-    // 清除之前的錯誤訊息
+let previewReady = false;
+
+function switchTab(tab) {
+    document.getElementById('manual-tab').style.display = tab === 'manual' ? 'block' : 'none';
+    document.getElementById('import-tab').style.display = tab === 'import' ? 'block' : 'none';
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+    });
     clearAlert();
-    
-    if (!title) {
-        showAlert('請輸入題庫標題', 'error');
-        return;
-    }
-    
-    // 顯示載入狀態
-    setLoading(true);
-    
-    try {
-        const response = await fetch('/create-quiz-bank', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                title: title,
-                description: description
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok) {
-            showAlert(`題庫建立成功！題庫代碼：${data.access_code}`, 'success');
-            setTimeout(() => {
-                window.location.href = `/quiz-bank/${data.quiz_bank_id}`;
-            }, 2000);
-        } else {
-            showAlert(data.error || '建立題庫失敗，請稍後再試', 'error');
-        }
-    } catch (error) {
-        showAlert('網路錯誤，請檢查連線', 'error');
-    } finally {
-        setLoading(false);
-    }
-});
+}
 
 function showAlert(message, type) {
-    const alertContainer = document.getElementById('alert-container');
-    alertContainer.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+    document.getElementById('alert-container').innerHTML = `<div class="alert alert-${type}">${message}</div>`;
 }
 
 function clearAlert() {
     document.getElementById('alert-container').innerHTML = '';
 }
 
-function setLoading(loading) {
-    const text = document.getElementById('create-text');
-    const spinner = document.getElementById('create-loading');
-    const button = document.querySelector('#create-quiz-form button[type="submit"]');
-    
-    if (loading) {
-        text.style.display = 'none';
-        spinner.style.display = 'inline-block';
-        button.disabled = true;
-    } else {
-        text.style.display = 'inline';
-        spinner.style.display = 'none';
-        button.disabled = false;
+function setLoading(prefix, loading) {
+    document.getElementById(`${prefix}-text`).style.display = loading ? 'none' : 'inline';
+    document.getElementById(`${prefix}-loading`).style.display = loading ? 'inline-block' : 'none';
+}
+
+document.getElementById('create-quiz-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const title = document.getElementById('title').value.trim();
+    const description = document.getElementById('description').value.trim();
+    clearAlert();
+
+    if (!title) {
+        showAlert('請輸入題庫標題', 'error');
+        return;
+    }
+
+    setLoading('create', true);
+    try {
+        const response = await fetch('/create-quiz-bank', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, description })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            showAlert(`題庫建立成功！題庫代碼：${data.access_code}`, 'success');
+            setTimeout(() => {
+                window.location.href = `/quiz-bank/${data.quiz_bank_id}`;
+            }, 1200);
+        } else {
+            showAlert(data.error || '建立題庫失敗，請稍後再試', 'error');
+        }
+    } catch (error) {
+        showAlert('網路錯誤，請檢查連線', 'error');
+    } finally {
+        setLoading('create', false);
+    }
+});
+
+function downloadTemplate() {
+    window.location.href = '/api/import-quiz-md/template';
+}
+
+async function previewImport() {
+    const fileInput = document.getElementById('md-file');
+    if (!fileInput.files.length) {
+        showAlert('請先選擇 .md 檔案', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    clearAlert();
+    setLoading('preview', true);
+    previewReady = false;
+    document.getElementById('confirm-import-btn').disabled = true;
+
+    try {
+        const response = await fetch('/api/import-quiz-md/preview', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            const errors = (data.errors || [data.error || '預覽失敗']).join('<br>');
+            showAlert(errors, 'error');
+            document.getElementById('import-preview').style.display = 'none';
+            return;
+        }
+
+        const bank = data.bank || {};
+        document.getElementById('import-summary').innerHTML = `
+            <p><strong>題庫標題：</strong>${bank.title || ''}</p>
+            <p><strong>模式：</strong>${bank.quiz_mode === 'practice' ? '隨機練習' : '固定測驗'}</p>
+            <p><strong>題目數量：</strong>${data.question_count}</p>
+        `;
+
+        const tbody = document.getElementById('import-preview-body');
+        tbody.innerHTML = data.questions.map(item => `
+            <tr>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.index}</td>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.title}</td>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.question_type}</td>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.category || '-'}</td>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee; text-align: center;">${item.points}</td>
+            </tr>
+        `).join('');
+
+        document.getElementById('import-preview').style.display = 'block';
+        document.getElementById('confirm-import-btn').disabled = false;
+        previewReady = true;
+        showAlert('預覽成功，請確認後建立題庫', 'success');
+    } catch (error) {
+        showAlert('網路錯誤，請檢查連線', 'error');
+    } finally {
+        setLoading('preview', false);
+    }
+}
+
+async function confirmImport() {
+    if (!previewReady) return;
+
+    const fileInput = document.getElementById('md-file');
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    setLoading('confirm', true);
+    try {
+        const response = await fetch('/api/import-quiz-md/confirm', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            const errors = (data.errors || [data.error || '匯入失敗']).join('<br>');
+            showAlert(errors, 'error');
+            return;
+        }
+
+        showAlert(`題庫匯入成功！題庫代碼：${data.access_code}`, 'success');
+        setTimeout(() => {
+            window.location.href = `/quiz-bank/${data.quiz_bank_id}`;
+        }, 1200);
+    } catch (error) {
+        showAlert('網路錯誤，請檢查連線', 'error');
+    } finally {
+        setLoading('confirm', false);
     }
 }
 </script>

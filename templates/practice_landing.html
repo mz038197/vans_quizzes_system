@@ -1,0 +1,107 @@
+{% extends "quiz_base.html" %}
+
+{% block title %}{{ quiz_bank.title }} - 隨機練習{% endblock %}
+
+{% block content %}
+<div class="form-container" style="max-width: 720px;">
+    <div class="card">
+        <div class="card-header">
+            <h1 style="margin: 0;">🎯 {{ quiz_bank.title }}</h1>
+        </div>
+        <div class="card-body">
+            {% if quiz_bank.description %}
+            <p>{{ quiz_bank.description }}</p>
+            {% endif %}
+
+            <div style="background: #f8f9fa; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                <h3 style="margin-top: 0;">練習模式說明</h3>
+                <p style="margin-bottom: 0.5rem;">每次練習將隨機抽出 <strong>{{ quiz_bank.session_question_count }}</strong> 題。</p>
+                <p style="margin-bottom: 0; color: #666;">題目可能重複出現，適合反覆刷題。</p>
+            </div>
+
+            {% if category_ratios %}
+            <div style="margin-bottom: 1.5rem;">
+                <h3>分類比例</h3>
+                <ul style="line-height: 1.8;">
+                    {% for category, ratio in category_ratios.items() %}
+                    <li><strong>{{ category }}</strong>：{{ ratio }}%</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            <div id="alert-container"></div>
+
+            <h3 style="margin-bottom: 1rem;">請先填寫您的資料</h3>
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                <div class="form-group" style="flex: 1; min-width: 200px;">
+                    <label for="student-name">姓名 *</label>
+                    <input type="text" id="student-name" required placeholder="請輸入您的姓名">
+                </div>
+                <div class="form-group" style="flex: 1; min-width: 200px;">
+                    <label for="student-email">電子郵件（可選）</label>
+                    <input type="email" id="student-email" placeholder="您的電子郵件">
+                </div>
+            </div>
+
+            <button onclick="startPractice()" class="btn" id="start-btn">
+                <span id="start-text">開始練習</span>
+                <span id="start-loading" class="loading" style="display: none;"></span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+async function startPractice() {
+    const studentName = document.getElementById('student-name').value.trim();
+    if (!studentName) {
+        showAlert('請輸入您的姓名', 'error');
+        return;
+    }
+
+    setLoading(true);
+    try {
+        const response = await fetch('/api/quiz/{{ quiz_bank.access_code }}/draw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                student_name: studentName,
+                student_email: document.getElementById('student-email').value.trim()
+            })
+        });
+        const result = await response.json();
+
+        if (!response.ok) {
+            showAlert(result.error || '抽題失敗', 'error');
+            return;
+        }
+
+        sessionStorage.setItem('practice_student_name', studentName);
+        sessionStorage.setItem('practice_student_email', document.getElementById('student-email').value.trim());
+        if (result.warnings && result.warnings.length) {
+            sessionStorage.setItem('practice_warnings', JSON.stringify(result.warnings));
+        } else {
+            sessionStorage.removeItem('practice_warnings');
+        }
+
+        window.location.href = result.redirect;
+    } catch (error) {
+        showAlert('網路錯誤，請稍後再試', 'error');
+    } finally {
+        setLoading(false);
+    }
+}
+
+function showAlert(message, type) {
+    document.getElementById('alert-container').innerHTML =
+        `<div class="alert alert-${type}">${message}</div>`;
+}
+
+function setLoading(loading) {
+    document.getElementById('start-text').style.display = loading ? 'none' : 'inline';
+    document.getElementById('start-loading').style.display = loading ? 'inline-block' : 'none';
+    document.getElementById('start-btn').disabled = loading;
+}
+</script>
+{% endblock %}

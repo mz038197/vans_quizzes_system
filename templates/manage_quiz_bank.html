@@ -16,6 +16,47 @@
             <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-secondary">← 返回</a>
         </div>
     </div>
+
+    <div class="card" style="margin-bottom: 2rem;">
+        <div class="card-header">
+            <h3 style="margin: 0;">⚙️ 題庫模式設定</h3>
+        </div>
+        <div class="card-body">
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                <div class="form-group" style="min-width: 180px;">
+                    <label for="quiz-mode">題庫模式</label>
+                    <select id="quiz-mode">
+                        <option value="fixed" {% if quiz_bank.quiz_mode != 'practice' %}selected{% endif %}>固定測驗</option>
+                        <option value="practice" {% if quiz_bank.quiz_mode == 'practice' %}selected{% endif %}>隨機練習</option>
+                    </select>
+                </div>
+                <div class="form-group" style="min-width: 180px;">
+                    <label for="session-question-count">每次出題數</label>
+                    <input type="number" id="session-question-count" min="1" value="{{ quiz_bank.session_question_count or 10 }}">
+                </div>
+            </div>
+
+            <div id="practice-config-section" style="{% if quiz_bank.quiz_mode != 'practice' %}display: none;{% endif %}">
+                <h4 style="margin-bottom: 1rem;">分類比例（加總須為 100%）</h4>
+                <div id="ratio-rows"></div>
+                <button type="button" class="btn btn-secondary" onclick="addRatioRow()" style="margin-top: 0.5rem;">➕ 新增分類</button>
+
+                {% if category_stats %}
+                <div style="margin-top: 1.5rem;">
+                    <h4>目前題數統計</h4>
+                    <ul style="line-height: 1.8;">
+                        {% for category, count in category_stats.items() %}
+                        <li><strong>{{ category }}</strong>：{{ count }} 題</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </div>
+
+            <button type="button" class="btn" onclick="savePracticeConfig()" style="margin-top: 1rem;">儲存模式設定</button>
+            <div id="practice-config-alert" style="margin-top: 1rem;"></div>
+        </div>
+    </div>
     
     <div id="questions-container">
         {% if questions %}
@@ -25,6 +66,9 @@
                     <div>
                         <strong>{{ question.title }}</strong>
                         <span class="question-type-badge">{{ get_question_type_name(question.question_type) }}</span>
+                        {% if question.category %}
+                        <span style="color: #667eea; margin-left: 0.5rem;">{{ question.category }}</span>
+                        {% endif %}
                         <span style="color: #666; margin-left: 1rem;">{{ question.points }} 分</span>
                     </div>
                     <div style="display: flex; gap: 0.5rem;">
@@ -173,6 +217,11 @@
                     <label for="question-points">分數</label>
                     <input type="number" id="question-points" value="1" min="1">
                 </div>
+
+                <div class="form-group">
+                    <label for="question-category">分類</label>
+                    <input type="text" id="question-category" placeholder="例如：AI基礎理論">
+                </div>
                 
                 <!-- 動態內容區域 -->
                 <div id="question-specific-content"></div>
@@ -188,6 +237,7 @@
 
 <script>
 let currentQuestionId = null;
+const initialCategoryRatios = {{ category_ratios | tojson | safe }};
 
 function showAddQuestionModal() {
     currentQuestionId = null;
@@ -973,6 +1023,7 @@ function collectFormData() {
         question_text: text,
         question_type: type,
         points,
+        category: document.getElementById('question-category').value.trim(),
         question_data: questionData
     };
 }
@@ -1127,6 +1178,7 @@ async function editQuestion(questionId) {
         document.getElementById('question-text').value = question.question_text;
         document.getElementById('question-type').value = question.question_type;
         document.getElementById('question-points').value = question.points;
+        document.getElementById('question-category').value = question.category || '';
         
         // 觸發類型變更事件以生成對應的表單
         handleQuestionTypeChange();
@@ -1381,8 +1433,76 @@ async function deleteQuestion(questionId) {
     }
 }
 
+function togglePracticeConfigSection() {
+    const isPractice = document.getElementById('quiz-mode').value === 'practice';
+    document.getElementById('practice-config-section').style.display = isPractice ? 'block' : 'none';
+}
+
+function addRatioRow(category = '', ratio = '') {
+    const container = document.getElementById('ratio-rows');
+    const row = document.createElement('div');
+    row.className = 'ratio-row';
+    row.style.cssText = 'display:flex; gap:0.5rem; margin-bottom:0.5rem; align-items:center;';
+    row.innerHTML = `
+        <input type="text" class="ratio-category" placeholder="分類名稱" value="${category}" style="flex:2;">
+        <input type="number" class="ratio-value" placeholder="比例 %" min="1" max="100" value="${ratio}" style="flex:1;">
+        <button type="button" class="btn btn-danger" style="padding:6px 12px;" onclick="this.parentElement.remove()">刪除</button>
+    `;
+    container.appendChild(row);
+}
+
+function collectCategoryRatios() {
+    const ratios = {};
+    document.querySelectorAll('.ratio-row').forEach(row => {
+        const category = row.querySelector('.ratio-category').value.trim();
+        const ratio = parseFloat(row.querySelector('.ratio-value').value);
+        if (category) {
+            ratios[category] = ratio;
+        }
+    });
+    return ratios;
+}
+
+async function savePracticeConfig() {
+    const payload = {
+        quiz_mode: document.getElementById('quiz-mode').value,
+        session_question_count: parseInt(document.getElementById('session-question-count').value, 10),
+        category_ratios: collectCategoryRatios(),
+    };
+
+    try {
+        const response = await fetch('/api/quiz-bank/{{ quiz_bank.id }}/practice-config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        const alertBox = document.getElementById('practice-config-alert');
+
+        if (response.ok) {
+            alertBox.innerHTML = '<div class="alert alert-success">模式設定已儲存</div>';
+            setTimeout(() => location.reload(), 800);
+        } else {
+            alertBox.innerHTML = `<div class="alert alert-error">${result.error || '儲存失敗'}</div>`;
+        }
+    } catch (error) {
+        document.getElementById('practice-config-alert').innerHTML =
+            '<div class="alert alert-error">網路錯誤，請稍後再試</div>';
+    }
+}
+
 // 重新渲染 MathJax，當頁面載入時
 document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('quiz-mode').addEventListener('change', togglePracticeConfigSection);
+
+    const ratios = initialCategoryRatios || {};
+    const entries = Object.entries(ratios);
+    if (entries.length) {
+        entries.forEach(([category, ratio]) => addRatioRow(category, ratio));
+    } else {
+        addRatioRow();
+    }
+
     if (typeof MathJax !== 'undefined') {
         MathJax.typesetPromise().catch((err) => console.log('MathJax typeset error:', err));
     }

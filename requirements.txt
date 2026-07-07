@@ -11,4 +11,4 @@ gunicorn==21.2.0
 psycopg2-binary==2.9.9; sys_platform != 'win32'
 # 在Windows上可選安裝
 # psycopg2==2.9.9; sys_platform == 'win32'
-# PDF生成改為前端實現（html2pdf.js + MathJax）
+PyYAML==6.0.2

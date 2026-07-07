@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -7,6 +7,13 @@ import json
 from datetime import datetime
 import os
 import sys
+from md_quiz_parser import parse_md_quiz
+from practice_utils import (
+    draw_practice_questions,
+    get_category_ratios,
+    serialize_question,
+    validate_category_ratios,
+)
 
 # 環境設置
 ENVIRONMENT = os.environ.get('FLASK_ENV', 'development')
@@ -70,6 +77,9 @@ class QuizBank(db.Model):
     description = db.Column(db.Text)
     access_code = db.Column(db.String(10), unique=True, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
+    quiz_mode = db.Column(db.String(20), default='fixed')
+    session_question_count = db.Column(db.Integer, default=10)
+    category_ratios = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     
@@ -85,6 +95,7 @@ class Question(db.Model):
     question_data = db.Column(db.Text)  # JSON格式儲存選項、正確答案等
     points = db.Column(db.Integer, default=1)
     order_index = db.Column(db.Integer, default=0)
+    category = db.Column(db.String(100))
     quiz_bank_id = db.Column(db.Integer, db.ForeignKey('quiz_bank.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -95,6 +106,8 @@ class Submission(db.Model):
     answers = db.Column(db.Text)  # JSON格式儲存答案
     score = db.Column(db.Float, default=0)
     total_points = db.Column(db.Integer, default=0)
+    is_practice = db.Column(db.Boolean, default=False)
+    session_question_ids = db.Column(db.Text)
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     quiz_bank_id = db.Column(db.Integer, db.ForeignKey('quiz_bank.id'), nullable=False)
 
@@ -110,6 +123,156 @@ def generate_access_code():
         code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
         if not QuizBank.query.filter_by(access_code=code).first():
             return code
+
+def ensure_schema_updates():
+    """為既有資料庫補上新欄位（SQLite / PostgreSQL 簡易 migration）。"""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    table_names = inspector.get_table_names()
+
+    def column_names(table_name):
+        return {column['name'] for column in inspector.get_columns(table_name)}
+
+    statements = []
+    if 'quiz_bank' in table_names:
+        cols = column_names('quiz_bank')
+        if 'quiz_mode' not in cols:
+            statements.append("ALTER TABLE quiz_bank ADD COLUMN quiz_mode VARCHAR(20) DEFAULT 'fixed'")
+        if 'session_question_count' not in cols:
+            statements.append('ALTER TABLE quiz_bank ADD COLUMN session_question_count INTEGER DEFAULT 10')
+        if 'category_ratios' not in cols:
+            statements.append('ALTER TABLE quiz_bank ADD COLUMN category_ratios TEXT')
+
+    if 'question' in table_names:
+        cols = column_names('question')
+        if 'category' not in cols:
+            statements.append('ALTER TABLE question ADD COLUMN category VARCHAR(100)')
+
+    if 'submission' in table_names:
+        cols = column_names('submission')
+        bool_default = 'FALSE' if db.engine.dialect.name == 'postgresql' else '0'
+        if 'is_practice' not in cols:
+            statements.append(f'ALTER TABLE submission ADD COLUMN is_practice BOOLEAN DEFAULT {bool_default}')
+        if 'session_question_ids' not in cols:
+            statements.append('ALTER TABLE submission ADD COLUMN session_question_ids TEXT')
+
+    for statement in statements:
+        db.session.execute(text(statement))
+    if statements:
+        db.session.commit()
+
+def build_questions_data(questions):
+    return [serialize_question(q) for q in questions]
+
+def get_practice_session_key(access_code):
+    return f'practice_session_{access_code}'
+
+def create_quiz_bank_from_data(teacher_id, bank_data):
+    quiz_bank = QuizBank(
+        title=bank_data['title'],
+        description=bank_data.get('description', ''),
+        access_code=generate_access_code(),
+        teacher_id=teacher_id,
+        quiz_mode=bank_data.get('quiz_mode', 'fixed'),
+        session_question_count=bank_data.get('session_question_count') or 10,
+        category_ratios=json.dumps(bank_data.get('category_ratios') or {}) if bank_data.get('category_ratios') else None,
+    )
+    db.session.add(quiz_bank)
+    db.session.flush()
+    return quiz_bank
+
+def create_questions_for_bank(quiz_bank_id, questions_data):
+    for index, item in enumerate(questions_data, start=1):
+        question = Question(
+            title=item['title'],
+            question_text=item['question_text'],
+            question_type=item['question_type'],
+            question_data=json.dumps(item.get('question_data', {})),
+            points=item.get('points', 1),
+            order_index=index,
+            category=item.get('category'),
+            quiz_bank_id=quiz_bank_id,
+        )
+        db.session.add(question)
+
+def grade_question(question, user_answer):
+    question_data = json.loads(question.question_data) if question.question_data else {}
+    points = question.points
+
+    if question.question_type in ['single_choice', 'dropdown']:
+        correct_answer = question_data.get('correct_answer')
+        is_correct = False
+        if user_answer == correct_answer:
+            is_correct = True
+        elif str(user_answer) == str(correct_answer):
+            is_correct = True
+        elif str(user_answer).strip() == str(correct_answer).strip():
+            is_correct = True
+        else:
+            import re
+            user_normalized = str(user_answer).replace('\r\n', '\n').replace('\r', '\n').strip() if user_answer else ''
+            correct_normalized = str(correct_answer).replace('\r\n', '\n').replace('\r', '\n').strip() if correct_answer else ''
+            if user_normalized == correct_normalized:
+                is_correct = True
+            elif re.sub(r'\s+', '', str(user_answer)) == re.sub(r'\s+', '', str(correct_answer)):
+                is_correct = True
+        return points if is_correct else 0
+
+    if question.question_type == 'dropdown_fillblank':
+        blanks_data = question_data.get('blanks', [])
+        user_answers = user_answer if isinstance(user_answer, dict) else {}
+        for i, blank in enumerate(blanks_data):
+            blank_id = f'blank_{i}'
+            if user_answers.get(blank_id) != blank.get('correct_answer'):
+                return 0
+        return points if len(user_answers) == len(blanks_data) else 0
+
+    if question.question_type == 'multiple_choice':
+        correct_answers = set(question_data.get('correct_answers', []))
+        user_answers = set(user_answer if isinstance(user_answer, list) else [])
+        return points if user_answers == correct_answers else 0
+
+    if question.question_type == 'fill_blank':
+        correct_answer = question_data.get('correct_answer', '').lower().strip()
+        user_answer_clean = (user_answer or '').lower().strip()
+        return points if user_answer_clean == correct_answer else 0
+
+    if question.question_type == 'parsons':
+        if 'slot_answers' in question_data and isinstance(user_answer, dict) and 'slot_answers' in user_answer:
+            correct_slot_answers = question_data.get('slot_answers', {})
+            user_slot_answers = user_answer.get('slot_answers', {})
+            fixed_blocks = question_data.get('fixed_blocks', {})
+            correct_slot_answers_filtered = {
+                slot: label for slot, label in correct_slot_answers.items()
+                if slot not in fixed_blocks
+            }
+            for slot_num, correct_label in correct_slot_answers_filtered.items():
+                if user_slot_answers.get(str(slot_num)) != correct_label:
+                    return 0
+            return points if len(user_slot_answers) == len(correct_slot_answers_filtered) else 0
+
+        if 'correct_order' in question_data:
+            correct_order = question_data.get('correct_order', [])
+            user_order = []
+            if isinstance(user_answer, dict) and 'order' in user_answer:
+                user_order = user_answer['order'] if isinstance(user_answer['order'], list) else []
+            elif isinstance(user_answer, dict) and 'slot_answers' in user_answer:
+                slot_answers = user_answer['slot_answers']
+                sorted_slots = sorted([int(k) for k in slot_answers.keys()])
+                user_order = [slot_answers[str(slot)] for slot in sorted_slots]
+            elif isinstance(user_answer, dict):
+                for i in range(1, len(correct_order) + 1):
+                    if str(i) in user_answer:
+                        user_order.append(user_answer[str(i)])
+                    elif i in user_answer:
+                        user_order.append(user_answer[i])
+            elif isinstance(user_answer, list):
+                user_order = user_answer
+            if len(user_order) == len(correct_order) and all(a == b for a, b in zip(user_order, correct_order)):
+                return points
+
+    return 0
 
 # 路由定義
 @app.route('/')
@@ -202,30 +365,61 @@ def manage_quiz_bank(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
     if quiz_bank.teacher_id != current_user.id:
         return redirect(url_for('teacher_dashboard'))
-    
+
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
-    return render_template('manage_quiz_bank.html', quiz_bank=quiz_bank, questions=questions)
+    category_stats = {}
+    for question in questions:
+        category = (question.category or '未分類').strip()
+        category_stats[category] = category_stats.get(category, 0) + 1
+
+    return render_template(
+        'manage_quiz_bank.html',
+        quiz_bank=quiz_bank,
+        questions=questions,
+        category_stats=category_stats,
+        category_ratios=get_category_ratios(quiz_bank),
+    )
 
 @app.route('/quiz/<access_code>')
 def take_quiz(access_code):
     quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
+
+    if quiz_bank.quiz_mode == 'practice':
+        return render_template(
+            'practice_landing.html',
+            quiz_bank=quiz_bank,
+            category_ratios=get_category_ratios(quiz_bank),
+        )
+
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
-    
-    # 準備題目資料，解析JSON格式的question_data
-    questions_data = []
-    for q in questions:
-        question_data = {
-            'id': q.id,
-            'title': q.title,
-            'question_text': q.question_text,
-            'question_type': q.question_type,
-            'points': q.points
-        }
-        if q.question_data:
-            question_data.update(json.loads(q.question_data))
-        questions_data.append(question_data)
-    
-    return render_template('take_quiz.html', quiz_bank=quiz_bank, questions=questions_data)
+    questions_data = build_questions_data(questions)
+    return render_template('take_quiz.html', quiz_bank=quiz_bank, questions=questions_data, is_practice=False)
+
+@app.route('/quiz/<access_code>/play')
+def play_quiz(access_code):
+    quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
+    session_key = get_practice_session_key(access_code)
+    session_data = session.get(session_key)
+
+    if quiz_bank.quiz_mode == 'practice':
+        if not session_data or not session_data.get('question_ids'):
+            return redirect(url_for('take_quiz', access_code=access_code))
+
+        questions = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
+        order_map = {qid: index for index, qid in enumerate(session_data['question_ids'])}
+        questions.sort(key=lambda q: order_map.get(q.id, q.id))
+        questions_data = build_questions_data(questions)
+        return render_template(
+            'take_quiz.html',
+            quiz_bank=quiz_bank,
+            questions=questions_data,
+            is_practice=True,
+            draw_warnings=session_data.get('warnings', []),
+        )
+
+    questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
+    questions_data = build_questions_data(questions)
+    return render_template('take_quiz.html', quiz_bank=quiz_bank, questions=questions_data, is_practice=False)
 
 # API 路由
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/toggle', methods=['POST'])
@@ -272,7 +466,8 @@ def manage_questions(quiz_bank_id):
                 'question_text': q.question_text,
                 'question_type': q.question_type,
                 'points': q.points,
-                'order_index': q.order_index
+                'order_index': q.order_index,
+                'category': q.category or '',
             }
             if q.question_data:
                 question_data['question_data'] = json.loads(q.question_data)
@@ -292,6 +487,7 @@ def manage_questions(quiz_bank_id):
             question_data=json.dumps(data.get('question_data', {})),
             points=data.get('points', 1),
             order_index=max_order + 1,
+            category=data.get('category'),
             quiz_bank_id=quiz_bank_id
         )
         
@@ -316,6 +512,7 @@ def manage_question(question_id):
         question.question_type = data.get('question_type', question.question_type)
         question.question_data = json.dumps(data.get('question_data', {}))
         question.points = data.get('points', question.points)
+        question.category = data.get('category', question.category)
         
         db.session.commit()
         return jsonify({'message': '題目更新成功'})
@@ -325,322 +522,197 @@ def manage_question(question_id):
         db.session.commit()
         return jsonify({'message': '題目刪除成功'})
 
+@app.route('/api/quiz-bank/<int:quiz_bank_id>/practice-config', methods=['PUT'])
+@login_required
+def update_practice_config(quiz_bank_id):
+    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
+    if quiz_bank.teacher_id != current_user.id:
+        return jsonify({'error': '無權限操作'}), 403
+
+    data = request.get_json() or {}
+    quiz_mode = data.get('quiz_mode', quiz_bank.quiz_mode or 'fixed')
+    session_question_count = int(data.get('session_question_count', quiz_bank.session_question_count or 10))
+    category_ratios = data.get('category_ratios', get_category_ratios(quiz_bank))
+
+    if quiz_mode not in ('fixed', 'practice'):
+        return jsonify({'error': 'quiz_mode 無效'}), 400
+    if session_question_count <= 0:
+        return jsonify({'error': '每次出題數必須大於 0'}), 400
+
+    if quiz_mode == 'practice':
+        errors = validate_category_ratios(category_ratios)
+        if errors:
+            return jsonify({'error': errors[0], 'errors': errors}), 400
+
+    quiz_bank.quiz_mode = quiz_mode
+    quiz_bank.session_question_count = session_question_count
+    quiz_bank.category_ratios = json.dumps(category_ratios) if quiz_mode == 'practice' else None
+    db.session.commit()
+
+    return jsonify({
+        'message': '練習設定已更新',
+        'quiz_mode': quiz_bank.quiz_mode,
+        'session_question_count': quiz_bank.session_question_count,
+        'category_ratios': get_category_ratios(quiz_bank),
+    })
+
+@app.route('/api/quiz/<access_code>/draw', methods=['POST'])
+def draw_practice_quiz(access_code):
+    quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
+    if quiz_bank.quiz_mode != 'practice':
+        return jsonify({'error': '此題庫不是練習模式'}), 400
+
+    all_questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).all()
+    selected, warnings = draw_practice_questions(quiz_bank, all_questions)
+    if not selected:
+        return jsonify({'error': warnings[0] if warnings else '無法抽題', 'warnings': warnings}), 400
+
+    question_ids = [q.id for q in selected]
+    session[get_practice_session_key(access_code)] = {
+        'question_ids': question_ids,
+        'warnings': warnings,
+    }
+
+    return jsonify({
+        'message': '抽題成功',
+        'question_count': len(question_ids),
+        'warnings': warnings,
+        'redirect': url_for('play_quiz', access_code=access_code),
+    })
+
+@app.route('/api/import-quiz-md/preview', methods=['POST'])
+@login_required
+def preview_import_quiz_md():
+    uploaded = request.files.get('file')
+    if not uploaded or not uploaded.filename:
+        return jsonify({'success': False, 'errors': ['請上傳 .md 檔案']}), 400
+
+    content = uploaded.read().decode('utf-8-sig')
+    parsed = parse_md_quiz(content)
+    if parsed['errors']:
+        return jsonify({'success': False, 'errors': parsed['errors']}), 400
+
+    preview_questions = []
+    for index, question in enumerate(parsed['questions'], start=1):
+        preview_questions.append({
+            'index': index,
+            'title': question['title'],
+            'question_type': question['question_type'],
+            'category': question.get('category', ''),
+            'points': question.get('points', 1),
+        })
+
+    return jsonify({
+        'success': True,
+        'bank': parsed['bank'],
+        'questions': preview_questions,
+        'question_count': len(preview_questions),
+    })
+
+@app.route('/api/import-quiz-md/confirm', methods=['POST'])
+@login_required
+def confirm_import_quiz_md():
+    uploaded = request.files.get('file')
+    if not uploaded or not uploaded.filename:
+        return jsonify({'success': False, 'errors': ['請上傳 .md 檔案']}), 400
+
+    content = uploaded.read().decode('utf-8-sig')
+    parsed = parse_md_quiz(content)
+    if parsed['errors']:
+        return jsonify({'success': False, 'errors': parsed['errors']}), 400
+
+    try:
+        quiz_bank = create_quiz_bank_from_data(current_user.id, parsed['bank'])
+        create_questions_for_bank(quiz_bank.id, parsed['questions'])
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({'success': False, 'errors': ['匯入失敗，請稍後再試']}), 500
+
+    return jsonify({
+        'success': True,
+        'message': '題庫匯入成功',
+        'quiz_bank_id': quiz_bank.id,
+        'access_code': quiz_bank.access_code,
+        'question_count': len(parsed['questions']),
+    })
+
+@app.route('/api/import-quiz-md/template')
+@login_required
+def download_import_template():
+    return send_from_directory('static/templates', 'quiz_template.md', as_attachment=True)
+
 @app.route('/api/quiz/<access_code>/submit', methods=['POST'])
 def submit_quiz(access_code):
     quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
     data = request.get_json()
-    
+
     student_name = data.get('student_name')
     student_email = data.get('student_email', '')
     answers = data.get('answers', {})
-    
+
     if not student_name:
         return jsonify({'error': '請輸入姓名'}), 400
-    
-    # 計算分數
-    questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).all()
+
+    is_practice = quiz_bank.quiz_mode == 'practice'
+    session_key = get_practice_session_key(access_code)
+    session_data = session.get(session_key) if is_practice else None
+
+    if is_practice:
+        if not session_data or not session_data.get('question_ids'):
+            return jsonify({'error': '練習場次已失效，請重新開始練習'}), 400
+        questions = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
+        order_map = {qid: index for index, qid in enumerate(session_data['question_ids'])}
+        questions.sort(key=lambda q: order_map.get(q.id, q.id))
+    else:
+        questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
+
     total_points = sum(q.points for q in questions)
     score = 0
-    
     for question in questions:
-        question_data = json.loads(question.question_data) if question.question_data else {}
         user_answer = answers.get(str(question.id))
-        
-        if question.question_type in ['single_choice', 'dropdown']:
-            correct_answer = question_data.get('correct_answer')
-            
-            # 調試信息
-            # 注意：LaTeX 語法會保留在原始文本中進行比對，確保數學公式的準確性
-            print(f"Question {question.id} ({question.question_type}): {question.title}")
-            print(f"  User answer: {repr(user_answer)} (type: {type(user_answer)})")
-            print(f"  Correct answer: {repr(correct_answer)} (type: {type(correct_answer)})")
-            
-            # 特殊處理：檢查是否是JSON轉義問題
-            if user_answer and correct_answer:
-                print(f"  User answer length: {len(str(user_answer))}")
-                print(f"  Correct answer length: {len(str(correct_answer))}")
-                print(f"  User answer first 100 chars: {repr(str(user_answer)[:100])}")
-                print(f"  Correct answer first 100 chars: {repr(str(correct_answer)[:100])}")
-            
-            # 多行文本比較策略
-            is_correct = False
-            comparison_method = ""
-            
-            # 1. 直接比較
-            if user_answer == correct_answer:
-                is_correct = True
-                comparison_method = "exact_match"
-            
-            # 2. 字符串化後比較
-            elif str(user_answer) == str(correct_answer):
-                is_correct = True
-                comparison_method = "string_match"
-            
-            # 3. 標準化比較（去除前後空白）
-            elif str(user_answer).strip() == str(correct_answer).strip():
-                is_correct = True
-                comparison_method = "normalized_match"
-            
-            # 4. 換行符標準化比較
-            else:
-                import re
-                # 統一換行符為 \n
-                user_normalized = str(user_answer).replace('\r\n', '\n').replace('\r', '\n').strip() if user_answer else ""
-                correct_normalized = str(correct_answer).replace('\r\n', '\n').replace('\r', '\n').strip() if correct_answer else ""
-                
-                if user_normalized == correct_normalized:
-                    is_correct = True
-                    comparison_method = "newline_normalized_match"
-                
-                # 5. 深度清理比較（保持行結構但標準化空白）
-                elif not is_correct:
-                    # 分行處理，每行內部標準化空白，但保持行結構
-                    def normalize_multiline_code(text):
-                        if not text:
-                            return ""
-                        print(f"    Normalizing: {repr(text[:100])}")
-                        # 統一換行符
-                        text = text.replace('\r\n', '\n').replace('\r', '\n')
-                        lines = text.split('\n')
-                        normalized_lines = []
-                        for i, line in enumerate(lines):
-                            # 保持行首縮排，但標準化其他空白
-                            stripped = line.rstrip()  # 去除行尾空白
-                            if stripped:
-                                # 計算行首空白
-                                leading_spaces = len(line) - len(line.lstrip())
-                                # 將制表符轉換為4個空格
-                                content = line.lstrip().replace('\t', '    ')
-                                # 標準化內容中的多餘空白
-                                content = re.sub(r' +', ' ', content)
-                                normalized_lines.append(' ' * leading_spaces + content)
-                                print(f"    Line {i}: {repr(line)} -> {repr(' ' * leading_spaces + content)}")
-                            else:
-                                normalized_lines.append('')
-                                print(f"    Line {i}: empty")
-                        result = '\n'.join(normalized_lines).strip()
-                        print(f"    Result: {repr(result[:100])}")
-                        return result
-                    
-                    user_multiline_clean = normalize_multiline_code(user_answer)
-                    correct_multiline_clean = normalize_multiline_code(correct_answer)
-                    
-                    if user_multiline_clean == correct_multiline_clean:
-                        is_correct = True
-                        comparison_method = "multiline_normalized_match"
-                    
-                    # 6. 最後的降級比較（完全忽略空白結構）
-                    elif not is_correct:
-                        # 移除所有空白字符後比較
-                        user_no_whitespace = re.sub(r'\s+', '', str(user_answer)) if user_answer else ""
-                        correct_no_whitespace = re.sub(r'\s+', '', str(correct_answer)) if correct_answer else ""
-                        
-                        print(f"  Whitespace removed comparison:")
-                        print(f"    User: {repr(user_no_whitespace[:50])}")
-                        print(f"    Correct: {repr(correct_no_whitespace[:50])}")
-                        
-                        if user_no_whitespace == correct_no_whitespace:
-                            is_correct = True
-                            comparison_method = "whitespace_ignored_match"
-                        
-                        # 7. 終極比較：處理可能的JSON轉義問題
-                        elif not is_correct:
-                            try:
-                                # 嘗試解碼可能的JSON轉義
-                                import json as json_module
-                                user_decoded = user_answer
-                                correct_decoded = correct_answer
-                                
-                                # 如果看起來像JSON字符串，嘗試解碼
-                                if isinstance(user_answer, str) and (user_answer.startswith('"') or '\\n' in user_answer):
-                                    try:
-                                        user_decoded = json_module.loads('"' + user_answer.replace('"', '\\"') + '"')
-                                    except:
-                                        pass
-                                
-                                if isinstance(correct_answer, str) and (correct_answer.startswith('"') or '\\n' in correct_answer):
-                                    try:
-                                        correct_decoded = json_module.loads('"' + correct_answer.replace('"', '\\"') + '"')
-                                    except:
-                                        pass
-                                
-                                print(f"  JSON decode attempt:")
-                                print(f"    User decoded: {repr(user_decoded[:50])}")
-                                print(f"    Correct decoded: {repr(correct_decoded[:50])}")
-                                
-                                if user_decoded == correct_decoded:
-                                    is_correct = True
-                                    comparison_method = "json_decoded_match"
-                                
-                            except Exception as e:
-                                print(f"  JSON decode error: {e}")
-            
-            print(f"  Match result: {is_correct} (method: {comparison_method})")
-            
-            if is_correct:
-                score += question.points
-                print(f"  ✓ Correct! Points added: {question.points}")
-            else:
-                print(f"  ✗ Incorrect!")
-                # 詳細錯誤分析
-                if user_answer and correct_answer:
-                    print(f"  User length: {len(str(user_answer))}, Correct length: {len(str(correct_answer))}")
-                    
-                    # 顯示前50個字符的差異
-                    user_str = str(user_answer)
-                    correct_str = str(correct_answer)
-                    max_check = min(50, max(len(user_str), len(correct_str)))
-                    
-                    for i in range(max_check):
-                        u_char = user_str[i] if i < len(user_str) else '(end)'
-                        c_char = correct_str[i] if i < len(correct_str) else '(end)'
-                        
-                        if u_char != c_char:
-                            print(f"  First diff at pos {i}: user='{u_char}' (ord {ord(u_char) if u_char != '(end)' else 'N/A'}), correct='{c_char}' (ord {ord(c_char) if c_char != '(end)' else 'N/A'})")
-                            break
-                
-        elif question.question_type == 'dropdown_fillblank':
-            # 下拉選單填空題評分
-            blanks_data = question_data.get('blanks', [])
-            user_answers = user_answer if isinstance(user_answer, dict) else {}
-            
-            # 檢查所有空格是否都回答正確
-            all_correct = True
-            for i, blank in enumerate(blanks_data):
-                blank_id = f"blank_{i}"
-                correct_answer = blank.get('correct_answer')
-                user_blank_answer = user_answers.get(blank_id)
-                if user_blank_answer != correct_answer:
-                    all_correct = False
-                    break
-            
-            if all_correct and len(user_answers) == len(blanks_data):
-                score += question.points
-                
-        elif question.question_type == 'multiple_choice':
-            correct_answers = set(question_data.get('correct_answers', []))
-            user_answers = set(user_answer if isinstance(user_answer, list) else [])
-            if user_answers == correct_answers:
-                score += question.points
-                
-        elif question.question_type == 'fill_blank':
-            # 填空題比對：LaTeX 語法會被保留並比對，確保數學公式準確性
-            correct_answer = question_data.get('correct_answer', '').lower().strip()
-            user_answer_clean = (user_answer or '').lower().strip()
-            if user_answer_clean == correct_answer:
-                score += question.points
-                
-        elif question.question_type == 'parsons':
-            # 處理程式排序題
-            print(f"Question {question.id} - Parsons type")
-            print(f"  Question data: {question_data}")
-            print(f"  User answer: {user_answer}")
-            
-            # 新格式：使用slot_answers比對
-            if 'slot_answers' in question_data and isinstance(user_answer, dict) and 'slot_answers' in user_answer:
-                correct_slot_answers = question_data.get('slot_answers', {})
-                user_slot_answers = user_answer.get('slot_answers', {})
-                fixed_blocks = question_data.get('fixed_blocks', {})  # 獲取固定區塊
-                
-                print(f"  New format - Correct slot answers: {correct_slot_answers}")
-                print(f"  New format - User slot answers: {user_slot_answers}")
-                print(f"  Fixed blocks positions: {list(fixed_blocks.keys())}")
-                
-                # 過濾掉固定區塊位置的正確答案（防止老師誤設定）
-                correct_slot_answers_filtered = {
-                    slot: label for slot, label in correct_slot_answers.items()
-                    if slot not in fixed_blocks
-                }
-                print(f"  Filtered correct answers (excluding fixed blocks): {correct_slot_answers_filtered}")
-                
-                # 比較每個空格的答案是否正確
-                all_correct = True
-                for slot_num, correct_label in correct_slot_answers_filtered.items():
-                    user_label = user_slot_answers.get(str(slot_num))
-                    print(f"    Slot {slot_num}: user={user_label}, correct={correct_label}")
-                    if user_label != correct_label:
-                        all_correct = False
-                        break
-                
-                # 檢查數量是否匹配（使用過濾後的正確答案）
-                if all_correct and len(user_slot_answers) == len(correct_slot_answers_filtered):
-                    score += question.points
-                    print(f"  ✓ Correct! Points added: {question.points}")
-                else:
-                    print(f"  ✗ Incorrect! Expected {len(correct_slot_answers_filtered)} answers, got {len(user_slot_answers)}")
-            
-            # 舊格式兼容：使用correct_order比對
-            elif 'correct_order' in question_data:
-                correct_order = question_data.get('correct_order', [])
-                
-                # 檢查答案格式並提取答案
-                user_order = []
-                
-                # 新的複合格式 {order: [...], slots: {...}}
-                if isinstance(user_answer, dict) and 'order' in user_answer:
-                    user_order = user_answer['order'] if isinstance(user_answer['order'], list) else []
-                
-                # 字典格式 {1: "code1", 2: "code2", ...}
-                elif isinstance(user_answer, dict) and 'slot_answers' in user_answer:
-                    # 從slot_answers提取順序
-                    slot_answers = user_answer['slot_answers']
-                    sorted_slots = sorted([int(k) for k in slot_answers.keys()])
-                    user_order = [slot_answers[str(slot)] for slot in sorted_slots]
-                
-                # 舊的字典格式 {1: "code1", 2: "code2", ...}
-                elif isinstance(user_answer, dict):
-                    # 將字典轉換為列表
-                    for i in range(1, len(correct_order) + 1):
-                        if str(i) in user_answer:
-                            user_order.append(user_answer[str(i)])
-                        elif i in user_answer:
-                            user_order.append(user_answer[i])
-                
-                # 列表格式 ["code1", "code2", ...]
-                elif isinstance(user_answer, list):
-                    user_order = user_answer
-                
-                print(f"  Old format - User order: {user_order}")
-                print(f"  Old format - Correct order: {correct_order}")
-                
-                # 比較順序是否正確
-                if len(user_order) == len(correct_order) and all(a == b for a, b in zip(user_order, correct_order)):
-                    score += question.points
-                    print(f"  ✓ Correct! Points added: {question.points}")
-                else:
-                    print(f"  ✗ Incorrect!")
-    
-    # 儲存結果
+        score += grade_question(question, user_answer)
+
     submission = Submission(
         student_name=student_name,
         student_email=student_email,
         answers=json.dumps(answers),
         score=score,
         total_points=total_points,
-        quiz_bank_id=quiz_bank.id
+        quiz_bank_id=quiz_bank.id,
+        is_practice=is_practice,
+        session_question_ids=json.dumps([q.id for q in questions]) if is_practice else None,
     )
-    
+
     db.session.add(submission)
     db.session.commit()
-    
+
+    if is_practice:
+        session.pop(session_key, None)
+
     return jsonify({
         'message': '測驗提交成功',
         'score': score,
         'total_points': total_points,
         'percentage': round((score / total_points * 100) if total_points > 0 else 0, 2),
-        'submission_id': submission.id
+        'submission_id': submission.id,
+        'is_practice': is_practice,
+        'retry_url': url_for('take_quiz', access_code=access_code) if is_practice else None,
     })
 
 @app.route('/result/<int:submission_id>')
 def view_result(submission_id):
     submission = Submission.query.get_or_404(submission_id)
-    
-    # 獲取題目和答案詳情
-    questions = Question.query.filter_by(quiz_bank_id=submission.quiz_bank_id).order_by(Question.order_index).all()
-    
-    # 解析學生答案
+
+    if submission.session_question_ids:
+        question_ids = json.loads(submission.session_question_ids)
+        questions = Question.query.filter(Question.id.in_(question_ids)).all()
+        order_map = {qid: index for index, qid in enumerate(question_ids)}
+        questions.sort(key=lambda q: order_map.get(q.id, q.id))
+    else:
+        questions = Question.query.filter_by(quiz_bank_id=submission.quiz_bank_id).order_by(Question.order_index).all()
+
     student_answers = json.loads(submission.answers) if submission.answers else {}
-    
     return render_template('result.html', submission=submission, questions=questions, student_answers=student_answers)
 
 @app.route('/quiz-bank/<int:quiz_bank_id>/submissions')
@@ -670,7 +742,8 @@ def view_submissions(quiz_bank_id):
             'score': s.score,
             'total_points': s.total_points,
             'percentage': round((s.score / s.total_points * 100) if s.total_points > 0 else 0, 2),
-            'submitted_at': s.submitted_at.strftime('%Y-%m-%d %H:%M:%S')
+            'submitted_at': s.submitted_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'is_practice': bool(s.is_practice),
         })
     
     return jsonify(submissions_data)
@@ -733,6 +806,7 @@ def export_quiz_bank_pdf(quiz_bank_id):
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+        ensure_schema_updates()
     
     # 根據環境決定運行方式
     if ENVIRONMENT == 'development':
@@ -744,4 +818,5 @@ else:
     if should_init_db:
         with app.app_context():
             db.create_all()
+            ensure_schema_updates()
             print("數據庫初始化完成")

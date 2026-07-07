@@ -12,6 +12,14 @@
             {% if quiz_bank.description %}
             <p>{{ quiz_bank.description }}</p>
             {% endif %}
+
+            {% if is_practice and draw_warnings %}
+            <div class="alert alert-error" style="margin-bottom: 1rem;">
+                {% for warning in draw_warnings %}
+                <div>{{ warning }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
             
             <!-- 學生資料填寫 -->
             <div id="student-info-section" style="margin-bottom: 2rem;">
@@ -26,7 +34,7 @@
                         <input type="email" id="student-email" placeholder="您的電子郵件">
                     </div>
                 </div>
-                <button onclick="startQuiz()" class="btn">開始測驗</button>
+                <button onclick="startQuiz()" class="btn">{% if is_practice %}開始作答{% else %}開始測驗{% endif %}</button>
             </div>
             
             <!-- 測驗進度 -->
@@ -182,6 +190,7 @@ let currentQuestionIndex = 0;
 let totalQuestions = {{ questions|length }};
 let studentAnswers = {};
 let quizStarted = false;
+const isPractice = {{ 'true' if is_practice else 'false' }};
 
 // 確保 studentAnswers 在全域範圍內可存取
 window.studentAnswers = studentAnswers;
@@ -192,6 +201,22 @@ console.log('Initial studentAnswers:', studentAnswers);
 
 // 儲存題目資料供 JavaScript 使用
 window.questionsData = {{ questions | tojson | safe }};
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (isPractice) {
+        const savedName = sessionStorage.getItem('practice_student_name');
+        const savedEmail = sessionStorage.getItem('practice_student_email');
+        if (savedName) {
+            document.getElementById('student-name').value = savedName;
+        }
+        if (savedEmail) {
+            document.getElementById('student-email').value = savedEmail;
+        }
+        if (savedName) {
+            startQuiz();
+        }
+    }
+});
 
 function startQuiz() {
     const studentName = document.getElementById('student-name').value.trim();
@@ -638,14 +663,24 @@ async function submitQuiz() {
             document.getElementById('completion-message').style.display = 'block';
             document.getElementById('score-percentage').textContent = result.percentage + '%';
             document.getElementById('score-details').textContent = `得分：${result.score} / ${result.total_points} 分`;
-            
-            // 添加查看詳情按鈕
+
+            const scoreDisplay = document.getElementById('score-display');
             const detailsButton = document.createElement('a');
             detailsButton.href = `/result/${result.submission_id}`;
             detailsButton.className = 'btn';
             detailsButton.style.marginTop = '1rem';
             detailsButton.textContent = '查看測驗詳情';
-            document.getElementById('score-display').appendChild(detailsButton);
+            scoreDisplay.appendChild(detailsButton);
+
+            if (result.is_practice && result.retry_url) {
+                const retryButton = document.createElement('a');
+                retryButton.href = result.retry_url;
+                retryButton.className = 'btn btn-secondary';
+                retryButton.style.marginTop = '1rem';
+                retryButton.style.marginLeft = '0.5rem';
+                retryButton.textContent = '再刷一組';
+                scoreDisplay.appendChild(retryButton);
+            }
             
             // 滾動到頂部
             window.scrollTo(0, 0);

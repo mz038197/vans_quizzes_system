@@ -173,6 +173,7 @@ function displaySubmissionsTable() {
             </td>
             <td style="padding: 1rem; font-weight: bold;">
                 ${submission.student_name}
+                ${submission.is_practice ? '<span style="margin-left:0.5rem; color:#667eea; font-size:0.85rem;">練習</span>' : ''}
             </td>
             <td style="padding: 1rem; color: #666;">
                 ${submission.student_email || '-'}
