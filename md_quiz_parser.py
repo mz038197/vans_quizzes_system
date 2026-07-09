@@ -10,6 +10,11 @@ TYPE_ALIASES = {
 }
 
 
+def _as_text(value):
+    """Convert YAML scalar to stripped text; treat null as empty (not 'None')."""
+    return '' if value is None else str(value).strip()
+
+
 def _split_document(content):
     text = content.strip()
     if text.startswith('\ufeff'):
@@ -116,22 +121,29 @@ def _build_question_data(index, question_type, meta, errors):
         if not isinstance(options, list):
             errors.append(f'第 {index} 題 options 必須是列表')
             return {}
-        options = [str(opt) for opt in options]
+        options = [_as_text(opt) for opt in options]
+        if any(not opt for opt in options):
+            errors.append(f'第 {index} 題 options 含空值，特殊字元如 # 請加引號')
         if len(options) < 2:
             errors.append(f'第 {index} 題至少需要 2 個選項')
 
         if question_type == 'multiple_choice':
             correct_answers = meta.get('correct_answers') or []
-            if not isinstance(correct_answers, list) or not correct_answers:
+            if not isinstance(correct_answers, list):
+                errors.append(f'第 {index} 題缺少 correct_answers')
+                return {'options': options, 'correct_answers': []}
+            correct_answers = [_as_text(ans) for ans in correct_answers]
+            if any(not ans for ans in correct_answers):
+                errors.append(f'第 {index} 題 correct_answers 含空值，特殊字元如 # 請加引號')
+            if not any(ans for ans in correct_answers):
                 errors.append(f'第 {index} 題缺少 correct_answers')
             else:
-                correct_answers = [str(ans) for ans in correct_answers]
-                invalid = [ans for ans in correct_answers if ans not in options]
+                invalid = [ans for ans in correct_answers if ans and ans not in options]
                 if invalid:
                     errors.append(f'第 {index} 題 correct_answers 不在 options 中')
             return {'options': options, 'correct_answers': correct_answers}
 
-        correct_answer = str(meta.get('correct_answer', '')).strip()
+        correct_answer = _as_text(meta.get('correct_answer'))
         if not correct_answer:
             errors.append(f'第 {index} 題缺少 correct_answer')
         elif correct_answer not in options:
@@ -139,7 +151,7 @@ def _build_question_data(index, question_type, meta, errors):
         return {'options': options, 'correct_answer': correct_answer}
 
     if question_type == 'fill_blank':
-        correct_answer = str(meta.get('correct_answer', '')).strip()
+        correct_answer = _as_text(meta.get('correct_answer'))
         if not correct_answer:
             errors.append(f'第 {index} 題缺少 correct_answer')
         return {'correct_answer': correct_answer}
@@ -167,6 +179,13 @@ def _parse_bank_settings(bank_meta):
     return bank
 
 
+def _validate_questions_for_mode(questions, quiz_mode, errors):
+    if quiz_mode == 'practice':
+        for idx, question in enumerate(questions, start=1):
+            if not question.get('category'):
+                errors.append(f'練習模式第 {idx} 題缺少 category')
+
+
 def _validate_bank(bank, questions, errors):
     if not bank.get('title'):
         errors.append('題庫缺少 title')
@@ -178,9 +197,17 @@ def _validate_bank(bank, questions, errors):
 
         ratios = bank.get('category_ratios') or {}
         errors.extend(validate_category_ratios(ratios))
-        for idx, question in enumerate(questions, start=1):
-            if not question.get('category'):
-                errors.append(f'練習模式第 {idx} 題缺少 category')
+        _validate_questions_for_mode(questions, 'practice', errors)
+
+
+def _parse_question_blocks(question_blocks, errors):
+    questions = []
+    for idx, block in enumerate(question_blocks, start=1):
+        question, question_errors = _parse_question_block(idx, block)
+        errors.extend(question_errors)
+        if question:
+            questions.append(question)
+    return questions
 
 
 def parse_md_quiz(content):
@@ -192,18 +219,70 @@ def parse_md_quiz(content):
 
     bank_meta = bank_meta or {}
     bank = _parse_bank_settings(bank_meta)
-
-    questions = []
-    for idx, block in enumerate(question_blocks, start=1):
-        question, question_errors = _parse_question_block(idx, block)
-        errors.extend(question_errors)
-        if question:
-            questions.append(question)
-
+    questions = _parse_question_blocks(question_blocks, errors)
     _validate_bank(bank, questions, errors)
 
     return {
         'bank': bank,
         'questions': questions,
         'errors': errors,
+    }
+
+
+def parse_md_questions_append(content, quiz_mode='fixed', existing_categories=None):
+    """解析要追加到既有題庫的 MD。
+
+    支援：
+    - 僅題目格式（無題庫 front matter）
+    - 完整格式（有題庫 front matter，追加時忽略題庫設定）
+    """
+    errors = []
+    warnings = []
+    text = content.strip()
+    if text.startswith('\ufeff'):
+        text = text.lstrip('\ufeff')
+
+    parts = re.split(r'^---\s*$', text, flags=re.MULTILINE)
+    parts = [part.strip() for part in parts if part.strip()]
+    if not parts:
+        return {'questions': [], 'errors': ['檔案內容為空或格式錯誤'], 'warnings': []}
+
+    bank_meta = _parse_bank_meta(parts[0])
+    if bank_meta is not None:
+        # 完整格式：忽略題庫設定，只取題目
+        question_parts = parts[1:]
+    else:
+        # 僅題目格式：全部視為題目區塊
+        question_parts = parts
+
+    question_blocks = _merge_question_parts(question_parts)
+    questions = _parse_question_blocks(question_blocks, errors)
+
+    if not questions and not errors:
+        errors.append('至少需要 1 道題目')
+
+    _validate_questions_for_mode(questions, quiz_mode, errors)
+
+    existing = {
+        str(category).strip()
+        for category in (existing_categories or [])
+        if str(category).strip()
+    }
+    if quiz_mode == 'practice':
+        # Warn for any category not in current ratios, including when ratios are
+        # still empty (otherwise new categories would be silently unusable).
+        new_categories = sorted({
+            q.get('category', '').strip()
+            for q in questions
+            if q.get('category', '').strip() and q.get('category', '').strip() not in existing
+        })
+        for category in new_categories:
+            warnings.append(
+                f'分類「{category}」不在目前比例設定中，題目會寫入但練習抽題不會抽到，請之後到管理頁調整比例'
+            )
+
+    return {
+        'questions': questions,
+        'errors': errors,
+        'warnings': warnings,
     }

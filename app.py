@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 import os
 import sys
-from md_quiz_parser import parse_md_quiz
+from md_quiz_parser import parse_md_quiz, parse_md_questions_append
 from practice_utils import (
     draw_practice_questions,
     get_category_ratios,
@@ -182,15 +182,15 @@ def create_quiz_bank_from_data(teacher_id, bank_data):
     db.session.flush()
     return quiz_bank
 
-def create_questions_for_bank(quiz_bank_id, questions_data):
-    for index, item in enumerate(questions_data, start=1):
+def create_questions_for_bank(quiz_bank_id, questions_data, start_order=1):
+    for offset, item in enumerate(questions_data):
         question = Question(
             title=item['title'],
             question_text=item['question_text'],
             question_type=item['question_type'],
             question_data=json.dumps(item.get('question_data', {})),
             points=item.get('points', 1),
-            order_index=index,
+            order_index=start_order + offset,
             category=item.get('category'),
             quiz_bank_id=quiz_bank_id,
         )
@@ -644,6 +644,95 @@ def confirm_import_quiz_md():
 @login_required
 def download_import_template():
     return send_from_directory('static/templates', 'quiz_template.md', as_attachment=True)
+
+@app.route('/api/quiz-bank/import-md/questions-template')
+@login_required
+def download_append_questions_template():
+    return send_from_directory('static/templates', 'quiz_questions_append.md', as_attachment=True)
+
+def _build_append_preview(questions):
+    preview_questions = []
+    for index, question in enumerate(questions, start=1):
+        preview_questions.append({
+            'index': index,
+            'title': question['title'],
+            'question_type': question['question_type'],
+            'category': question.get('category', ''),
+            'points': question.get('points', 1),
+        })
+    return preview_questions
+
+@app.route('/api/quiz-bank/<int:quiz_bank_id>/import-md/preview', methods=['POST'])
+@login_required
+def preview_append_quiz_md(quiz_bank_id):
+    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
+    if quiz_bank.teacher_id != current_user.id:
+        return jsonify({'success': False, 'errors': ['無權限操作']}), 403
+
+    try:
+        uploaded = request.files.get('file')
+        if not uploaded or not uploaded.filename:
+            return jsonify({'success': False, 'errors': ['請上傳 .md 檔案']}), 400
+
+        content = uploaded.read().decode('utf-8-sig')
+        existing_categories = list(get_category_ratios(quiz_bank).keys())
+        parsed = parse_md_questions_append(
+            content,
+            quiz_mode=quiz_bank.quiz_mode or 'fixed',
+            existing_categories=existing_categories,
+        )
+    except Exception as exc:
+        return jsonify({'success': False, 'errors': [f'解析失敗：{exc}']}), 500
+
+    if parsed['errors']:
+        return jsonify({'success': False, 'errors': parsed['errors'], 'warnings': parsed.get('warnings', [])}), 400
+
+    return jsonify({
+        'success': True,
+        'questions': _build_append_preview(parsed['questions']),
+        'question_count': len(parsed['questions']),
+        'warnings': parsed.get('warnings', []),
+    })
+
+@app.route('/api/quiz-bank/<int:quiz_bank_id>/import-md/confirm', methods=['POST'])
+@login_required
+def confirm_append_quiz_md(quiz_bank_id):
+    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
+    if quiz_bank.teacher_id != current_user.id:
+        return jsonify({'success': False, 'errors': ['無權限操作']}), 403
+
+    uploaded = request.files.get('file')
+    if not uploaded or not uploaded.filename:
+        return jsonify({'success': False, 'errors': ['請上傳 .md 檔案']}), 400
+
+    content = uploaded.read().decode('utf-8-sig')
+    existing_categories = list(get_category_ratios(quiz_bank).keys())
+    parsed = parse_md_questions_append(
+        content,
+        quiz_mode=quiz_bank.quiz_mode or 'fixed',
+        existing_categories=existing_categories,
+    )
+    if parsed['errors']:
+        return jsonify({'success': False, 'errors': parsed['errors'], 'warnings': parsed.get('warnings', [])}), 400
+
+    try:
+        max_order = db.session.query(db.func.max(Question.order_index)).filter_by(
+            quiz_bank_id=quiz_bank_id
+        ).scalar() or 0
+        create_questions_for_bank(quiz_bank_id, parsed['questions'], start_order=max_order + 1)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({'success': False, 'errors': ['追加失敗，請稍後再試']}), 500
+
+    total_questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).count()
+    return jsonify({
+        'success': True,
+        'message': '題目追加成功',
+        'question_count': len(parsed['questions']),
+        'total_questions': total_questions,
+        'warnings': parsed.get('warnings', []),
+    })
 
 @app.route('/api/quiz/<access_code>/submit', methods=['POST'])
 def submit_quiz(access_code):

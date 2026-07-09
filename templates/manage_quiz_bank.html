@@ -57,6 +57,57 @@
             <div id="practice-config-alert" style="margin-top: 1rem;"></div>
         </div>
     </div>
+
+    <div class="card" style="margin-bottom: 2rem;">
+        <div class="card-header">
+            <h3 style="margin: 0;">📥 從 MD 追加題目</h3>
+        </div>
+        <div class="card-body">
+            <p style="color: #666; margin-bottom: 1rem;">
+                上傳 Markdown 檔，將題目追加到此題庫。可只含題目，也可使用完整格式（題庫設定會被忽略）。
+                {% if quiz_bank.quiz_mode == 'practice' %}
+                <br>目前為練習模式，每題必須有 <code>category</code>。
+                {% endif %}
+            </p>
+
+            <div id="append-alert"></div>
+
+            <div class="form-group">
+                <label for="append-md-file">上傳 Markdown 檔案 *</label>
+                <input type="file" id="append-md-file" accept=".md,text/markdown">
+            </div>
+
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-secondary" onclick="downloadAppendTemplate()">下載追加範本</button>
+                <button type="button" class="btn" onclick="previewAppendImport()">
+                    <span id="append-preview-text">預覽追加</span>
+                    <span id="append-preview-loading" class="loading" style="display: none;"></span>
+                </button>
+            </div>
+
+            <div id="append-preview" style="display: none;">
+                <div id="append-summary" style="margin-bottom: 1rem;"></div>
+                <div style="overflow-x: auto; margin-bottom: 1rem;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f8f9fa;">
+                                <th style="padding: 0.75rem; text-align: left;">題號</th>
+                                <th style="padding: 0.75rem; text-align: left;">標題</th>
+                                <th style="padding: 0.75rem; text-align: left;">題型</th>
+                                <th style="padding: 0.75rem; text-align: left;">分類</th>
+                                <th style="padding: 0.75rem; text-align: center;">分數</th>
+                            </tr>
+                        </thead>
+                        <tbody id="append-preview-body"></tbody>
+                    </table>
+                </div>
+                <button type="button" class="btn" id="confirm-append-btn" onclick="confirmAppendImport()" disabled>
+                    <span id="append-confirm-text">確認追加</span>
+                    <span id="append-confirm-loading" class="loading" style="display: none;"></span>
+                </button>
+            </div>
+        </div>
+    </div>
     
     <div id="questions-container">
         {% if questions %}
@@ -1488,6 +1539,110 @@ async function savePracticeConfig() {
     } catch (error) {
         document.getElementById('practice-config-alert').innerHTML =
             '<div class="alert alert-error">網路錯誤，請稍後再試</div>';
+    }
+}
+
+let appendPreviewReady = false;
+
+function showAppendAlert(message, type) {
+    document.getElementById('append-alert').innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+}
+
+function clearAppendAlert() {
+    document.getElementById('append-alert').innerHTML = '';
+}
+
+function setAppendLoading(prefix, loading) {
+    document.getElementById(`append-${prefix}-text`).style.display = loading ? 'none' : 'inline';
+    document.getElementById(`append-${prefix}-loading`).style.display = loading ? 'inline-block' : 'none';
+}
+
+function downloadAppendTemplate() {
+    window.location.href = '/api/quiz-bank/import-md/questions-template';
+}
+
+async function previewAppendImport() {
+    const fileInput = document.getElementById('append-md-file');
+    if (!fileInput.files.length) {
+        showAppendAlert('請先選擇 .md 檔案', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    clearAppendAlert();
+    setAppendLoading('preview', true);
+    appendPreviewReady = false;
+    document.getElementById('confirm-append-btn').disabled = true;
+
+    try {
+        const response = await fetch('/api/quiz-bank/{{ quiz_bank.id }}/import-md/preview', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            const errors = (data.errors || [data.error || '預覽失敗']).join('<br>');
+            showAppendAlert(errors, 'error');
+            document.getElementById('append-preview').style.display = 'none';
+            return;
+        }
+
+        let summaryHtml = `<p><strong>將追加題目數：</strong>${data.question_count}</p>`;
+        if (data.warnings && data.warnings.length) {
+            summaryHtml += `<div class="alert alert-error" style="margin-top:0.75rem;">${data.warnings.join('<br>')}</div>`;
+        }
+        document.getElementById('append-summary').innerHTML = summaryHtml;
+
+        document.getElementById('append-preview-body').innerHTML = data.questions.map(item => `
+            <tr>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.index}</td>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.title}</td>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.question_type}</td>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.category || '-'}</td>
+                <td style="padding: 0.75rem; border-bottom: 1px solid #eee; text-align: center;">${item.points}</td>
+            </tr>
+        `).join('');
+
+        document.getElementById('append-preview').style.display = 'block';
+        document.getElementById('confirm-append-btn').disabled = false;
+        appendPreviewReady = true;
+        showAppendAlert('預覽成功，請確認後追加題目', 'success');
+    } catch (error) {
+        showAppendAlert('網路錯誤，請檢查連線', 'error');
+    } finally {
+        setAppendLoading('preview', false);
+    }
+}
+
+async function confirmAppendImport() {
+    if (!appendPreviewReady) return;
+
+    const fileInput = document.getElementById('append-md-file');
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+
+    setAppendLoading('confirm', true);
+    try {
+        const response = await fetch('/api/quiz-bank/{{ quiz_bank.id }}/import-md/confirm', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+            const errors = (data.errors || [data.error || '追加失敗']).join('<br>');
+            showAppendAlert(errors, 'error');
+            return;
+        }
+
+        showAppendAlert(`已追加 ${data.question_count} 題，題庫目前共 ${data.total_questions} 題`, 'success');
+        setTimeout(() => location.reload(), 1000);
+    } catch (error) {
+        showAppendAlert('網路錯誤，請檢查連線', 'error');
+    } finally {
+        setAppendLoading('confirm', false);
     }
 }
 
