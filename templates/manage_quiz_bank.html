@@ -4,12 +4,12 @@
 
 {% block content %}
 <div>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-        <div>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem;">
+        <div style="min-width: 0; flex: 1 1 240px;">
             <h1 style="color: #333; margin-bottom: 0.5rem;">📝 {{ quiz_bank.title }}</h1>
             <p style="color: #666;">題庫代碼：<span class="access-code">{{ quiz_bank.access_code }}</span></p>
         </div>
-        <div style="display: flex; gap: 1rem;">
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; flex-shrink: 0;">
             <button onclick="showAddQuestionModal()" class="btn">➕ 新增題目</button>
             <a href="{{ url_for('export_quiz_bank_pdf', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" title="導出題庫為PDF文件">📄 導出PDF</a>
             <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary">📊 查看成績</a>

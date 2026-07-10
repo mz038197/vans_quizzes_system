@@ -4,12 +4,12 @@
 
 {% block content %}
 <div>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-        <div>
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem;">
+        <div style="min-width: 0; flex: 1 1 240px;">
             <h1 style="color: #333; margin-bottom: 0.5rem;">📊 成績統計</h1>
             <p style="color: #666;">{{ quiz_bank.title }} - 題庫代碼：{{ quiz_bank.access_code }}</p>
         </div>
-        <div style="display: flex; gap: 1rem;">
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; flex-shrink: 0;">
             <button onclick="exportToCSV()" class="btn btn-secondary">📄 匯出CSV</button>
             <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="btn">← 返回題庫</a>
         </div>
