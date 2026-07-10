@@ -266,7 +266,7 @@
                 
                 <div class="form-group">
                     <label for="question-points">分數</label>
-                    <input type="number" id="question-points" value="1" min="1">
+                    <input type="number" id="question-points" value="1" min="0" step="any">
                 </div>
 
                 <div class="form-group">
@@ -939,7 +939,7 @@ function collectFormData() {
     const title = document.getElementById('question-title').value;
     const text = document.getElementById('question-text').value;
     const type = document.getElementById('question-type').value;
-    const points = parseInt(document.getElementById('question-points').value);
+    const points = parseFloat(document.getElementById('question-points').value);
     
     const questionData = {};
     

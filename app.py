@@ -4,6 +4,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 import json
+import logging
 from datetime import datetime
 import os
 import sys
@@ -14,6 +15,8 @@ from practice_utils import (
     serialize_question,
     validate_category_ratios,
 )
+
+logger = logging.getLogger(__name__)
 
 # 環境設置
 ENVIRONMENT = os.environ.get('FLASK_ENV', 'development')
@@ -93,7 +96,7 @@ class Question(db.Model):
     question_text = db.Column(db.Text, nullable=False)
     question_type = db.Column(db.String(50), nullable=False)  # single_choice, multiple_choice, fill_blank, dropdown, parsons
     question_data = db.Column(db.Text)  # JSON格式儲存選項、正確答案等
-    points = db.Column(db.Integer, default=1)
+    points = db.Column(db.Float, default=1)
     order_index = db.Column(db.Integer, default=0)
     category = db.Column(db.String(100))
     quiz_bank_id = db.Column(db.Integer, db.ForeignKey('quiz_bank.id'), nullable=False)
@@ -105,7 +108,7 @@ class Submission(db.Model):
     student_email = db.Column(db.String(120))
     answers = db.Column(db.Text)  # JSON格式儲存答案
     score = db.Column(db.Float, default=0)
-    total_points = db.Column(db.Integer, default=0)
+    total_points = db.Column(db.Float, default=0)
     is_practice = db.Column(db.Boolean, default=False)
     session_question_ids = db.Column(db.Text)
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -124,15 +127,157 @@ def generate_access_code():
         if not QuizBank.query.filter_by(access_code=code).first():
             return code
 
+def parse_points(value, default=1.0):
+    """Validate and coerce points to a positive float. Returns (points, error_or_None)."""
+    if value is None or value == '':
+        value = default
+    try:
+        points = float(value)
+    except (TypeError, ValueError):
+        return None, 'points 必須是數字'
+    if points <= 0:
+        return None, 'points 必須大於 0'
+    return points, None
+
+
 def ensure_schema_updates():
     """為既有資料庫補上新欄位（SQLite / PostgreSQL 簡易 migration）。"""
     from sqlalchemy import inspect, text
 
     inspector = inspect(db.engine)
     table_names = inspector.get_table_names()
+    dialect_name = db.engine.dialect.name
+    is_postgres = dialect_name == 'postgresql'
+    is_sqlite = dialect_name == 'sqlite'
 
     def column_names(table_name):
         return {column['name'] for column in inspector.get_columns(table_name)}
+
+    def column_type_name(table_name, column_name):
+        for column in inspector.get_columns(table_name):
+            if column['name'] == column_name:
+                return str(column['type']).upper()
+        return ''
+
+    def needs_float_migration(table_name, column_name):
+        type_name = column_type_name(table_name, column_name)
+        return type_name and 'INT' in type_name and 'POINT' not in type_name
+
+    def sqlite_type_sql(column):
+        type_name = str(column['type']).upper()
+        if 'INT' in type_name and 'POINT' not in type_name:
+            return 'INTEGER'
+        if any(token in type_name for token in ('REAL', 'FLOAT', 'DOUBLE', 'NUMERIC', 'DECIMAL')):
+            return 'REAL'
+        if 'BOOL' in type_name:
+            return 'BOOLEAN'
+        if 'DATE' in type_name or 'TIME' in type_name:
+            return 'DATETIME'
+        if 'CHAR' in type_name or 'TEXT' in type_name or 'CLOB' in type_name:
+            return 'TEXT'
+        return 'TEXT'
+
+    # Model-defined FKs used when inspector finds none (e.g. after a prior rebuild dropped them).
+    expected_sqlite_foreign_keys = {
+        'question': [{
+            'constrained_columns': ['quiz_bank_id'],
+            'referred_table': 'quiz_bank',
+            'referred_columns': ['id'],
+        }],
+        'submission': [{
+            'constrained_columns': ['quiz_bank_id'],
+            'referred_table': 'quiz_bank',
+            'referred_columns': ['id'],
+        }],
+    }
+
+    def sqlite_foreign_key_defs(table_name):
+        fks = inspector.get_foreign_keys(table_name)
+        if not fks:
+            fks = expected_sqlite_foreign_keys.get(table_name, [])
+        defs = []
+        for fk in fks:
+            constrained = ', '.join(fk['constrained_columns'])
+            referred_table = fk['referred_table']
+            referred = ', '.join(fk['referred_columns'])
+            fk_sql = f'FOREIGN KEY ({constrained}) REFERENCES {referred_table} ({referred})'
+            options = fk.get('options') or {}
+            if options.get('ondelete'):
+                fk_sql += f' ON DELETE {options["ondelete"]}'
+            if options.get('onupdate'):
+                fk_sql += f' ON UPDATE {options["onupdate"]}'
+            defs.append(fk_sql)
+        return defs
+
+    def missing_expected_foreign_keys(table_name):
+        expected = expected_sqlite_foreign_keys.get(table_name, [])
+        if not expected:
+            return False
+        existing = {
+            (tuple(fk['constrained_columns']), fk['referred_table'], tuple(fk['referred_columns']))
+            for fk in inspector.get_foreign_keys(table_name)
+        }
+        for fk in expected:
+            key = (
+                tuple(fk['constrained_columns']),
+                fk['referred_table'],
+                tuple(fk['referred_columns']),
+            )
+            if key not in existing:
+                return True
+        return False
+
+    def rebuild_sqlite_table(table_name, type_overrides=None):
+        """Rebuild a SQLite table, optionally overriding column types, preserving FKs."""
+        type_overrides = type_overrides or {}
+        columns = inspector.get_columns(table_name)
+        col_names = [column['name'] for column in columns]
+        col_defs = []
+        for column in columns:
+            name = column['name']
+            sql_type = type_overrides.get(name) or sqlite_type_sql(column)
+            pieces = [name, sql_type]
+            if column.get('primary_key'):
+                pieces.append('PRIMARY KEY')
+            elif not column.get('nullable', True):
+                pieces.append('NOT NULL')
+            col_defs.append(' '.join(pieces))
+
+        col_defs.extend(sqlite_foreign_key_defs(table_name))
+
+        tmp_table = f'{table_name}__float_mig'
+        cols_csv = ', '.join(col_names)
+        db.session.execute(text('PRAGMA foreign_keys=OFF'))
+        db.session.execute(text(f'DROP TABLE IF EXISTS {tmp_table}'))
+        db.session.execute(text(f'CREATE TABLE {tmp_table} ({", ".join(col_defs)})'))
+        db.session.execute(text(
+            f'INSERT INTO {tmp_table} ({cols_csv}) SELECT {cols_csv} FROM {table_name}'
+        ))
+        db.session.execute(text(f'DROP TABLE {table_name}'))
+        db.session.execute(text(f'ALTER TABLE {tmp_table} RENAME TO {table_name}'))
+        db.session.execute(text('PRAGMA foreign_keys=ON'))
+        db.session.commit()
+        inspector.clear_cache()
+
+    def migrate_sqlite_column_to_float(table_name, column_name):
+        """Rebuild a SQLite table so an INTEGER column becomes REAL."""
+        rebuild_sqlite_table(table_name, {column_name: 'REAL'})
+
+    def run_migration(description, action):
+        """Run a migration action; log and roll back on failure (e.g. concurrent DDL races)."""
+        try:
+            action()
+        except Exception:
+            db.session.rollback()
+            logger.exception('Schema migration failed: %s', description)
+
+    def apply_statement(statement):
+        """Run one DDL statement; ignore races where another instance already applied it."""
+        def _run():
+            db.session.execute(text(statement))
+            db.session.commit()
+
+        run_migration(statement, _run)
 
     statements = []
     if 'quiz_bank' in table_names:
@@ -148,19 +293,42 @@ def ensure_schema_updates():
         cols = column_names('question')
         if 'category' not in cols:
             statements.append('ALTER TABLE question ADD COLUMN category VARCHAR(100)')
+        if 'points' in cols and needs_float_migration('question', 'points'):
+            if is_postgres:
+                statements.append('ALTER TABLE question ALTER COLUMN points TYPE DOUBLE PRECISION')
+            elif is_sqlite:
+                run_migration(
+                    'question.points INTEGER -> REAL',
+                    lambda: migrate_sqlite_column_to_float('question', 'points'),
+                )
 
     if 'submission' in table_names:
         cols = column_names('submission')
-        bool_default = 'FALSE' if db.engine.dialect.name == 'postgresql' else '0'
+        bool_default = 'FALSE' if is_postgres else '0'
         if 'is_practice' not in cols:
             statements.append(f'ALTER TABLE submission ADD COLUMN is_practice BOOLEAN DEFAULT {bool_default}')
         if 'session_question_ids' not in cols:
             statements.append('ALTER TABLE submission ADD COLUMN session_question_ids TEXT')
+        if 'total_points' in cols and needs_float_migration('submission', 'total_points'):
+            if is_postgres:
+                statements.append('ALTER TABLE submission ALTER COLUMN total_points TYPE DOUBLE PRECISION')
+            elif is_sqlite:
+                run_migration(
+                    'submission.total_points INTEGER -> REAL',
+                    lambda: migrate_sqlite_column_to_float('submission', 'total_points'),
+                )
+
+    # Restore FKs dropped by earlier SQLite table rebuilds that omitted them.
+    if is_sqlite:
+        for table_name in ('question', 'submission'):
+            if table_name in table_names and missing_expected_foreign_keys(table_name):
+                run_migration(
+                    f'{table_name} restore foreign keys',
+                    lambda t=table_name: rebuild_sqlite_table(t),
+                )
 
     for statement in statements:
-        db.session.execute(text(statement))
-    if statements:
-        db.session.commit()
+        apply_statement(statement)
 
 def build_questions_data(questions):
     return [serialize_question(q) for q in questions]
@@ -475,8 +643,11 @@ def manage_questions(quiz_bank_id):
         return jsonify(questions_data)
     
     elif request.method == 'POST':
-        data = request.get_json()
-        
+        data = request.get_json() or {}
+        points, points_error = parse_points(data.get('points', 1))
+        if points_error:
+            return jsonify({'error': points_error}), 400
+
         # 獲取最大的order_index
         max_order = db.session.query(db.func.max(Question.order_index)).filter_by(quiz_bank_id=quiz_bank_id).scalar() or 0
         
@@ -485,7 +656,7 @@ def manage_questions(quiz_bank_id):
             question_text=data.get('question_text'),
             question_type=data.get('question_type'),
             question_data=json.dumps(data.get('question_data', {})),
-            points=data.get('points', 1),
+            points=points,
             order_index=max_order + 1,
             category=data.get('category'),
             quiz_bank_id=quiz_bank_id
@@ -506,12 +677,16 @@ def manage_question(question_id):
         return jsonify({'error': '無權限操作'}), 403
     
     if request.method == 'PUT':
-        data = request.get_json()
+        data = request.get_json() or {}
+        if 'points' in data:
+            points, points_error = parse_points(data.get('points'))
+            if points_error:
+                return jsonify({'error': points_error}), 400
+            question.points = points
         question.title = data.get('title', question.title)
         question.question_text = data.get('question_text', question.question_text)
         question.question_type = data.get('question_type', question.question_type)
         question.question_data = json.dumps(data.get('question_data', {}))
-        question.points = data.get('points', question.points)
         question.category = data.get('category', question.category)
         
         db.session.commit()

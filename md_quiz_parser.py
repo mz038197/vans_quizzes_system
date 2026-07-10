@@ -91,9 +91,20 @@ def _parse_question_block(index, block):
     title = str(meta.get('title', '')).strip()
     question_text = body_text.strip()
     category = str(meta.get('category', '')).strip()
-    points = int(meta.get('points', 1) or 1)
 
     errors = []
+    raw_points = meta.get('points', 1)
+    if raw_points is None or raw_points == '':
+        raw_points = 1
+    try:
+        points = float(raw_points)
+    except (TypeError, ValueError):
+        points = 1
+        errors.append(f'第 {index} 題 points 必須是數字')
+    else:
+        if points <= 0:
+            errors.append(f'第 {index} 題 points 必須大於 0')
+
     if not title:
         errors.append(f'第 {index} 題缺少 title')
     if not question_text:
