@@ -12,6 +12,7 @@ from md_quiz_parser import parse_md_quiz, parse_md_questions_append
 from practice_utils import (
     draw_practice_questions,
     get_category_ratios,
+    questions_in_id_order,
     serialize_question,
     validate_category_ratios,
 )
@@ -573,9 +574,8 @@ def play_quiz(access_code):
         if not session_data or not session_data.get('question_ids'):
             return redirect(url_for('take_quiz', access_code=access_code))
 
-        questions = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
-        order_map = {qid: index for index, qid in enumerate(session_data['question_ids'])}
-        questions.sort(key=lambda q: order_map.get(q.id, q.id))
+        loaded = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
+        questions = questions_in_id_order(loaded, session_data['question_ids'])
         questions_data = build_questions_data(questions)
         return render_template(
             'take_quiz.html',
@@ -928,9 +928,8 @@ def submit_quiz(access_code):
     if is_practice:
         if not session_data or not session_data.get('question_ids'):
             return jsonify({'error': '練習場次已失效，請重新開始練習'}), 400
-        questions = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
-        order_map = {qid: index for index, qid in enumerate(session_data['question_ids'])}
-        questions.sort(key=lambda q: order_map.get(q.id, q.id))
+        loaded = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
+        questions = questions_in_id_order(loaded, session_data['question_ids'])
     else:
         questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
 
@@ -973,9 +972,8 @@ def view_result(submission_id):
 
     if submission.session_question_ids:
         question_ids = json.loads(submission.session_question_ids)
-        questions = Question.query.filter(Question.id.in_(question_ids)).all()
-        order_map = {qid: index for index, qid in enumerate(question_ids)}
-        questions.sort(key=lambda q: order_map.get(q.id, q.id))
+        loaded = Question.query.filter(Question.id.in_(question_ids)).all()
+        questions = questions_in_id_order(loaded, question_ids)
     else:
         questions = Question.query.filter_by(quiz_bank_id=submission.quiz_bank_id).order_by(Question.order_index).all()
 

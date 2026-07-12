@@ -35,6 +35,22 @@ def build_category_pools(questions):
     return pools
 
 
+def _take_unique(pool, count, used_ids):
+    available = [q for q in pool if q.id not in used_ids]
+    if count <= 0 or not available:
+        return [], count
+    take = min(count, len(available))
+    picked = random.sample(available, k=take)
+    for question in picked:
+        used_ids.add(question.id)
+    return picked, count - take
+
+
+def questions_in_id_order(questions, question_ids):
+    by_id = {q.id: q for q in questions}
+    return [by_id[qid] for qid in question_ids if qid in by_id]
+
+
 def draw_practice_questions(quiz_bank, questions):
     ratios = get_category_ratios(quiz_bank)
     total = quiz_bank.session_question_count or 10
@@ -46,6 +62,7 @@ def draw_practice_questions(quiz_bank, questions):
     pools = build_category_pools(questions)
     warnings = []
     selected = []
+    used_ids = set()
     deficit = 0
 
     for category, count in counts.items():
@@ -54,16 +71,40 @@ def draw_practice_questions(quiz_bank, questions):
             deficit += count
             warnings.append(f'分類「{category}」沒有題目，{count} 題將分配給其他分類')
             continue
-        selected.extend(random.choices(pool, k=count))
+        picked, remaining = _take_unique(pool, count, used_ids)
+        selected.extend(picked)
+        if remaining:
+            deficit += remaining
+            warnings.append(
+                f'分類「{category}」題目不足，少 {remaining} 題將分配給其他分類'
+            )
 
-    if deficit > 0:
-        available = [cat for cat in ratios if pools.get(cat)]
+    while deficit > 0:
+        available = {
+            cat: ratios[cat]
+            for cat in ratios
+            if any(q.id not in used_ids for q in pools.get(cat, []))
+        }
         if not available:
-            return [], warnings + ['題庫中沒有任何符合分類的題目']
-        extra_counts = allocate_category_counts(deficit, {cat: ratios[cat] for cat in available})
+            break
+        extra_counts = allocate_category_counts(deficit, available)
+        progressed = False
         for category, extra in extra_counts.items():
-            pool = pools[category]
-            selected.extend(random.choices(pool, k=extra))
+            picked, remaining = _take_unique(pools[category], extra, used_ids)
+            selected.extend(picked)
+            deficit -= len(picked)
+            if picked:
+                progressed = True
+        if not progressed:
+            break
+
+    if not selected:
+        return [], warnings + ['題庫中沒有任何符合分類的題目']
+
+    if len(selected) < total:
+        warnings.append(
+            f'題庫可用題目不足，本次實際抽出 {len(selected)} 題（設定 {total} 題）'
+        )
 
     random.shuffle(selected)
     return selected, warnings
