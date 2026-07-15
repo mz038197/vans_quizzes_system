@@ -535,6 +535,12 @@ body {
     overflow-x: auto;
 }
 
+/* 作答頁選項字級加大（覆寫上方 13px） */
+#quiz-questions .option-text {
+    font-size: 1.15rem !important;
+    line-height: 1.55 !important;
+}
+
 .option-correct {
     display: block;
     color: #27ae60;
