@@ -9,10 +9,6 @@
             <h1 style="margin: 0;">📝 {{ quiz_bank.title }}</h1>
         </div>
         <div class="card-body">
-            {% if quiz_bank.description %}
-            <p>{{ quiz_bank.description }}</p>
-            {% endif %}
-
             {% if is_practice and draw_warnings %}
             <div class="alert alert-error" style="margin-bottom: 1rem;">
                 {% for warning in draw_warnings %}
