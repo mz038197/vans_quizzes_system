@@ -84,6 +84,12 @@ body {
     background: #f0f2f5;
 }
 
+/* 全域 reset 會清掉列表縮排，內容區恢復預設縮排 */
+.content ul,
+.content ol {
+    padding-left: 1.5rem;
+}
+
 /* 頁面標題區域 */
 .page-header {
     display: flex;
@@ -172,6 +178,29 @@ body {
     border: 1px solid #eaeaea;
 }
 
+/* 練習入口：寬度依標題長度伸縮，避免標題換行或過寬空白 */
+.practice-landing {
+    width: fit-content;
+    max-width: 100%;
+    min-width: min(560px, 100%);
+}
+
+.practice-landing__header {
+    width: fit-content;
+    max-width: 100%;
+}
+
+.practice-landing__title {
+    margin: 0;
+    white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+    .practice-landing__title {
+        white-space: normal;
+    }
+}
+
 .form-group {
     margin-bottom: 1.2rem;
 }
@@ -188,17 +217,23 @@ body {
 .form-group textarea,
 .form-group select {
     width: 100%;
-    padding: 0.5rem 0.8rem;
+    padding: 0.45rem 0.8rem;
     border: 1px solid #d9d9d9;
     border-radius: 2px;
     font-size: 0.9rem;
     transition: all 0.2s;
-    height: 32px;
+}
+
+.form-group input,
+.form-group select {
+    height: 40px;
+    line-height: normal;
 }
 
 .form-group textarea {
     height: auto;
     min-height: 80px;
+    line-height: 1.5;
 }
 
 .form-group input[type="file"] {

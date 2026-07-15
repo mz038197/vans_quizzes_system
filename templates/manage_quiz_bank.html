@@ -44,7 +44,7 @@
                 {% if category_stats %}
                 <div style="margin-top: 1.5rem;">
                     <h4>目前題數統計</h4>
-                    <ul style="line-height: 1.8;">
+                    <ul style="line-height: 1.8; padding-left: 1.5rem; margin-top: 0.5rem;">
                         {% for category, count in (category_stats or {}).items() %}
                         <li><strong>{{ category }}</strong>：{{ count }} 題</li>
                         {% endfor %}

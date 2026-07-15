@@ -3,16 +3,12 @@
 {% block title %}{{ quiz_bank.title }} - 隨機練習{% endblock %}
 
 {% block content %}
-<div class="form-container" style="max-width: 720px;">
+<div class="form-container practice-landing">
     <div class="card">
-        <div class="card-header">
-            <h1 style="margin: 0;">🎯 {{ quiz_bank.title }}</h1>
+        <div class="card-header practice-landing__header">
+            <h1 class="practice-landing__title">🎯 {{ quiz_bank.title }}</h1>
         </div>
         <div class="card-body">
-            {% if quiz_bank.description %}
-            <p>{{ quiz_bank.description }}</p>
-            {% endif %}
-
             <div style="background: #f8f9fa; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;">
                 <h3 style="margin-top: 0;">練習模式說明</h3>
                 <p style="margin-bottom: 0.5rem;">每次練習將隨機抽出 <strong>{{ quiz_bank.session_question_count }}</strong> 題。</p>
