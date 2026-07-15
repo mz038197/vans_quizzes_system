@@ -334,6 +334,16 @@ def ensure_schema_updates():
 def build_questions_data(questions):
     return [serialize_question(q) for q in questions]
 
+def normalize_question_data(raw_data):
+    """Drop empty explanation so cleared edits do not leave stale text."""
+    data = dict(raw_data or {})
+    explanation = str(data.get('explanation', '') or '').strip()
+    if explanation:
+        data['explanation'] = explanation
+    else:
+        data.pop('explanation', None)
+    return data
+
 def get_practice_session_key(access_code):
     return f'practice_session_{access_code}'
 
@@ -357,7 +367,7 @@ def create_questions_for_bank(quiz_bank_id, questions_data, start_order=1):
             title=item['title'],
             question_text=item['question_text'],
             question_type=item['question_type'],
-            question_data=json.dumps(item.get('question_data', {})),
+            question_data=json.dumps(normalize_question_data(item.get('question_data', {}))),
             points=item.get('points', 1),
             order_index=start_order + offset,
             category=item.get('category'),
@@ -655,7 +665,7 @@ def manage_questions(quiz_bank_id):
             title=data.get('title'),
             question_text=data.get('question_text'),
             question_type=data.get('question_type'),
-            question_data=json.dumps(data.get('question_data', {})),
+            question_data=json.dumps(normalize_question_data(data.get('question_data', {}))),
             points=points,
             order_index=max_order + 1,
             category=data.get('category'),
@@ -686,7 +696,7 @@ def manage_question(question_id):
         question.title = data.get('title', question.title)
         question.question_text = data.get('question_text', question.question_text)
         question.question_type = data.get('question_type', question.question_type)
-        question.question_data = json.dumps(data.get('question_data', {}))
+        question.question_data = json.dumps(normalize_question_data(data.get('question_data', {})))
         question.category = data.get('category', question.category)
         
         db.session.commit()

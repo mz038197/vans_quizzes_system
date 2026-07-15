@@ -214,6 +214,12 @@
                                 </div>
                             </div>
                         {% endif %}
+                        {% if data.explanation %}
+                        <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: #f0f4ff; border-radius: 6px; color: #333;">
+                            <strong>解析：</strong>
+                            <span style="white-space: pre-wrap;">{% if data.explanation|length > 120 %}{{ data.explanation[:120] }}…{% else %}{{ data.explanation }}{% endif %}</span>
+                        </div>
+                        {% endif %}
                     {% endif %}
                 </div>
             </div>
@@ -272,6 +278,11 @@
                 <div class="form-group">
                     <label for="question-category">分類</label>
                     <input type="text" id="question-category" placeholder="例如：AI基礎理論">
+                </div>
+
+                <div class="form-group">
+                    <label for="question-explanation">解析（選填）</label>
+                    <textarea id="question-explanation" rows="3" placeholder="作答結果頁會顯示此解析；可不填"></textarea>
                 </div>
                 
                 <!-- 動態內容區域 -->
@@ -1068,6 +1079,16 @@ function collectFormData() {
             questionData.fixed_blocks = fixedBlocks; // {2: {content: "...", display_label: false, indent: 1}}
             break;
     }
+
+    // Always send explanation intent: set when non-empty, omit when cleared so
+    // full question_data replace removes any previous explanation.
+    const explanation = (document.getElementById('question-explanation').value || '').trim();
+    if (explanation) {
+        questionData.explanation = explanation;
+    } else {
+        delete questionData.explanation;
+    }
+
     
     return {
         title,
@@ -1230,6 +1251,8 @@ async function editQuestion(questionId) {
         document.getElementById('question-type').value = question.question_type;
         document.getElementById('question-points').value = question.points;
         document.getElementById('question-category').value = question.category || '';
+        document.getElementById('question-explanation').value =
+            (question.question_data && question.question_data.explanation) || '';
         
         // 觸發類型變更事件以生成對應的表單
         handleQuestionTypeChange();

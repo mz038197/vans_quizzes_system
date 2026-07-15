@@ -33,7 +33,7 @@
                         </div>
                         <div>
                             <div style="font-size: 1.1rem; color: #666; font-family: Consolas, monospace;">題目數量</div>
-                            <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">{{ submission.quiz_bank.questions|length }} 題</div>
+                            <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">{{ questions|length }} 題</div>
                         </div>
                     </div>
                 </div>
@@ -59,7 +59,7 @@
                 <h3 style="margin-bottom: 1.5rem; color: #333; font-family: Consolas, monospace;">📋 答題詳情</h3>
                 
                 {% set student_answers = student_answers if student_answers is defined else submission.answers | from_json %}
-                {% for question in submission.quiz_bank.questions %}
+                {% for question in questions %}
                 {% set question_data = question.question_data | from_json %}
                 {% set user_answer = student_answers.get(question.id|string) %}
                 {% set is_correct = false %}
@@ -287,6 +287,13 @@
                                 </div>
                                 {% endfor %}
                             </div>
+                        </div>
+                        {% endif %}
+
+                        {% if question_data.get('explanation') %}
+                        <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: #f0f4ff; border-radius: 6px; border-left: 4px solid #667eea;">
+                            <strong style="font-family: Consolas, monospace;">解析：</strong>
+                            <div style="margin-top: 0.35rem; white-space: pre-wrap; font-family: Consolas, monospace; color: #333;">{{ question_data.get('explanation') }}</div>
                         </div>
                         {% endif %}
                     </div>

@@ -116,6 +116,10 @@ def _parse_question_block(index, block):
     if errors:
         return None, errors
 
+    explanation = _as_text(meta.get('explanation'))
+    if explanation:
+        question_data['explanation'] = explanation
+
     return {
         'title': title,
         'question_text': question_text,
