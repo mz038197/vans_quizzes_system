@@ -32,7 +32,10 @@
                 </div>
                 <div class="form-group" style="min-width: 180px;">
                     <label for="session-question-count">每次出題數</label>
-                    <input type="number" id="session-question-count" min="1" value="{{ quiz_bank.session_question_count or 10 }}">
+                    <input type="number" id="session-question-count" min="1" value="{{ quiz_bank.session_question_count or 10 }}"{% if quiz_bank.quiz_mode != 'practice' %} disabled{% endif %}>
+                    <p id="session-question-count-hint" style="color: #666; font-size: 0.85rem; margin-top: 0.35rem; {% if quiz_bank.quiz_mode == 'practice' %}display: none;{% endif %}">
+                        固定測驗一次出全部題目，此設定不適用。
+                    </p>
                 </div>
             </div>
 
@@ -1592,8 +1595,26 @@ async function deleteQuestion(questionId) {
 }
 
 function togglePracticeConfigSection() {
-    const isPractice = document.getElementById('quiz-mode').value === 'practice';
-    document.getElementById('practice-config-section').style.display = isPractice ? 'block' : 'none';
+    const quizModeSelect = document.getElementById('quiz-mode');
+    if (!quizModeSelect) {
+        return;
+    }
+
+    const isPractice = quizModeSelect.value === 'practice';
+    const practiceConfigSection = document.getElementById('practice-config-section');
+    if (practiceConfigSection) {
+        practiceConfigSection.style.display = isPractice ? 'block' : 'none';
+    }
+
+    const sessionCountInput = document.getElementById('session-question-count');
+    const sessionCountHint = document.getElementById('session-question-count-hint');
+    if (sessionCountInput) {
+        sessionCountInput.disabled = !isPractice;
+    }
+    if (sessionCountHint) {
+        sessionCountHint.style.display = isPractice ? 'none' : 'block';
+    }
+    toggleScoringTotalInput();
 }
 
 function addRatioRow(category = '', ratio = '') {
@@ -1651,24 +1672,54 @@ async function savePracticeConfig() {
     }
 }
 
+const BANK_QUESTION_COUNT = {{ questions|length }};
+
 function toggleScoringTotalInput() {
-    const mode = document.getElementById('scoring-mode').value;
+    const scoringModeSelect = document.getElementById('scoring-mode');
     const totalInput = document.getElementById('scoring-total-points');
     const preview = document.getElementById('scoring-preview');
-    const questionCount = {{ questions|length }};
-    totalInput.disabled = mode !== 'average';
-    if (mode === 'average' && questionCount > 0) {
-        const total = parseFloat(totalInput.value) || 100;
-        const per = Math.round((total / questionCount) * 10000) / 10000;
-        preview.textContent = `固定測驗時每題約 ${per} 分（${questionCount} 題均分 ${total} 分）。練習模式則依該場抽出題數均分。`;
-    } else if (mode === 'average') {
-        preview.textContent = '題庫尚無題目；儲存後，有題目時會依題數均分總分。';
-    } else {
-        preview.textContent = '學生端將使用各題目前設定的分數加總。';
+    const quizModeSelect = document.getElementById('quiz-mode');
+    if (!scoringModeSelect || !totalInput || !preview || !quizModeSelect) {
+        return;
     }
-}
 
-document.getElementById('scoring-total-points').addEventListener('input', toggleScoringTotalInput);
+    const scoringMode = scoringModeSelect.value;
+    const isPractice = quizModeSelect.value === 'practice';
+
+    totalInput.disabled = scoringMode !== 'average';
+
+    if (scoringMode !== 'average') {
+        preview.textContent = '學生端將使用各題目前設定的分數加總。';
+        return;
+    }
+
+    const total = parseFloat(totalInput.value) || 100;
+
+    if (isPractice) {
+        const sessionCountInput = document.getElementById('session-question-count');
+        const rawSessionCount = sessionCountInput ? String(sessionCountInput.value || '').trim() : '';
+        const sessionCount = parseInt(rawSessionCount, 10);
+        if (!rawSessionCount || !Number.isFinite(sessionCount) || sessionCount < 1) {
+            preview.textContent = '請設定有效的每次出題數。';
+            return;
+        }
+        const per = Math.round((total / sessionCount) * 10000) / 10000;
+        let text = `隨機練習：每題約 ${per} 分（每次出題數 ${sessionCount} 題均分 ${total} 分）`;
+        if (BANK_QUESTION_COUNT < sessionCount) {
+            text += '。題庫不足時實際抽出可能少於設定值';
+        }
+        preview.textContent = text;
+        return;
+    }
+
+    if (BANK_QUESTION_COUNT <= 0) {
+        preview.textContent = '題庫尚無題目；儲存後，有題目時會依題數均分總分。';
+        return;
+    }
+
+    const per = Math.round((total / BANK_QUESTION_COUNT) * 10000) / 10000;
+    preview.textContent = `固定測驗：每題約 ${per} 分（${BANK_QUESTION_COUNT} 題均分 ${total} 分）`;
+}
 
 let appendPreviewReady = false;
 
@@ -1776,8 +1827,19 @@ async function confirmAppendImport() {
 
 // 重新渲染 MathJax，當頁面載入時
 document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('quiz-mode').addEventListener('change', togglePracticeConfigSection);
-    toggleScoringTotalInput();
+    const quizModeSelect = document.getElementById('quiz-mode');
+    if (quizModeSelect) {
+        quizModeSelect.addEventListener('change', togglePracticeConfigSection);
+    }
+    const sessionCountInput = document.getElementById('session-question-count');
+    if (sessionCountInput) {
+        sessionCountInput.addEventListener('input', toggleScoringTotalInput);
+    }
+    const scoringTotalPointsInput = document.getElementById('scoring-total-points');
+    if (scoringTotalPointsInput) {
+        scoringTotalPointsInput.addEventListener('input', toggleScoringTotalInput);
+    }
+    togglePracticeConfigSection();
 
     const imageInput = document.getElementById('question-image');
     const imageRemoveButton = document.getElementById('question-image-remove');
