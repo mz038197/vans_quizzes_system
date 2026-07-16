@@ -59,6 +59,9 @@
                 </div>
                 <div class="card-body">
                     <div class="question-text" style="margin-bottom: 1.5rem; font-size: 1.1rem; line-height: 1.6; white-space: pre-wrap; font-family: Consolas, monospace;">{{ question.question_text | trim }}</div>
+                    {% if question.image and question.image.data_url %}
+                    <img src="{{ question.image.data_url }}" alt="題目附圖" class="question-image" loading="lazy">
+                    {% endif %}
                     
                     <!-- 單選題 -->
                     {% if question.question_type == 'single_choice' %}

@@ -134,6 +134,11 @@
                         <div style="margin-bottom: 1rem;">
                             <strong style="font-family: Consolas, monospace;">題目：</strong><span style="white-space: pre-wrap; font-family: Consolas, monospace;">{{ question.question_text | trim }}</span>
                         </div>
+                        {% if question_data.image and question_data.image.data_url %}
+                        <div style="margin-bottom: 1rem;">
+                            <img src="{{ question_data.image.data_url }}" alt="題目附圖" class="question-image">
+                        </div>
+                        {% endif %}
                         
                         {% if question.question_type in ['single_choice', 'multiple_choice'] %}
                         <div style="margin-bottom: 1rem;">

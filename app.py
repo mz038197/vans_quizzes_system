@@ -3,8 +3,11 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user, UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
+import base64
+import binascii
 import json
 import logging
+import re
 from datetime import datetime
 import os
 import sys
@@ -36,6 +39,15 @@ else:  # development
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quiz_platform.db'
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024
+
+ALLOWED_QUESTION_IMAGE_MIMES = frozenset({
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+})
+QUESTION_IMAGE_MAX_BYTES = 2 * 1024 * 1024
+_DATA_URL_IMAGE_RE = re.compile(
+    r'^data:(image/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$',
+)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
@@ -397,15 +409,74 @@ def build_questions_data(questions, points_map=None):
         result.append(data)
     return result
 
+def _decode_question_image_payload(image_payload):
+    """Return normalized image dict or None if invalid."""
+    if not isinstance(image_payload, dict):
+        return None
+
+    data_url = str(image_payload.get('data_url', '') or '').strip()
+    if not data_url:
+        return None
+
+    match = _DATA_URL_IMAGE_RE.match(data_url)
+    if not match:
+        return None
+
+    mime_type = match.group(1)
+    if mime_type not in ALLOWED_QUESTION_IMAGE_MIMES:
+        return None
+
+    try:
+        raw_bytes = base64.b64decode(match.group(2), validate=True)
+    except (ValueError, binascii.Error):
+        return None
+
+    if len(raw_bytes) > QUESTION_IMAGE_MAX_BYTES:
+        return None
+
+    filename = str(image_payload.get('filename', '') or '').strip()
+    normalized = {
+        'data_url': data_url,
+        'mime_type': mime_type,
+    }
+    if filename:
+        normalized['filename'] = filename
+    return normalized
+
+
+def normalize_question_image(data):
+    """Keep a valid question image or remove the key."""
+    if 'image' not in data:
+        return data
+
+    normalized_image = _decode_question_image_payload(data.get('image'))
+    if normalized_image:
+        data['image'] = normalized_image
+    else:
+        data.pop('image', None)
+    return data
+
+
 def normalize_question_data(raw_data):
-    """Drop empty explanation so cleared edits do not leave stale text."""
+    """Drop empty explanation/image so cleared edits do not leave stale values."""
     data = dict(raw_data or {})
     explanation = str(data.get('explanation', '') or '').strip()
     if explanation:
         data['explanation'] = explanation
     else:
         data.pop('explanation', None)
+    normalize_question_image(data)
     return data
+
+
+def validate_question_data_payload(raw_data):
+    """Return (normalized_data, error_message)."""
+    payload = dict(raw_data or {})
+    had_image = 'image' in payload
+    normalized = normalize_question_data(payload)
+    if had_image and 'image' not in normalized:
+        return None, '圖片格式不支援或超過 2MB'
+    return normalized, None
 
 def get_practice_session_key(access_code):
     return f'practice_session_{access_code}'
@@ -727,6 +798,10 @@ def manage_questions(quiz_bank_id):
         if points_error:
             return jsonify({'error': points_error}), 400
 
+        question_payload, payload_error = validate_question_data_payload(data.get('question_data', {}))
+        if payload_error:
+            return jsonify({'error': payload_error}), 400
+
         # 獲取最大的order_index
         max_order = db.session.query(db.func.max(Question.order_index)).filter_by(quiz_bank_id=quiz_bank_id).scalar() or 0
         
@@ -734,7 +809,7 @@ def manage_questions(quiz_bank_id):
             title=data.get('title'),
             question_text=data.get('question_text'),
             question_type=data.get('question_type'),
-            question_data=json.dumps(normalize_question_data(data.get('question_data', {}))),
+            question_data=json.dumps(question_payload),
             points=points,
             order_index=max_order + 1,
             category=data.get('category'),
@@ -765,7 +840,11 @@ def manage_question(question_id):
         question.title = data.get('title', question.title)
         question.question_text = data.get('question_text', question.question_text)
         question.question_type = data.get('question_type', question.question_type)
-        question.question_data = json.dumps(normalize_question_data(data.get('question_data', {})))
+        if 'question_data' in data:
+            question_payload, payload_error = validate_question_data_payload(data.get('question_data', {}))
+            if payload_error:
+                return jsonify({'error': payload_error}), 400
+            question.question_data = json.dumps(question_payload)
         question.category = data.get('category', question.category)
         
         db.session.commit()

@@ -138,6 +138,12 @@
                     <div>
                         <strong>{{ question.title }}</strong>
                         <span class="question-type-badge">{{ get_question_type_name(question.question_type) }}</span>
+                        {% if question.question_data %}
+                            {% set data = question.question_data | from_json %}
+                            {% if data.image and data.image.data_url %}
+                            <span style="color: #667eea; margin-left: 0.5rem; font-size: 0.85rem;">🖼️ 有附圖</span>
+                            {% endif %}
+                        {% endif %}
                         {% if question.category %}
                         <span style="color: #667eea; margin-left: 0.5rem;">{{ question.category }}</span>
                         {% endif %}
@@ -277,6 +283,16 @@
                         💡 LaTeX 提示：使用 $...$ 表示行內公式，使用 $$...$$ 表示獨立公式。例如：$x^2 + y^2 = r^2$
                     </p>
                 </div>
+
+                <div class="form-group">
+                    <label for="question-image">題目附圖（選填，最多 1 張）</label>
+                    <input type="file" id="question-image" accept="image/png,image/jpeg,image/gif,image/webp">
+                    <p style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">
+                        支援 PNG、JPG、GIF、WebP，單檔上限 2MB。圖片會顯示在題目文字下方，協助學生理解題意。
+                    </p>
+                    <div id="question-image-preview" style="margin-top: 0.75rem;"></div>
+                    <button type="button" id="question-image-remove" class="btn btn-secondary" style="margin-top: 0.5rem; display: none;">移除圖片</button>
+                </div>
                 
                 <div class="form-group">
                     <label for="question-type">題目類型 *</label>
@@ -320,18 +336,52 @@
 
 <script>
 let currentQuestionId = null;
+let pendingQuestionImage = null;
+const QUESTION_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 const initialCategoryRatios = {{ (category_ratios or {}) | tojson | safe }};
+
+function resetQuestionImageState() {
+    pendingQuestionImage = null;
+    const fileInput = document.getElementById('question-image');
+    const preview = document.getElementById('question-image-preview');
+    const removeButton = document.getElementById('question-image-remove');
+    if (fileInput) fileInput.value = '';
+    if (preview) preview.innerHTML = '';
+    if (removeButton) removeButton.style.display = 'none';
+}
+
+function renderQuestionImagePreview(imageData) {
+    const preview = document.getElementById('question-image-preview');
+    const removeButton = document.getElementById('question-image-remove');
+    if (!preview || !removeButton) return;
+
+    if (!imageData || !imageData.data_url) {
+        preview.innerHTML = '';
+        removeButton.style.display = 'none';
+        return;
+    }
+
+    preview.innerHTML = `<img src="${imageData.data_url}" alt="題目附圖預覽" class="question-image">`;
+    removeButton.style.display = 'inline-block';
+}
+
+function setPendingQuestionImage(imageData) {
+    pendingQuestionImage = imageData;
+    renderQuestionImagePreview(imageData);
+}
 
 function showAddQuestionModal() {
     currentQuestionId = null;
     document.getElementById('modal-title').textContent = '新增題目';
     document.getElementById('question-form').reset();
     document.getElementById('question-specific-content').innerHTML = '';
+    resetQuestionImageState();
     document.getElementById('question-modal').style.display = 'block';
 }
 
 function hideQuestionModal() {
     document.getElementById('question-modal').style.display = 'none';
+    resetQuestionImageState();
 }
 
 function handleQuestionTypeChange() {
@@ -1110,6 +1160,16 @@ function collectFormData() {
         delete questionData.explanation;
     }
 
+    if (pendingQuestionImage && pendingQuestionImage.data_url) {
+        questionData.image = {
+            data_url: pendingQuestionImage.data_url,
+            mime_type: pendingQuestionImage.mime_type,
+            filename: pendingQuestionImage.filename || '',
+        };
+    } else {
+        delete questionData.image;
+    }
+
     
     return {
         title,
@@ -1274,6 +1334,9 @@ async function editQuestion(questionId) {
         document.getElementById('question-category').value = question.category || '';
         document.getElementById('question-explanation').value =
             (question.question_data && question.question_data.explanation) || '';
+        setPendingQuestionImage(
+            (question.question_data && question.question_data.image) || null
+        );
         
         // 觸發類型變更事件以生成對應的表單
         handleQuestionTypeChange();
@@ -1715,6 +1778,41 @@ async function confirmAppendImport() {
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('quiz-mode').addEventListener('change', togglePracticeConfigSection);
     toggleScoringTotalInput();
+
+    const imageInput = document.getElementById('question-image');
+    const imageRemoveButton = document.getElementById('question-image-remove');
+    if (imageInput) {
+        imageInput.addEventListener('change', function(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert('請選擇圖片檔案');
+                imageInput.value = '';
+                return;
+            }
+            if (file.size > QUESTION_IMAGE_MAX_BYTES) {
+                alert('圖片大小不能超過 2MB');
+                imageInput.value = '';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(loadEvent) {
+                setPendingQuestionImage({
+                    data_url: loadEvent.target.result,
+                    mime_type: file.type,
+                    filename: file.name,
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+    if (imageRemoveButton) {
+        imageRemoveButton.addEventListener('click', function() {
+            resetQuestionImageState();
+        });
+    }
 
     const ratios = initialCategoryRatios || {};
     const entries = Object.entries(ratios);
