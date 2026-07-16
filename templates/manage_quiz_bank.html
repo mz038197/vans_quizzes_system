@@ -53,6 +53,27 @@
                 {% endif %}
             </div>
 
+            <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee;">
+                <h4 style="margin-bottom: 0.75rem;">計分設定</h4>
+                <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+                    切換模式不會改寫各題儲存的分數，只影響之後學生答題與交卷的計分方式。
+                </p>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+                    <div class="form-group" style="min-width: 220px;">
+                        <label for="scoring-mode">計分模式</label>
+                        <select id="scoring-mode" onchange="toggleScoringTotalInput()">
+                            <option value="explicit" {% if (quiz_bank.scoring_mode or 'explicit') != 'average' %}selected{% endif %}>使用各題設定分數</option>
+                            <option value="average" {% if quiz_bank.scoring_mode == 'average' %}selected{% endif %}>依題數平均</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="min-width: 180px;" id="scoring-total-group">
+                        <label for="scoring-total-points">平均模式總分</label>
+                        <input type="number" id="scoring-total-points" min="0.01" step="any" value="{{ quiz_bank.scoring_total_points if quiz_bank.scoring_total_points is not none else 100 }}">
+                    </div>
+                </div>
+                <p id="scoring-preview" style="color: #667eea; font-size: 0.9rem; margin-top: 0.5rem;"></p>
+            </div>
+
             <button type="button" class="btn" onclick="savePracticeConfig()" style="margin-top: 1rem;">儲存模式設定</button>
             <div id="practice-config-alert" style="margin-top: 1rem;"></div>
         </div>
@@ -1542,6 +1563,8 @@ async function savePracticeConfig() {
         quiz_mode: document.getElementById('quiz-mode').value,
         session_question_count: parseInt(document.getElementById('session-question-count').value, 10),
         category_ratios: collectCategoryRatios(),
+        scoring_mode: document.getElementById('scoring-mode').value,
+        scoring_total_points: parseFloat(document.getElementById('scoring-total-points').value),
     };
 
     try {
@@ -1564,6 +1587,25 @@ async function savePracticeConfig() {
             '<div class="alert alert-error">網路錯誤，請稍後再試</div>';
     }
 }
+
+function toggleScoringTotalInput() {
+    const mode = document.getElementById('scoring-mode').value;
+    const totalInput = document.getElementById('scoring-total-points');
+    const preview = document.getElementById('scoring-preview');
+    const questionCount = {{ questions|length }};
+    totalInput.disabled = mode !== 'average';
+    if (mode === 'average' && questionCount > 0) {
+        const total = parseFloat(totalInput.value) || 100;
+        const per = Math.round((total / questionCount) * 10000) / 10000;
+        preview.textContent = `固定測驗時每題約 ${per} 分（${questionCount} 題均分 ${total} 分）。練習模式則依該場抽出題數均分。`;
+    } else if (mode === 'average') {
+        preview.textContent = '題庫尚無題目；儲存後，有題目時會依題數均分總分。';
+    } else {
+        preview.textContent = '學生端將使用各題目前設定的分數加總。';
+    }
+}
+
+document.getElementById('scoring-total-points').addEventListener('input', toggleScoringTotalInput);
 
 let appendPreviewReady = false;
 
@@ -1672,6 +1714,7 @@ async function confirmAppendImport() {
 // 重新渲染 MathJax，當頁面載入時
 document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('quiz-mode').addEventListener('change', togglePracticeConfigSection);
+    toggleScoringTotalInput();
 
     const ratios = initialCategoryRatios || {};
     const entries = Object.entries(ratios);

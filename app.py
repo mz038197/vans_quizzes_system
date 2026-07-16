@@ -84,6 +84,8 @@ class QuizBank(db.Model):
     quiz_mode = db.Column(db.String(20), default='fixed')
     session_question_count = db.Column(db.Integer, default=10)
     category_ratios = db.Column(db.Text)
+    scoring_mode = db.Column(db.String(20), default='explicit')  # explicit | average
+    scoring_total_points = db.Column(db.Float, default=100)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     
@@ -112,6 +114,8 @@ class Submission(db.Model):
     total_points = db.Column(db.Float, default=0)
     is_practice = db.Column(db.Boolean, default=False)
     session_question_ids = db.Column(db.Text)
+    scoring_mode = db.Column(db.String(20))  # snapshot at submit time
+    scoring_total_points = db.Column(db.Float)
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     quiz_bank_id = db.Column(db.Integer, db.ForeignKey('quiz_bank.id'), nullable=False)
 
@@ -289,6 +293,10 @@ def ensure_schema_updates():
             statements.append('ALTER TABLE quiz_bank ADD COLUMN session_question_count INTEGER DEFAULT 10')
         if 'category_ratios' not in cols:
             statements.append('ALTER TABLE quiz_bank ADD COLUMN category_ratios TEXT')
+        if 'scoring_mode' not in cols:
+            statements.append("ALTER TABLE quiz_bank ADD COLUMN scoring_mode VARCHAR(20) DEFAULT 'explicit'")
+        if 'scoring_total_points' not in cols:
+            statements.append('ALTER TABLE quiz_bank ADD COLUMN scoring_total_points REAL DEFAULT 100')
 
     if 'question' in table_names:
         cols = column_names('question')
@@ -310,6 +318,10 @@ def ensure_schema_updates():
             statements.append(f'ALTER TABLE submission ADD COLUMN is_practice BOOLEAN DEFAULT {bool_default}')
         if 'session_question_ids' not in cols:
             statements.append('ALTER TABLE submission ADD COLUMN session_question_ids TEXT')
+        if 'scoring_mode' not in cols:
+            statements.append('ALTER TABLE submission ADD COLUMN scoring_mode VARCHAR(20)')
+        if 'scoring_total_points' not in cols:
+            statements.append('ALTER TABLE submission ADD COLUMN scoring_total_points REAL')
         if 'total_points' in cols and needs_float_migration('submission', 'total_points'):
             if is_postgres:
                 statements.append('ALTER TABLE submission ALTER COLUMN total_points TYPE DOUBLE PRECISION')
@@ -331,8 +343,59 @@ def ensure_schema_updates():
     for statement in statements:
         apply_statement(statement)
 
-def build_questions_data(questions):
-    return [serialize_question(q) for q in questions]
+def get_bank_scoring(quiz_bank):
+    mode = (getattr(quiz_bank, 'scoring_mode', None) or 'explicit').strip().lower()
+    if mode not in ('explicit', 'average'):
+        mode = 'explicit'
+    raw_total = getattr(quiz_bank, 'scoring_total_points', None)
+    try:
+        total = float(raw_total) if raw_total is not None else 100.0
+    except (TypeError, ValueError):
+        total = 100.0
+    if total <= 0:
+        total = 100.0
+    return mode, total
+
+
+def effective_points_map(questions, scoring_mode='explicit', total_points=100):
+    """Return {question_id: effective_points} for this attempt's question list."""
+    questions = list(questions)
+    if not questions:
+        return {}
+
+    mode = (scoring_mode or 'explicit').strip().lower()
+    if mode != 'average':
+        return {q.id: float(q.points or 0) for q in questions}
+
+    try:
+        total = float(total_points)
+    except (TypeError, ValueError):
+        total = 100.0
+    if total <= 0:
+        total = 100.0
+
+    n = len(questions)
+    per = total / n
+    points_map = {}
+    allocated = 0.0
+    for index, question in enumerate(questions):
+        if index == n - 1:
+            points_map[question.id] = round(total - allocated, 4)
+        else:
+            value = round(per, 4)
+            points_map[question.id] = value
+            allocated += value
+    return points_map
+
+
+def build_questions_data(questions, points_map=None):
+    result = []
+    for question in questions:
+        data = serialize_question(question)
+        if points_map is not None and question.id in points_map:
+            data['points'] = points_map[question.id]
+        result.append(data)
+    return result
 
 def normalize_question_data(raw_data):
     """Drop empty explanation so cleared edits do not leave stale text."""
@@ -375,9 +438,10 @@ def create_questions_for_bank(quiz_bank_id, questions_data, start_order=1):
         )
         db.session.add(question)
 
-def grade_question(question, user_answer):
+def grade_question(question, user_answer, points=None):
     question_data = json.loads(question.question_data) if question.question_data else {}
-    points = question.points
+    if points is None:
+        points = question.points
 
     if question.question_type in ['single_choice', 'dropdown']:
         correct_answer = question_data.get('correct_answer')
@@ -571,7 +635,9 @@ def take_quiz(access_code):
         )
 
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
-    questions_data = build_questions_data(questions)
+    scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
+    points_map = effective_points_map(questions, scoring_mode, scoring_total)
+    questions_data = build_questions_data(questions, points_map)
     return render_template('take_quiz.html', quiz_bank=quiz_bank, questions=questions_data, is_practice=False)
 
 @app.route('/quiz/<access_code>/play')
@@ -579,6 +645,7 @@ def play_quiz(access_code):
     quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
     session_key = get_practice_session_key(access_code)
     session_data = session.get(session_key)
+    scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
 
     if quiz_bank.quiz_mode == 'practice':
         if not session_data or not session_data.get('question_ids'):
@@ -586,7 +653,8 @@ def play_quiz(access_code):
 
         loaded = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
         questions = questions_in_id_order(loaded, session_data['question_ids'])
-        questions_data = build_questions_data(questions)
+        points_map = effective_points_map(questions, scoring_mode, scoring_total)
+        questions_data = build_questions_data(questions, points_map)
         return render_template(
             'take_quiz.html',
             quiz_bank=quiz_bank,
@@ -596,7 +664,8 @@ def play_quiz(access_code):
         )
 
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
-    questions_data = build_questions_data(questions)
+    points_map = effective_points_map(questions, scoring_mode, scoring_total)
+    questions_data = build_questions_data(questions, points_map)
     return render_template('take_quiz.html', quiz_bank=quiz_bank, questions=questions_data, is_practice=False)
 
 # API 路由
@@ -718,11 +787,21 @@ def update_practice_config(quiz_bank_id):
     quiz_mode = data.get('quiz_mode', quiz_bank.quiz_mode or 'fixed')
     session_question_count = int(data.get('session_question_count', quiz_bank.session_question_count or 10))
     category_ratios = data.get('category_ratios', get_category_ratios(quiz_bank))
+    scoring_mode = (data.get('scoring_mode') or quiz_bank.scoring_mode or 'explicit').strip().lower()
+    raw_scoring_total = data.get('scoring_total_points', quiz_bank.scoring_total_points)
 
     if quiz_mode not in ('fixed', 'practice'):
         return jsonify({'error': 'quiz_mode 無效'}), 400
     if session_question_count <= 0:
         return jsonify({'error': '每次出題數必須大於 0'}), 400
+    if scoring_mode not in ('explicit', 'average'):
+        return jsonify({'error': '計分模式無效'}), 400
+    try:
+        scoring_total_points = float(raw_scoring_total if raw_scoring_total is not None else 100)
+    except (TypeError, ValueError):
+        return jsonify({'error': '總分必須是數字'}), 400
+    if scoring_total_points <= 0:
+        return jsonify({'error': '總分必須大於 0'}), 400
 
     if quiz_mode == 'practice':
         errors = validate_category_ratios(category_ratios)
@@ -732,6 +811,8 @@ def update_practice_config(quiz_bank_id):
     quiz_bank.quiz_mode = quiz_mode
     quiz_bank.session_question_count = session_question_count
     quiz_bank.category_ratios = json.dumps(category_ratios) if quiz_mode == 'practice' else None
+    quiz_bank.scoring_mode = scoring_mode
+    quiz_bank.scoring_total_points = scoring_total_points
     db.session.commit()
 
     return jsonify({
@@ -739,6 +820,8 @@ def update_practice_config(quiz_bank_id):
         'quiz_mode': quiz_bank.quiz_mode,
         'session_question_count': quiz_bank.session_question_count,
         'category_ratios': get_category_ratios(quiz_bank),
+        'scoring_mode': quiz_bank.scoring_mode,
+        'scoring_total_points': quiz_bank.scoring_total_points,
     })
 
 @app.route('/api/quiz/<access_code>/draw', methods=['POST'])
@@ -943,11 +1026,13 @@ def submit_quiz(access_code):
     else:
         questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
 
-    total_points = sum(q.points for q in questions)
+    scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
+    points_map = effective_points_map(questions, scoring_mode, scoring_total)
+    total_points = sum(points_map.values()) if points_map else 0
     score = 0
     for question in questions:
         user_answer = answers.get(str(question.id))
-        score += grade_question(question, user_answer)
+        score += grade_question(question, user_answer, points=points_map.get(question.id))
 
     submission = Submission(
         student_name=student_name,
@@ -958,6 +1043,8 @@ def submit_quiz(access_code):
         quiz_bank_id=quiz_bank.id,
         is_practice=is_practice,
         session_question_ids=json.dumps([q.id for q in questions]) if is_practice else None,
+        scoring_mode=scoring_mode,
+        scoring_total_points=scoring_total,
     )
 
     db.session.add(submission)
@@ -988,7 +1075,20 @@ def view_result(submission_id):
         questions = Question.query.filter_by(quiz_bank_id=submission.quiz_bank_id).order_by(Question.order_index).all()
 
     student_answers = json.loads(submission.answers) if submission.answers else {}
-    return render_template('result.html', submission=submission, questions=questions, student_answers=student_answers)
+    snap_mode = getattr(submission, 'scoring_mode', None) or 'explicit'
+    snap_total = getattr(submission, 'scoring_total_points', None)
+    if snap_total is None:
+        # Legacy rows: prefer the attempt's stored total over a hardcoded 100.
+        # Use explicit None check so a legitimate 0 total is preserved.
+        snap_total = submission.total_points if submission.total_points is not None else 100
+    question_points = effective_points_map(questions, snap_mode, snap_total)
+    return render_template(
+        'result.html',
+        submission=submission,
+        questions=questions,
+        student_answers=student_answers,
+        question_points=question_points,
+    )
 
 @app.route('/quiz-bank/<int:quiz_bank_id>/submissions')
 @login_required
