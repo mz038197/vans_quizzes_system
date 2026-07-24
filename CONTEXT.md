@@ -13,11 +13,19 @@ An optional duration, in minutes, on a Quiz Bank. When set, it applies to both f
 _Avoid_: Exam duration, deadline, timeout (as the bank setting name)
 
 **Take**:
-One in-progress answering of a Quiz Bank, from the moment the student can answer on screen until hand-in. The Time Limit countdown starts at the beginning of a Take; continuity across refresh is kept in the student's browser only (clearing site data may start a fresh countdown).
+One in-progress answering of a Quiz Bank, from the moment the student can answer on screen until hand-in. The Time Limit countdown starts at the beginning of a Take; continuity across refresh is kept in the student's browser only (clearing site data may start a fresh countdown). Each Take has a Take Order fixed when the Take begins.
 _Avoid_: Attempt, session (for the answering period), exam sitting
 
+**Take Order**:
+The per-Take sequence of questions shown to the student — a shuffle of the fixed bank (or of the practice draw), chosen when the Take begins and unchanged until hand-in. The same order is stored on the Submission and used on the student result and the teacher's submission detail.
+_Avoid_: Shuffle, random order (as the concept name), question sequence
+
+**Review Flag**:
+A student-set toggle on a question during a Take meaning “come back to this later” (e.g. hard or unsure). It does not affect scoring and is independent of whether the question already has an answer. During the Take, flags live in the student's browser with other Take continuity; flags still on at hand-in are stored on the Submission and shown on both the student result and the teacher's submission views.
+_Avoid_: Bookmark, deferred, mark for grading, difficult tag (as the concept name)
+
 **Submission**:
-A student's completed set of answers for one Take of a Quiz Bank, including score, when it was handed in, and Elapsed Time when the Quiz Bank had a Time Limit.
+A student's completed set of answers for one Take of a Quiz Bank, including score, when it was handed in, Elapsed Time when the Quiz Bank had a Time Limit, the Take Order for that Take, and which questions still had a Review Flag at hand-in.
 _Avoid_: Attempt, result record (for the persisted hand-in itself)
 
 **Elapsed Time**:

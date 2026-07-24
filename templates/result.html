@@ -133,6 +133,9 @@
                         <div>
                             <strong style="font-family: Consolas, monospace;">題目 {{ loop.index }}</strong>
                             <span style="margin-left: 1rem; color: #666; font-family: Consolas, monospace;">({{ (question_points or {}).get(question.id, question.points) }} 分)</span>
+                            {% if question.id in (review_flag_ids or []) %}
+                            <span style="margin-left: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 4px; background: #fff3e0; color: #e67e22; font-size: 0.85rem; font-family: Consolas, monospace;">Review Flag</span>
+                            {% endif %}
                         </div>
                         <div style="font-weight: bold; color: {{ '#155724' if is_correct else '#721c24' }}; font-family: Consolas, monospace;">
                             {{ '✓ 正確' if is_correct else '✗ 錯誤' }}

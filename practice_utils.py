@@ -51,6 +51,52 @@ def questions_in_id_order(questions, question_ids):
     return [by_id[qid] for qid in question_ids if qid in by_id]
 
 
+def build_take_order(question_ids, rng=None):
+    """Return a permuted copy of question ids as the Take Order for a Take."""
+    ordered = list(question_ids)
+    (rng or random).shuffle(ordered)
+    return ordered
+
+
+def normalize_review_flag_ids(flagged_ids, take_order_ids):
+    """Keep unique Review Flag ids that belong to the Take Order."""
+    allowed = set(take_order_ids)
+    result = []
+    seen = set()
+    for raw in flagged_ids or []:
+        try:
+            qid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if qid in allowed and qid not in seen:
+            result.append(qid)
+            seen.add(qid)
+    return result
+
+
+def parse_review_flag_ids(raw_flags):
+    """Parse Review Flag ids stored on a Submission (JSON text → list of ints)."""
+    if not raw_flags:
+        return []
+    try:
+        parsed = json.loads(raw_flags)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    result = []
+    seen = set()
+    for raw in parsed:
+        try:
+            qid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if qid not in seen:
+            result.append(qid)
+            seen.add(qid)
+    return result
+
+
 def draw_practice_questions(quiz_bank, questions):
     ratios = get_category_ratios(quiz_bank)
     total = quiz_bank.session_question_count or 10
@@ -106,7 +152,8 @@ def draw_practice_questions(quiz_bank, questions):
             f'題庫可用題目不足，本次實際抽出 {len(selected)} 題（設定 {total} 題）'
         )
 
-    random.shuffle(selected)
+    ordered_ids = build_take_order([q.id for q in selected])
+    selected = questions_in_id_order(selected, ordered_ids)
     return selected, warnings
 
 

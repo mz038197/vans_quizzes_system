@@ -13,8 +13,11 @@ import os
 import sys
 from md_quiz_parser import parse_md_quiz, parse_md_questions_append
 from practice_utils import (
+    build_take_order,
     draw_practice_questions,
     get_category_ratios,
+    normalize_review_flag_ids,
+    parse_review_flag_ids,
     questions_in_id_order,
     serialize_question,
     validate_category_ratios,
@@ -126,7 +129,8 @@ class Submission(db.Model):
     score = db.Column(db.Float, default=0)
     total_points = db.Column(db.Float, default=0)
     is_practice = db.Column(db.Boolean, default=False)
-    session_question_ids = db.Column(db.Text)
+    session_question_ids = db.Column(db.Text)  # Take Order (question ids JSON)
+    review_flag_question_ids = db.Column(db.Text)  # Review Flags at hand-in (question ids JSON)
     scoring_mode = db.Column(db.String(20))  # snapshot at submit time
     scoring_total_points = db.Column(db.Float)
     elapsed_seconds = db.Column(db.Integer)  # Elapsed Time for timed Takes
@@ -340,6 +344,8 @@ def ensure_schema_updates():
             statements.append('ALTER TABLE submission ADD COLUMN scoring_total_points REAL')
         if 'elapsed_seconds' not in cols:
             statements.append('ALTER TABLE submission ADD COLUMN elapsed_seconds INTEGER')
+        if 'review_flag_question_ids' not in cols:
+            statements.append('ALTER TABLE submission ADD COLUMN review_flag_question_ids TEXT')
         if 'total_points' in cols and needs_float_migration('submission', 'total_points'):
             if is_postgres:
                 statements.append('ALTER TABLE submission ALTER COLUMN total_points TYPE DOUBLE PRECISION')
@@ -486,6 +492,40 @@ def validate_question_data_payload(raw_data):
 
 def get_practice_session_key(access_code):
     return f'practice_session_{access_code}'
+
+
+def get_take_session_key(access_code):
+    return f'take_session_{access_code}'
+
+
+def get_or_create_fixed_take_order(access_code, bank_question_ids):
+    """Freeze Take Order for a fixed Quiz Bank Take in the Flask session."""
+    key = get_take_session_key(access_code)
+    bank_ids = list(bank_question_ids)
+    data = session.get(key) or {}
+    stored = data.get('question_ids') or []
+    if stored and set(stored) == set(bank_ids) and len(stored) == len(bank_ids):
+        return list(stored)
+    ordered = build_take_order(bank_ids)
+    session[key] = {'question_ids': ordered}
+    return ordered
+
+
+def load_fixed_take_questions(access_code, quiz_bank_id):
+    bank_questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
+    bank_ids = [q.id for q in bank_questions]
+    take_order = get_or_create_fixed_take_order(access_code, bank_ids)
+    return questions_in_id_order(bank_questions, take_order), take_order
+
+
+def resolve_fixed_take_order_for_submit(access_code, bank_question_ids):
+    """Use the frozen Take Order from session; never invent a new permutation at hand-in."""
+    bank_ids = list(bank_question_ids)
+    data = session.get(get_take_session_key(access_code)) or {}
+    stored = data.get('question_ids') or []
+    if stored and set(stored) == set(bank_ids) and len(stored) == len(bank_ids):
+        return list(stored)
+    return bank_ids
 
 def create_quiz_bank_from_data(teacher_id, bank_data):
     quiz_bank = QuizBank(
@@ -711,7 +751,7 @@ def take_quiz(access_code):
             category_ratios=get_category_ratios(quiz_bank),
         )
 
-    questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
+    questions, _take_order = load_fixed_take_questions(access_code, quiz_bank.id)
     scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
     points_map = effective_points_map(questions, scoring_mode, scoring_total)
     questions_data = build_questions_data(questions, points_map)
@@ -740,7 +780,7 @@ def play_quiz(access_code):
             draw_warnings=session_data.get('warnings', []),
         )
 
-    questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
+    questions, _take_order = load_fixed_take_questions(access_code, quiz_bank.id)
     points_map = effective_points_map(questions, scoring_mode, scoring_total)
     questions_data = build_questions_data(questions, points_map)
     return render_template('take_quiz.html', quiz_bank=quiz_bank, questions=questions_data, is_practice=False)
@@ -1116,16 +1156,21 @@ def submit_quiz(access_code):
         return jsonify({'error': '請輸入姓名'}), 400
 
     is_practice = quiz_bank.quiz_mode == 'practice'
-    session_key = get_practice_session_key(access_code)
-    session_data = session.get(session_key) if is_practice else None
+    practice_session_key = get_practice_session_key(access_code)
+    take_session_key = get_take_session_key(access_code)
+    practice_session = session.get(practice_session_key) if is_practice else None
 
     if is_practice:
-        if not session_data or not session_data.get('question_ids'):
+        if not practice_session or not practice_session.get('question_ids'):
             return jsonify({'error': '練習場次已失效，請重新開始練習'}), 400
-        loaded = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
-        questions = questions_in_id_order(loaded, session_data['question_ids'])
+        take_order = list(practice_session['question_ids'])
+        loaded = Question.query.filter(Question.id.in_(take_order)).all()
+        questions = questions_in_id_order(loaded, take_order)
     else:
-        questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
+        bank_questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
+        bank_ids = [q.id for q in bank_questions]
+        take_order = resolve_fixed_take_order_for_submit(access_code, bank_ids)
+        questions = questions_in_id_order(bank_questions, take_order)
 
     scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
     points_map = effective_points_map(questions, scoring_mode, scoring_total)
@@ -1146,6 +1191,11 @@ def submit_quiz(access_code):
         if elapsed_seconds < 0:
             return jsonify({'error': '所花時間無效'}), 400
 
+    review_flags = normalize_review_flag_ids(
+        data.get('review_flag_question_ids'),
+        take_order,
+    )
+
     submission = Submission(
         student_name=student_name,
         student_email=student_email,
@@ -1154,7 +1204,8 @@ def submit_quiz(access_code):
         total_points=total_points,
         quiz_bank_id=quiz_bank.id,
         is_practice=is_practice,
-        session_question_ids=json.dumps([q.id for q in questions]) if is_practice else None,
+        session_question_ids=json.dumps(take_order),
+        review_flag_question_ids=json.dumps(review_flags),
         scoring_mode=scoring_mode,
         scoring_total_points=scoring_total,
         elapsed_seconds=elapsed_seconds,
@@ -1164,7 +1215,8 @@ def submit_quiz(access_code):
     db.session.commit()
 
     if is_practice:
-        session.pop(session_key, None)
+        session.pop(practice_session_key, None)
+    session.pop(take_session_key, None)
 
     return jsonify({
         'message': '測驗提交成功',
@@ -1189,6 +1241,7 @@ def view_result(submission_id):
         questions = Question.query.filter_by(quiz_bank_id=submission.quiz_bank_id).order_by(Question.order_index).all()
 
     student_answers = json.loads(submission.answers) if submission.answers else {}
+    review_flag_ids = set(parse_review_flag_ids(getattr(submission, 'review_flag_question_ids', None)))
     snap_mode = getattr(submission, 'scoring_mode', None) or 'explicit'
     snap_total = getattr(submission, 'scoring_total_points', None)
     if snap_total is None:
@@ -1202,6 +1255,7 @@ def view_result(submission_id):
         questions=questions,
         student_answers=student_answers,
         question_points=question_points,
+        review_flag_ids=review_flag_ids,
     )
 
 @app.route('/quiz-bank/<int:quiz_bank_id>/submissions')

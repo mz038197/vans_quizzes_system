@@ -44,6 +44,10 @@
                     <div style="background: #e9ecef; border-radius: 4px; height: 8px; margin-top: 0.5rem;">
                         <div id="progress-bar" style="background: #667eea; height: 100%; border-radius: 4px; width: 0%; transition: width 0.3s;"></div>
                     </div>
+                    <div id="question-pad" style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.75rem;" aria-label="題號導覽"></div>
+                    <div style="margin-top: 0.5rem; font-size: 0.85rem; color: #666;">
+                        題號可點擊跳題；橘色邊框表示已設 Review Flag（稍後再看）
+                    </div>
                 </div>
             </div>
         </div>
@@ -54,9 +58,16 @@
         {% for question in questions %}
         <div class="question-card" data-question-id="{{ question.id }}" style="display: none;">
             <div class="card">
-                <div class="card-header" style="gap: 1.5rem;">
+                <div class="card-header" style="gap: 1.5rem; flex-wrap: wrap;">
                     <h3 style="margin: 0;">題目 {{ loop.index }}</h3>
                     <span class="question-type-badge">{{ get_question_type_name(question.question_type) }} - {{ question.points }}分</span>
+                    <button type="button"
+                            class="btn btn-secondary review-flag-btn"
+                            data-question-id="{{ question.id }}"
+                            onclick="toggleReviewFlag({{ question.id }})"
+                            style="margin-left: auto;">
+                        標記稍後再看
+                    </button>
                 </div>
                 <div class="card-body">
                     <div class="question-text" style="margin-bottom: 1.5rem; font-size: 1.1rem; line-height: 1.6; white-space: pre-wrap; font-family: Consolas, monospace;">{{ question.question_text | trim }}</div>
@@ -187,6 +198,7 @@
 let currentQuestionIndex = 0;
 let totalQuestions = {{ questions|length }};
 let studentAnswers = {};
+let reviewFlagIds = new Set();
 let quizStarted = false;
 let quizSubmitted = false;
 let countdownTimerId = null;
@@ -194,6 +206,7 @@ const isPractice = {{ 'true' if is_practice else 'false' }};
 const accessCode = {{ quiz_bank.access_code | tojson }};
 const timeLimitMinutes = {{ quiz_bank.time_limit_minutes if quiz_bank.time_limit_minutes is not none else 'null' }};
 const takeStartStorageKey = 'take_start_' + accessCode;
+const reviewFlagsStorageKey = 'review_flags_' + accessCode;
 
 // 確保 studentAnswers 在全域範圍內可存取
 window.studentAnswers = studentAnswers;
@@ -244,6 +257,114 @@ function ensureTakeStart() {
 
 function clearTakeStart() {
     localStorage.removeItem(takeStartStorageKey);
+}
+
+function loadReviewFlags() {
+    reviewFlagIds = new Set();
+    try {
+        const raw = localStorage.getItem(reviewFlagsStorageKey);
+        if (!raw) {
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+            parsed.forEach(function(id) {
+                const num = parseInt(id, 10);
+                if (Number.isFinite(num)) {
+                    reviewFlagIds.add(num);
+                }
+            });
+        }
+    } catch (err) {
+        reviewFlagIds = new Set();
+    }
+}
+
+function persistReviewFlags() {
+    localStorage.setItem(reviewFlagsStorageKey, JSON.stringify(Array.from(reviewFlagIds)));
+}
+
+function clearReviewFlags() {
+    reviewFlagIds = new Set();
+    localStorage.removeItem(reviewFlagsStorageKey);
+}
+
+function questionIdAtIndex(index) {
+    const cards = document.querySelectorAll('.question-card');
+    if (!cards[index]) {
+        return null;
+    }
+    return parseInt(cards[index].dataset.questionId, 10);
+}
+
+function isQuestionAnswered(questionId) {
+    const answer = studentAnswers[String(questionId)];
+    if (answer === undefined || answer === null || answer === '') {
+        return false;
+    }
+    if (Array.isArray(answer)) {
+        return answer.length > 0;
+    }
+    if (typeof answer === 'object') {
+        return Object.keys(answer).length > 0;
+    }
+    return true;
+}
+
+function updateReviewFlagButtons() {
+    document.querySelectorAll('.review-flag-btn').forEach(function(btn) {
+        const qid = parseInt(btn.dataset.questionId, 10);
+        const flagged = reviewFlagIds.has(qid);
+        btn.textContent = flagged ? '取消稍後再看' : '標記稍後再看';
+        btn.style.background = flagged ? '#e67e22' : '';
+        btn.style.color = flagged ? '#fff' : '';
+        btn.style.borderColor = flagged ? '#e67e22' : '';
+    });
+}
+
+function renderQuestionPad() {
+    const pad = document.getElementById('question-pad');
+    if (!pad) {
+        return;
+    }
+    pad.innerHTML = '';
+    for (let i = 0; i < totalQuestions; i++) {
+        const qid = questionIdAtIndex(i);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = String(i + 1);
+        btn.setAttribute('aria-label', '前往題目 ' + (i + 1));
+        btn.onclick = function() { showQuestion(i); };
+        const isCurrent = i === currentQuestionIndex;
+        const flagged = reviewFlagIds.has(qid);
+        const answered = isQuestionAnswered(qid);
+        btn.style.cssText = [
+            'min-width: 2.25rem',
+            'height: 2.25rem',
+            'border-radius: 6px',
+            'border: 2px solid ' + (flagged ? '#e67e22' : (isCurrent ? '#667eea' : '#ced4da')),
+            'background: ' + (isCurrent ? '#667eea' : (answered ? '#e8f0fe' : '#fff')),
+            'color: ' + (isCurrent ? '#fff' : '#333'),
+            'font-weight: ' + (flagged || isCurrent ? '700' : '500'),
+            'cursor: pointer',
+        ].join(';');
+        pad.appendChild(btn);
+    }
+    updateReviewFlagButtons();
+}
+
+function toggleReviewFlag(questionId) {
+    const qid = parseInt(questionId, 10);
+    if (!Number.isFinite(qid)) {
+        return;
+    }
+    if (reviewFlagIds.has(qid)) {
+        reviewFlagIds.delete(qid);
+    } else {
+        reviewFlagIds.add(qid);
+    }
+    persistReviewFlags();
+    renderQuestionPad();
 }
 
 function getElapsedSeconds() {
@@ -306,6 +427,7 @@ function startQuiz() {
     }
     
     quizStarted = true;
+    loadReviewFlags();
     document.getElementById('student-info-section').style.display = 'none';
     document.getElementById('quiz-progress').style.display = 'block';
     document.getElementById('quiz-questions').style.display = 'block';
@@ -328,6 +450,7 @@ function showQuestion(index) {
         document.getElementById('current-question').textContent = index + 1;
         const progress = ((index + 1) / totalQuestions) * 100;
         document.getElementById('progress-bar').style.width = progress + '%';
+        renderQuestionPad();
         
         // 初始化 Parsons Puzzle
         initializeParsons(questions[index]);
@@ -393,6 +516,7 @@ function selectSingleOption(element, questionId) {
     studentAnswers[questionId] = value;
     console.log(`Stored answer for question ${questionId}:`, studentAnswers[questionId]);
     console.log(`Current studentAnswers:`, studentAnswers);
+    renderQuestionPad();
 }
 
 function toggleMultipleOption(element, questionId) {
@@ -424,6 +548,7 @@ function toggleMultipleOption(element, questionId) {
     }
     
     console.log(`Multiple choice answer for question ${questionId}:`, studentAnswers[questionId]);
+    renderQuestionPad();
 }
 
 // Parsons Puzzle 拖拉功能
@@ -734,6 +859,7 @@ async function submitQuiz(options) {
         student_name: studentName,
         student_email: studentEmail,
         answers: studentAnswers,
+        review_flag_question_ids: Array.from(reviewFlagIds),
     };
     if (timeLimitMinutes) {
         payload.elapsed_seconds = getElapsedSeconds();
@@ -752,6 +878,7 @@ async function submitQuiz(options) {
         
         if (response.ok) {
             clearTakeStart();
+            clearReviewFlags();
 
             if (fromTimeUp) {
                 alert('時間到，已自動繳交題目。按下確定後將查看結果。');
