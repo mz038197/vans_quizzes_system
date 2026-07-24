@@ -98,6 +98,7 @@ class QuizBank(db.Model):
     category_ratios = db.Column(db.Text)
     scoring_mode = db.Column(db.String(20), default='explicit')  # explicit | average
     scoring_total_points = db.Column(db.Float, default=100)
+    time_limit_minutes = db.Column(db.Integer)  # optional Time Limit; null = untimed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     
@@ -128,6 +129,7 @@ class Submission(db.Model):
     session_question_ids = db.Column(db.Text)
     scoring_mode = db.Column(db.String(20))  # snapshot at submit time
     scoring_total_points = db.Column(db.Float)
+    elapsed_seconds = db.Column(db.Integer)  # Elapsed Time for timed Takes
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     quiz_bank_id = db.Column(db.Integer, db.ForeignKey('quiz_bank.id'), nullable=False)
 
@@ -309,6 +311,8 @@ def ensure_schema_updates():
             statements.append("ALTER TABLE quiz_bank ADD COLUMN scoring_mode VARCHAR(20) DEFAULT 'explicit'")
         if 'scoring_total_points' not in cols:
             statements.append('ALTER TABLE quiz_bank ADD COLUMN scoring_total_points REAL DEFAULT 100')
+        if 'time_limit_minutes' not in cols:
+            statements.append('ALTER TABLE quiz_bank ADD COLUMN time_limit_minutes INTEGER')
 
     if 'question' in table_names:
         cols = column_names('question')
@@ -334,6 +338,8 @@ def ensure_schema_updates():
             statements.append('ALTER TABLE submission ADD COLUMN scoring_mode VARCHAR(20)')
         if 'scoring_total_points' not in cols:
             statements.append('ALTER TABLE submission ADD COLUMN scoring_total_points REAL')
+        if 'elapsed_seconds' not in cols:
+            statements.append('ALTER TABLE submission ADD COLUMN elapsed_seconds INTEGER')
         if 'total_points' in cols and needs_float_migration('submission', 'total_points'):
             if is_postgres:
                 statements.append('ALTER TABLE submission ALTER COLUMN total_points TYPE DOUBLE PRECISION')
@@ -882,6 +888,20 @@ def update_practice_config(quiz_bank_id):
     if scoring_total_points <= 0:
         return jsonify({'error': '總分必須大於 0'}), 400
 
+    if 'time_limit_minutes' in data:
+        raw_limit = data.get('time_limit_minutes')
+        if raw_limit is None or raw_limit == '':
+            time_limit_minutes = None
+        else:
+            try:
+                time_limit_minutes = int(raw_limit)
+            except (TypeError, ValueError):
+                return jsonify({'error': '時限必須是整數分鐘'}), 400
+            if time_limit_minutes <= 0:
+                time_limit_minutes = None
+    else:
+        time_limit_minutes = quiz_bank.time_limit_minutes
+
     if quiz_mode == 'practice':
         errors = validate_category_ratios(category_ratios)
         if errors:
@@ -892,6 +912,7 @@ def update_practice_config(quiz_bank_id):
     quiz_bank.category_ratios = json.dumps(category_ratios) if quiz_mode == 'practice' else None
     quiz_bank.scoring_mode = scoring_mode
     quiz_bank.scoring_total_points = scoring_total_points
+    quiz_bank.time_limit_minutes = time_limit_minutes
     db.session.commit()
 
     return jsonify({
@@ -901,6 +922,7 @@ def update_practice_config(quiz_bank_id):
         'category_ratios': get_category_ratios(quiz_bank),
         'scoring_mode': quiz_bank.scoring_mode,
         'scoring_total_points': quiz_bank.scoring_total_points,
+        'time_limit_minutes': quiz_bank.time_limit_minutes,
     })
 
 @app.route('/api/quiz/<access_code>/draw', methods=['POST'])
@@ -1113,6 +1135,17 @@ def submit_quiz(access_code):
         user_answer = answers.get(str(question.id))
         score += grade_question(question, user_answer, points=points_map.get(question.id))
 
+    elapsed_seconds = None
+    bank_time_limit = getattr(quiz_bank, 'time_limit_minutes', None)
+    raw_elapsed = data.get('elapsed_seconds')
+    if bank_time_limit and raw_elapsed is not None and raw_elapsed != '':
+        try:
+            elapsed_seconds = int(raw_elapsed)
+        except (TypeError, ValueError):
+            return jsonify({'error': '所花時間無效'}), 400
+        if elapsed_seconds < 0:
+            return jsonify({'error': '所花時間無效'}), 400
+
     submission = Submission(
         student_name=student_name,
         student_email=student_email,
@@ -1124,6 +1157,7 @@ def submit_quiz(access_code):
         session_question_ids=json.dumps([q.id for q in questions]) if is_practice else None,
         scoring_mode=scoring_mode,
         scoring_total_points=scoring_total,
+        elapsed_seconds=elapsed_seconds,
     )
 
     db.session.add(submission)
@@ -1140,6 +1174,7 @@ def submit_quiz(access_code):
         'submission_id': submission.id,
         'is_practice': is_practice,
         'retry_url': url_for('take_quiz', access_code=access_code) if is_practice else None,
+        'elapsed_seconds': submission.elapsed_seconds,
     })
 
 @app.route('/result/<int:submission_id>')
@@ -1198,6 +1233,7 @@ def view_submissions(quiz_bank_id):
             'percentage': round((s.score / s.total_points * 100) if s.total_points > 0 else 0, 2),
             'submitted_at': s.submitted_at.strftime('%Y-%m-%d %H:%M:%S'),
             'is_practice': bool(s.is_practice),
+            'elapsed_seconds': s.elapsed_seconds,
         })
     
     return jsonify(submissions_data)

@@ -36,8 +36,9 @@
             <!-- 測驗進度 -->
             <div id="quiz-progress" style="display: none; margin-bottom: 1rem;">
                 <div style="background: #f8f9fa; border-radius: 8px; padding: 1rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
                         <span>進度：<span id="current-question">1</span> / {{ questions|length }}</span>
+                        <span id="quiz-countdown" style="display: none; font-weight: bold; color: #c0392b; font-variant-numeric: tabular-nums;"></span>
                         <span>總分：{{ questions|sum(attribute='points') }} 分</span>
                     </div>
                     <div style="background: #e9ecef; border-radius: 4px; height: 8px; margin-top: 0.5rem;">
@@ -187,7 +188,12 @@ let currentQuestionIndex = 0;
 let totalQuestions = {{ questions|length }};
 let studentAnswers = {};
 let quizStarted = false;
+let quizSubmitted = false;
+let countdownTimerId = null;
 const isPractice = {{ 'true' if is_practice else 'false' }};
+const accessCode = {{ quiz_bank.access_code | tojson }};
+const timeLimitMinutes = {{ quiz_bank.time_limit_minutes if quiz_bank.time_limit_minutes is not none else 'null' }};
+const takeStartStorageKey = 'take_start_' + accessCode;
 
 // 確保 studentAnswers 在全域範圍內可存取
 window.studentAnswers = studentAnswers;
@@ -215,6 +221,83 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+function getTakeStartMs() {
+    const raw = localStorage.getItem(takeStartStorageKey);
+    if (!raw) {
+        return null;
+    }
+    const parsed = parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ensureTakeStart() {
+    if (!timeLimitMinutes) {
+        return null;
+    }
+    let start = getTakeStartMs();
+    if (!start) {
+        start = Date.now();
+        localStorage.setItem(takeStartStorageKey, String(start));
+    }
+    return start;
+}
+
+function clearTakeStart() {
+    localStorage.removeItem(takeStartStorageKey);
+}
+
+function getElapsedSeconds() {
+    const start = getTakeStartMs();
+    if (!start) {
+        return null;
+    }
+    return Math.max(0, Math.floor((Date.now() - start) / 1000));
+}
+
+function formatCountdown(totalSeconds) {
+    const seconds = Math.max(0, totalSeconds);
+    const minutes = Math.floor(seconds / 60);
+    const remain = seconds % 60;
+    return String(minutes).padStart(2, '0') + ':' + String(remain).padStart(2, '0');
+}
+
+function stopCountdown() {
+    if (countdownTimerId) {
+        clearInterval(countdownTimerId);
+        countdownTimerId = null;
+    }
+}
+
+function updateCountdownDisplay() {
+    if (!timeLimitMinutes || quizSubmitted) {
+        return;
+    }
+    const start = getTakeStartMs();
+    if (!start) {
+        return;
+    }
+    const remaining = timeLimitMinutes * 60 - Math.floor((Date.now() - start) / 1000);
+    const countdownEl = document.getElementById('quiz-countdown');
+    if (countdownEl) {
+        countdownEl.style.display = 'inline';
+        countdownEl.textContent = '剩餘 ' + formatCountdown(remaining);
+    }
+    if (remaining <= 0) {
+        stopCountdown();
+        submitQuiz({ skipConfirm: true, fromTimeUp: true });
+    }
+}
+
+function startCountdown() {
+    if (!timeLimitMinutes) {
+        return;
+    }
+    ensureTakeStart();
+    updateCountdownDisplay();
+    stopCountdown();
+    countdownTimerId = setInterval(updateCountdownDisplay, 1000);
+}
+
 function startQuiz() {
     const studentName = document.getElementById('student-name').value.trim();
     if (!studentName) {
@@ -226,6 +309,7 @@ function startQuiz() {
     document.getElementById('student-info-section').style.display = 'none';
     document.getElementById('quiz-progress').style.display = 'block';
     document.getElementById('quiz-questions').style.display = 'block';
+    startCountdown();
     
     showQuestion(0);
 }
@@ -602,10 +686,20 @@ function collectTextAnswers() {
     });
 }
 
-async function submitQuiz() {
-    if (!confirm('確定要提交測驗嗎？提交後將無法修改。')) {
+async function submitQuiz(options) {
+    options = options || {};
+    const skipConfirm = options.skipConfirm === true;
+    const fromTimeUp = options.fromTimeUp === true;
+
+    if (quizSubmitted) {
         return;
     }
+    if (!skipConfirm && !confirm('確定要提交測驗嗎？提交後將無法修改。')) {
+        return;
+    }
+
+    quizSubmitted = true;
+    stopCountdown();
     
     // 收集所有答案
     collectTextAnswers();
@@ -635,23 +729,36 @@ async function submitQuiz() {
         
         console.log('After DOM collection:', studentAnswers);
     }
+
+    const payload = {
+        student_name: studentName,
+        student_email: studentEmail,
+        answers: studentAnswers,
+    };
+    if (timeLimitMinutes) {
+        payload.elapsed_seconds = getElapsedSeconds();
+    }
     
     try {
-        const response = await fetch('/api/quiz/{{ quiz_bank.access_code }}/submit', {
+        const response = await fetch('/api/quiz/' + accessCode + '/submit', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                student_name: studentName,
-                student_email: studentEmail,
-                answers: studentAnswers
-            })
+            body: JSON.stringify(payload)
         });
         
         const result = await response.json();
         
         if (response.ok) {
+            clearTakeStart();
+
+            if (fromTimeUp) {
+                alert('時間到，已自動繳交題目。按下確定後將查看結果。');
+                window.location.href = '/result/' + result.submission_id;
+                return;
+            }
+
             // 隱藏測驗內容
             document.getElementById('quiz-questions').style.display = 'none';
             document.getElementById('quiz-progress').style.display = 'none';
@@ -659,7 +766,8 @@ async function submitQuiz() {
             // 顯示結果
             document.getElementById('completion-message').style.display = 'block';
             document.getElementById('score-percentage').textContent = result.percentage + '%';
-            document.getElementById('score-details').textContent = `得分：${result.score} / ${result.total_points} 分`;
+            document.getElementById('score-details').textContent =
+                `得分：${result.score} / ${result.total_points} 分`;
 
             const scoreDisplay = document.getElementById('score-display');
             const detailsButton = document.createElement('a');
@@ -682,9 +790,17 @@ async function submitQuiz() {
             // 滾動到頂部
             window.scrollTo(0, 0);
         } else {
+            quizSubmitted = false;
+            if (fromTimeUp && timeLimitMinutes) {
+                startCountdown();
+            }
             alert(result.error || '提交失敗，請稍後再試');
         }
     } catch (error) {
+        quizSubmitted = false;
+        if (fromTimeUp && timeLimitMinutes) {
+            startCountdown();
+        }
         alert('網路錯誤，請檢查連線');
     }
 }

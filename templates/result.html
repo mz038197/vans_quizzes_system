@@ -31,6 +31,14 @@
                             <div style="font-size: 1.1rem; color: #666; font-family: Consolas, monospace;">完成時間</div>
                             <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">{{ submission.submitted_at.strftime('%Y-%m-%d %H:%M') }}</div>
                         </div>
+                        {% if submission.elapsed_seconds is not none %}
+                        <div>
+                            <div style="font-size: 1.1rem; color: #666; font-family: Consolas, monospace;">所花時間</div>
+                            <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">
+                                {{ (submission.elapsed_seconds // 60) }} 分 {{ (submission.elapsed_seconds % 60) }} 秒
+                            </div>
+                        </div>
+                        {% endif %}
                         <div>
                             <div style="font-size: 1.1rem; color: #666; font-family: Consolas, monospace;">題目數量</div>
                             <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">{{ questions|length }} 題</div>

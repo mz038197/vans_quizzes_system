@@ -64,6 +64,7 @@
                             <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">電子郵件</th>
                             <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: center;">得分</th>
                             <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: center;">百分比</th>
+                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">所花時間</th>
                             <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">完成時間</th>
                             <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: center;">操作</th>
                         </tr>
@@ -88,6 +89,15 @@
 
 <script>
 let submissionsData = [];
+
+function formatElapsedSeconds(elapsedSeconds) {
+    if (elapsedSeconds == null) {
+        return '—';
+    }
+    const minutes = Math.floor(elapsedSeconds / 60);
+    const seconds = elapsedSeconds % 60;
+    return `${minutes} 分 ${seconds} 秒`;
+}
 
 // 載入成績資料
 async function loadSubmissions() {
@@ -183,6 +193,9 @@ function displaySubmissionsTable() {
                 ${submission.percentage.toFixed(1)}%
             </td>
             <td style="padding: 1rem; color: #666;">
+                ${formatElapsedSeconds(submission.elapsed_seconds)}
+            </td>
+            <td style="padding: 1rem; color: #666;">
                 ${submission.submitted_at}
             </td>
             <td style="padding: 1rem; text-align: center;">
@@ -210,7 +223,7 @@ function exportToCSV() {
     }
     
     // 準備CSV資料
-    const headers = ['排名', '學生姓名', '電子郵件', '得分', '總分', '百分比', '完成時間'];
+    const headers = ['排名', '學生姓名', '電子郵件', '得分', '總分', '百分比', '所花時間', '完成時間'];
     const sortedSubmissions = [...submissionsData].sort((a, b) => b.percentage - a.percentage);
     
     let csvContent = headers.join(',') + '\n';
@@ -223,6 +236,7 @@ function exportToCSV() {
             submission.score,
             submission.total_points,
             submission.percentage.toFixed(1),
+            `"${formatElapsedSeconds(submission.elapsed_seconds)}"`,
             `"${submission.submitted_at}"`
         ];
         csvContent += row.join(',') + '\n';

@@ -57,6 +57,24 @@
             </div>
 
             <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee;">
+                <h4 style="margin-bottom: 0.75rem;">時限</h4>
+                <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+                    選填。設定後，學生進入作答畫面即開始倒數；時間到會自動繳交。留空表示不限時。
+                </p>
+                <div class="form-group" style="min-width: 220px; max-width: 280px;">
+                    <label for="time-limit-minutes">時限（分鐘）</label>
+                    <input
+                        type="number"
+                        id="time-limit-minutes"
+                        min="1"
+                        step="1"
+                        placeholder="空白＝不限時"
+                        value="{{ quiz_bank.time_limit_minutes if quiz_bank.time_limit_minutes else '' }}"
+                    >
+                </div>
+            </div>
+
+            <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee;">
                 <h4 style="margin-bottom: 0.75rem;">計分設定</h4>
                 <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
                     切換模式不會改寫各題儲存的分數，只影響之後學生答題與交卷的計分方式。
@@ -1643,12 +1661,24 @@ function collectCategoryRatios() {
 }
 
 async function savePracticeConfig() {
+    const rawTimeLimit = document.getElementById('time-limit-minutes').value.trim();
+    let timeLimitMinutes = null;
+    if (rawTimeLimit) {
+        timeLimitMinutes = parseInt(rawTimeLimit, 10);
+        if (!Number.isFinite(timeLimitMinutes) || timeLimitMinutes <= 0) {
+            document.getElementById('practice-config-alert').innerHTML =
+                '<div class="alert alert-error">時限必須是大於 0 的整數分鐘，或留空表示不限時</div>';
+            return;
+        }
+    }
+
     const payload = {
         quiz_mode: document.getElementById('quiz-mode').value,
         session_question_count: parseInt(document.getElementById('session-question-count').value, 10),
         category_ratios: collectCategoryRatios(),
         scoring_mode: document.getElementById('scoring-mode').value,
         scoring_total_points: parseFloat(document.getElementById('scoring-total-points').value),
+        time_limit_minutes: timeLimitMinutes,
     };
 
     try {
