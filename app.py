@@ -22,6 +22,7 @@ from practice_utils import (
     serialize_question,
     validate_category_ratios,
 )
+from time_display import format_wall_clock_utc8
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ ENVIRONMENT = os.environ.get('FLASK_ENV', 'development')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+app.jinja_env.filters['utc8'] = format_wall_clock_utc8
 
 # 根據環境選擇數據庫
 if ENVIRONMENT == 'production':
@@ -1285,7 +1287,7 @@ def view_submissions(quiz_bank_id):
             'score': s.score,
             'total_points': s.total_points,
             'percentage': round((s.score / s.total_points * 100) if s.total_points > 0 else 0, 2),
-            'submitted_at': s.submitted_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'submitted_at': format_wall_clock_utc8(s.submitted_at, '%Y-%m-%d %H:%M:%S'),
             'is_practice': bool(s.is_practice),
             'elapsed_seconds': s.elapsed_seconds,
         })

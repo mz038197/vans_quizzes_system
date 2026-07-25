@@ -25,12 +25,16 @@ A student-set toggle on a question during a Take meaning “come back to this la
 _Avoid_: Bookmark, deferred, mark for grading, difficult tag (as the concept name)
 
 **Submission**:
-A student's completed set of answers for one Take of a Quiz Bank, including score, when it was handed in, Elapsed Time when the Quiz Bank had a Time Limit, the Take Order for that Take, and which questions still had a Review Flag at hand-in.
+A student's completed set of answers for one Take of a Quiz Bank, including score, when it was handed in, Elapsed Time when the Quiz Bank had a Time Limit, the Take Order for that Take, and which questions still had a Review Flag at hand-in. Hand-in time is shown in UTC+8.
 _Avoid_: Attempt, result record (for the persisted hand-in itself)
 
 **Elapsed Time**:
 How long a Take lasted from start until hand-in, stored on the Submission and shown on the student result and the teacher's submission list.
 _Avoid_: Duration, time spent (as the persisted field name)
+
+**UTC+8**:
+The fixed product timezone for every wall-clock time shown to users (teachers and students), including UI and exports — Submission hand-in, Quiz Bank created day, and date-only calendar days use the UTC+8 day boundary. No timezone label is shown. Does not apply to Elapsed Time.
+_Avoid_: Taiwan time, local time, browser timezone
 
 **Time-up Hand-in**:
 When the Time Limit expires, the Take is submitted immediately with answers so far (blank items score as unanswered), then the student is told time is up; confirming that message opens the result. The Submission records Elapsed Time only — not a separate “timed out” reason.

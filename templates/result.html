@@ -29,7 +29,7 @@
                         </div>
                         <div>
                             <div style="font-size: 1.1rem; color: #666; font-family: Consolas, monospace;">完成時間</div>
-                            <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">{{ submission.submitted_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                            <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">{{ submission.submitted_at|utc8('%Y-%m-%d %H:%M') }}</div>
                         </div>
                         {% if submission.elapsed_seconds is not none %}
                         <div>
