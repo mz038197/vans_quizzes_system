@@ -185,22 +185,31 @@ async function deleteQuizBank(quizBankId) {
     if (!confirm('確定要刪除這個題庫嗎？\n\n⚠️ 警告：此操作將永久刪除題庫及其所有題目，且無法復原！')) {
         return;
     }
-    
-    // 再次確認
-    if (!confirm('這是最後確認！\n刪除後所有相關的題目、學生作答紀錄都會被永久刪除。\n\n確定要繼續嗎？')) {
-        return;
-    }
-    
+
     try {
-        const response = await fetch(`/api/quiz-bank/${quizBankId}`, {
+        let response = await fetch(`/api/quiz-bank/${quizBankId}`, {
             method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            }
+            headers: { 'Content-Type': 'application/json' },
         });
-        
-        const result = await response.json();
-        
+        let result = await response.json();
+
+        if (response.status === 409 && result.requires_confirm) {
+            const count = result.submission_count;
+            const ok = confirm(
+                `此題庫已有 ${count} 筆作答紀錄（Submission）。\n` +
+                '刪除後題庫、題目與這些紀錄都會永久消失，無法復原。\n\n確定要繼續嗎？'
+            );
+            if (!ok) {
+                return;
+            }
+            response = await fetch(`/api/quiz-bank/${quizBankId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirm: true }),
+            });
+            result = await response.json();
+        }
+
         if (response.ok) {
             alert(result.message);
             location.reload();

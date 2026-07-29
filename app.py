@@ -109,7 +109,7 @@ class QuizBank(db.Model):
     
     # 關聯
     questions = db.relationship('Question', backref='quiz_bank', lazy=True, cascade='all, delete-orphan')
-    submissions = db.relationship('Submission', backref='quiz_bank', lazy=True)
+    submissions = db.relationship('Submission', backref='quiz_bank', lazy=True, cascade='all, delete-orphan')
 
 class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -806,12 +806,23 @@ def delete_quiz_bank(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
     if quiz_bank.teacher_id != current_user.id:
         return jsonify({'error': '無權限操作'}), 403
-    
+
+    submission_count = Submission.query.filter_by(quiz_bank_id=quiz_bank_id).count()
+    payload = request.get_json(silent=True) or {}
+    confirmed = payload.get('confirm') is True
+
+    if submission_count > 0 and not confirmed:
+        return jsonify({
+            'error': f'此題庫已有 {submission_count} 筆作答紀錄，確認後將一併永久刪除',
+            'requires_confirm': True,
+            'submission_count': submission_count,
+        }), 409
+
     try:
         db.session.delete(quiz_bank)
         db.session.commit()
         return jsonify({'message': '題庫已成功刪除'})
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({'error': '刪除失敗，請稍後再試'}), 500
 

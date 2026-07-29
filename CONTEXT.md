@@ -5,7 +5,7 @@ Teachers publish quiz banks that students take via a shareable access code; time
 ## Language
 
 **Quiz Bank**:
-A teacher-owned collection of questions that students open with an access code. Modes are fixed (all questions) or practice (drawn subset).
+A teacher-owned collection of questions that students open with an access code. Modes are fixed (all questions) or practice (drawn subset). Deleting a Quiz Bank permanently removes it with its questions and Submissions; deactivating leaves Submissions intact. After deletion its access code may be reused.
 _Avoid_: Exam, test paper, quiz set
 
 **Time Limit**:
