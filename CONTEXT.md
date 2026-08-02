@@ -39,3 +39,7 @@ _Avoid_: Taiwan time, local time, browser timezone
 **Time-up Hand-in**:
 When the Time Limit expires, the Take is submitted immediately with answers so far (blank items score as unanswered), then the student is told time is up; confirming that message opens the result. The Submission records Elapsed Time only — not a separate “timed out” reason.
 _Avoid_: Forced submit (as the user-facing name)
+
+**Group**:
+A teacher-owned, named collection used to organise Quiz Banks on the dashboard. A Quiz Bank can belong to many Groups and a Group can contain many Quiz Banks; a Quiz Bank with no Group is shown under the virtual “未分組” entry on the dashboard, not stored as a Group. Deleting a Group removes only its links to Quiz Banks — the Quiz Banks themselves stay and fall back to “未分組”.
+_Avoid_: Folder, tag, category (as the persisted concept name)
