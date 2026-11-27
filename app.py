@@ -29,6 +29,7 @@ from page_nav import register_page_nav
 import teacher_stats
 import class_session_rules
 import grade_stats
+import grade_sheets
 from teacher_auth import (
     DEFAULT_SECRET_KEY,
     LOGIN_REQUIRED,
@@ -1905,6 +1906,96 @@ def export_submissions_csv(quiz_bank_id):
     response = app.response_class(CSV_BOM + out.getvalue(), mimetype='text/csv')
     response.headers['Content-Disposition'] = "attachment; filename*=UTF-8''" + quote(f'{quiz_bank.title}_成績.csv')
     return response
+
+
+# ===== Grade sheets: 課堂總表 and 課程總表 (ticket 16, issue #18). Rules live in grade_sheets.py. =====
+
+app.jinja_env.globals.update(grade_whole_percent=grade_sheets.whole_percent, grade_band=grade_sheets.band)
+
+
+def _sheet_hand_ins(class_session_ids):
+    subs = Submission.query.filter(Submission.class_session_id.in_(class_session_ids)).all() if class_session_ids else []
+    return [{'id': s.id, 'name': s.student_name, 'class_session_id': s.class_session_id,
+             'quiz_bank_id': s.quiz_bank_id, 'submitted_at': s.submitted_at,
+             'percent': grade_stats.percent(s.score, s.total_points)} for s in subs]
+
+
+def grade_sheet(class_sessions):
+    """The sheet over these Class Sessions (in this order): one column per offered Quiz Bank,
+    in the Class Session's order. Columns carry session, offer, handed_in and average."""
+    offers = [offer for cs in class_sessions for offer in cs.offers]
+    sheet = grade_sheets.build_sheet([(o.class_session_id, o.quiz_bank_id) for o in offers],
+                                     _sheet_hand_ins([cs.id for cs in class_sessions]))
+    for column, offer in zip(sheet['columns'], offers):
+        column.update(session=offer.class_session, offer=offer, quiz_bank=offer.quiz_bank)
+    return sheet
+
+
+def owned_or_404(model, record_id):
+    record = db.session.get(model, record_id)
+    if not is_own(record):
+        abort(404)
+    return record
+
+
+def course_sessions_in_start_order(course):
+    return sorted(course.class_sessions, key=lambda cs: (cs.starts_at, cs.id))
+
+
+def sheet_csv(filename, header, sheet, with_summary):
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(header)
+    for row in sheet['rows']:
+        line = [row['name']] + [grade_sheets.cell_text(c) for c in row['cells']]
+        if with_summary:
+            line += ['' if row['average'] is None else grade_sheets.whole_percent(row['average']),
+                     f"{row['answered']} / {len(row['cells'])}"]
+        writer.writerow(line)
+    response = app.response_class(CSV_BOM + out.getvalue(), mimetype='text/csv')
+    response.headers['Content-Disposition'] = "attachment; filename*=UTF-8''" + quote(filename)
+    return response
+
+
+@app.route('/class-sessions/<int:class_session_id>')
+@teacher_required
+def class_session_sheet(class_session_id):
+    class_session = owned_or_404(ClassSession, class_session_id)
+    status = class_session_rules.status(class_session, datetime.utcnow())
+    return render_template('grade_sheet.html', kind='session', class_session=class_session,
+                           course=class_session.course, status=status,
+                           status_label=class_session_status_label(class_session, status),
+                           sheet=grade_sheet([class_session]))
+
+
+@app.route('/class-sessions/<int:class_session_id>/sheet.csv')
+@teacher_required
+def class_session_sheet_csv(class_session_id):
+    class_session = owned_or_404(ClassSession, class_session_id)
+    sheet = grade_sheet([class_session])
+    header = ['學生'] + [c['quiz_bank'].title for c in sheet['columns']]
+    return sheet_csv(f'{class_session.name}_課堂總表.csv', header, sheet, with_summary=False)
+
+
+@app.route('/courses/<int:course_id>')
+@teacher_required
+def course_sheet(course_id):
+    course = owned_or_404(Course, course_id)
+    sessions = course_sessions_in_start_order(course)
+    groups = [{'session': cs, 'span': len(cs.offers)} for cs in sessions if cs.offers]
+    return render_template('grade_sheet.html', kind='course', course=course, groups=groups,
+                           course_open=class_session_rules.course_is_open(course, datetime.utcnow()),
+                           sheet=grade_sheet(sessions))
+
+
+@app.route('/courses/<int:course_id>/sheet.csv')
+@teacher_required
+def course_sheet_csv(course_id):
+    course = owned_or_404(Course, course_id)
+    sheet = grade_sheet(course_sessions_in_start_order(course))
+    header = (['學生'] + [f"{c['session'].name} · {c['quiz_bank'].title}" for c in sheet['columns']]
+              + ['平均', '寫了'])
+    return sheet_csv(f'{course.name}_課程總表.csv', header, sheet, with_summary=True)
 
 
 # ===== Courses and Class Sessions (ticket 09, issue #11) =====
