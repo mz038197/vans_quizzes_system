@@ -56,8 +56,8 @@ def test_table_has_the_agreed_columns(auth_client):
     html = _page(auth_client)
     thead = re.search(r'<thead>(.*?)</thead>', html, re.S).group(1)
     headers = [re.sub(r'<[^>]+>', '', h).strip() for h in re.findall(r'<th[^>]*>(.*?)</th>', thead, re.S)]
-    assert headers[:6] == ['名次', '姓名', 'Email', '分數', '用時', '交卷時間']
-    assert len(headers) == 7  # last column: 看答卷 and 刪除
+    assert headers[:7] == ['名次', '姓名', 'Email', '課堂', '分數', '用時', '交卷時間']
+    assert len(headers) == 8  # last column: 看答卷 and 刪除
 
 
 def test_page_has_no_inline_styles_and_links_its_own_stylesheet(auth_client):
@@ -104,3 +104,40 @@ def test_list_view_and_delete_still_work(auth_client):
     deleted = auth_client.delete(f'/api/submission/{body["submission_id"]}')
     assert deleted.status_code == 200
     assert auth_client.get(f'/api/quiz-bank/{qb}/submissions').get_json() == []
+
+
+# ---- Ticket 15 (#17): the Class Session filter, search and side panels ----
+
+def test_filter_lists_class_sessions_with_status_and_keeps_the_chosen_one(auth_client):
+    from conftest import make_class_session
+    import app as app_module
+    make_class_session(auth_client._ids, name='一班')
+    code = make_class_session(auth_client._ids, name='二班', starts_in=3600, ends_in=7200)
+    with app_module.app.app_context():
+        cs_id = app_module.ClassSession.query.filter_by(code=code).one().id
+    qb = auth_client._ids['quiz_bank_id']
+
+    html = auth_client.get(f'/quiz-bank/{qb}/submissions?class_session={cs_id}').get_data(as_text=True)
+    select = re.search(r'<select id="cs-filter".*?</select>', html, re.S).group(0)
+    assert '全部課堂（2）' in select
+    assert '一班 · 進行中' in select
+    assert re.search(rf'<option value="{cs_id}"[^>]*selected[^>]*>二班 · 即將開始</option>', select)
+    assert 'id="subs-search"' in html
+    assert '分數分布' in html and '最常答錯' in html
+
+
+def test_sessions_tab_grade_link_opens_the_page_filtered(auth_client):
+    from conftest import make_class_session
+    import app as app_module
+    code = make_class_session(auth_client._ids, name='一班')
+    with app_module.app.app_context():
+        cs_id = app_module.ClassSession.query.filter_by(code=code).one().id
+    qb = auth_client._ids['quiz_bank_id']
+    html = auth_client.get(f'/quiz-bank/{qb}?tab=sessions').get_data(as_text=True)
+    assert f'href="/quiz-bank/{qb}/submissions?class_session={cs_id}"' in html
+
+
+def test_rows_mark_repeat_takes_and_time_up(auth_client):
+    script = _page(auth_client).rsplit('<script', 1)[1]
+    assert '第 ${s.take} 次' in script
+    assert '時間到' in script

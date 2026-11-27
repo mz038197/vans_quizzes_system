@@ -202,7 +202,7 @@
                         {% if row.status != 'done' %}
                         <button type="button" class="btn btn-icon" data-copy-url="{{ url_for('take_quiz', access_code=cs.code, _external=True) }}" title="複製連結" aria-label="複製「{{ cs.name }}」的連結"><i class="fas fa-link" aria-hidden="true"></i></button>
                         {% endif %}
-                        <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}">成績</a>
+                        <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id, class_session=cs.id) }}">成績</a>
                     </td>
                 </tr>
                 {% endfor %}
