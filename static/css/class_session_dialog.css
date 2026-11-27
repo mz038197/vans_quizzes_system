@@ -20,6 +20,24 @@
 .csd-sum b { color: var(--text); }
 .csd .err:empty { display: none; }
 
+/* Quiz Bank picker (#12): searchable list grouped by Folder */
+.csd-list { max-height: 220px; overflow: auto; border: 1px solid var(--border); border-radius: var(--r); margin-top: var(--s1); }
+.csd-grp {
+  position: sticky; top: 0; display: flex; gap: 6px; align-items: center;
+  padding: var(--s1) 12px var(--s0); background: var(--bg); color: var(--muted); font-size: var(--fs-xs);
+}
+.csd-grp i { color: var(--fc, var(--muted)); }
+.csd-pickrow {
+  display: flex; width: 100%; min-height: var(--tap); justify-content: space-between; gap: 12px; align-items: center;
+  border: 0; border-top: 1px solid var(--border); background: var(--surface); color: var(--text);
+  padding: var(--s1) 12px; text-align: left; font: inherit; cursor: pointer;
+}
+.csd-pickrow:hover { background: var(--primary-soft); }
+.csd-pickrow.is-in { color: var(--muted); cursor: default; }
+.csd-pickrow.is-in:hover { background: var(--surface); }
+.csd-pickrow .small { white-space: nowrap; }
+.csd-none { padding: var(--s2); text-align: center; }
+
 .cs-table .nowrap { white-space: nowrap; }
 .cs-table .cs-acts { white-space: nowrap; text-align: right; }
 .cs-table .cs-acts .btn { margin-left: var(--s0); }

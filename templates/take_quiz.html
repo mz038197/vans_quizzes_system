@@ -843,6 +843,7 @@ async function submitQuiz(options) {
         if (response.ok) {
             clearTakeStart();
             clearReviewFlags();
+            if (window.StudentHub) StudentHub.markDone(studentCode, quizBankId, result.percentage, result.result_url);
             if (timeUpReason === SESSION_ENDED) {
                 await UI.tell('課堂已結束，已自動交卷。按「查看成績單」看結果和正確答案。', { title: '課堂已結束', okText: '查看成績單' });
             } else if (fromTimeUp) {
