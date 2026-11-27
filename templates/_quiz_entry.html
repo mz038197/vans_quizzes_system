@@ -1,0 +1,51 @@
+{#
+  Student start page card (style A). Used by take_quiz.html (fixed) and practice_landing.html.
+  {% from "_quiz_entry.html" import entry %}
+  {% call entry(quiz_bank, question_count, total_points, start_label, start_action) %}extra notes{% endcall %}
+  Fact values: question_count (int), total_points (number or None), quiz_bank.time_limit_minutes.
+#}
+{% macro num(value) -%}{{ '%g'|format(value) }}{%- endmacro %}
+
+{% macro entry(quiz_bank, question_count, total_points, start_label, start_action, mode_label='固定測驗') -%}
+<section class="qz-entry" id="student-info-section">
+  <div class="form-card">
+    <div>
+      <div class="muted small"><i class="fas fa-clipboard-list" aria-hidden="true"></i> {{ mode_label }}</div>
+      <h1>{{ quiz_bank.title }}</h1>
+      {% if quiz_bank.description %}<p class="muted small">{{ quiz_bank.description }}</p>{% endif %}
+    </div>
+    {{ caller() if caller }}
+    <div class="qz-facts">
+      <div><b>{{ question_count }}</b><span>題</span></div>
+      {% if quiz_bank.time_limit_minutes %}
+      <div><b>{{ quiz_bank.time_limit_minutes }}</b><span>分鐘</span></div>
+      {% else %}
+      <div><b>不限</b><span>時限</span></div>
+      {% endif %}
+      <div><b>{{ num(total_points) if total_points is not none else '依題目' }}</b><span>總分</span></div>
+    </div>
+    <ul class="qz-rules">
+      {% if quiz_bank.time_limit_minutes %}
+      <li><i class="far fa-clock" aria-hidden="true"></i>按「{{ start_label }}」後開始倒數，時間到會自動交卷。</li>
+      {% else %}
+      <li><i class="far fa-clock" aria-hidden="true"></i>這份題庫不限時，畫面會顯示已作答時間。</li>
+      {% endif %}
+      <li><i class="far fa-flag" aria-hidden="true"></i>不確定的題目可以標記「稍後再看」，交卷前再回來檢查。</li>
+      <li><i class="fas fa-link" aria-hidden="true"></i>交卷後會拿到成績連結，請保存，之後可以再打開。</li>
+    </ul>
+    <div class="fld">
+      <label for="student-name">你的姓名 *</label>
+      <input id="student-name" class="inp" type="text" required autocomplete="name"
+             placeholder="請輸入真實姓名，老師用這個找你的成績">
+    </div>
+    <div class="fld">
+      <label for="student-email">電子郵件（選填）</label>
+      <input id="student-email" class="inp" type="email" autocomplete="email" placeholder="you@example.com">
+    </div>
+    <button type="button" class="btn btn-primary btn-lg btn-block" id="start-btn" onclick="{{ start_action }}">
+      <span id="start-text">{{ start_label }}</span>
+      <i class="fas fa-arrow-right" aria-hidden="true"></i>
+    </button>
+  </div>
+</section>
+{%- endmacro %}

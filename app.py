@@ -711,10 +711,14 @@ def take_quiz(access_code):
     quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
 
     if quiz_bank.quiz_mode == 'practice':
+        practice_mode, practice_total = get_bank_scoring(quiz_bank)
         return render_template(
             'practice_landing.html',
             quiz_bank=quiz_bank,
             category_ratios=get_category_ratios(quiz_bank),
+            question_count=quiz_bank.session_question_count or 10,
+            # Explicit points depend on the draw, so the start page cannot know the total yet.
+            total_points=practice_total if practice_mode == 'average' else None,
         )
 
     questions, _take_order = load_fixed_take_questions(access_code, quiz_bank.id)
@@ -1220,9 +1224,9 @@ def view_submission_as_teacher(quiz_bank_id, submission_id):
     if not is_own_quiz_bank(quiz_bank):
         return redirect(url_for('teacher_dashboard'))
     submission = Submission.query.filter_by(id=submission_id, quiz_bank_id=quiz_bank.id).first_or_404()
-    return render_submission_result(submission)
+    return render_submission_result(submission, teacher_view=True)
 
-def render_submission_result(submission):
+def render_submission_result(submission, teacher_view=False):
     if submission.session_question_ids:
         question_ids = json.loads(submission.session_question_ids)
         loaded = Question.query.filter(Question.id.in_(question_ids)).all()
@@ -1239,6 +1243,11 @@ def render_submission_result(submission):
         # Use explicit None check so a legitimate 0 total is preserved.
         snap_total = submission.total_points if submission.total_points is not None else 100
     question_points = effective_points_map(questions, snap_mode, snap_total)
+    # Right or wrong comes from the same judgement as the score (points=1 so a 0-point question still counts).
+    correct_ids = {
+        q.id for q in questions
+        if grade_question(q, student_answers.get(str(q.id)), points=1) > 0
+    }
     return render_template(
         'result.html',
         submission=submission,
@@ -1246,6 +1255,8 @@ def render_submission_result(submission):
         student_answers=student_answers,
         question_points=question_points,
         review_flag_ids=review_flag_ids,
+        correct_ids=correct_ids,
+        teacher_view=teacher_view,
     )
 
 @app.route('/quiz-bank/<int:quiz_bank_id>/submissions')
