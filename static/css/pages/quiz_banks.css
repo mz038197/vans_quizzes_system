@@ -1,6 +1,6 @@
 /* 題庫 page (ticket 06, #8). Tokens only. */
 .bank-table tr.is-attn td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
-.bank-table .attn-note { color: var(--warning); font-size: var(--fs-xs); margin-top: 2px; }
+.bank-table .attn-note { color: var(--warning); font-size: var(--fs-xs); margin-top: var(--s0); }
 .bank-table td.act { white-space: nowrap; text-align: right; }
 .bank-table td.act .btn { vertical-align: middle; }
 
@@ -37,7 +37,7 @@
 /* 移動到… list. */
 .move-list { display: grid; gap: var(--s0); min-width: 280px; }
 .move-item {
-  display: flex; gap: 10px; align-items: center; min-height: var(--tap); width: 100%;
+  display: flex; gap: var(--s1); align-items: center; min-height: var(--tap); width: 100%;
   padding: var(--s1) var(--s2); border: 1px solid var(--border); border-radius: var(--r-sm);
   background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
 }

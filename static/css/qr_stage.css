@@ -5,7 +5,7 @@
   gap: var(--s3); padding: var(--s4);
 }
 .qr-stage[hidden] { display: none; }
-.qr-stage h1 { font-size: 40px; text-align: center; }
+.qr-stage h1 { font-size: var(--fs-3xl); text-align: center; }
 .qr-stage-img { width: min(60vh, 80vw); height: min(60vh, 80vw); }
 .qr-stage-url { font-size: var(--fs-2xl); color: var(--muted); text-align: center; word-break: break-all; }
 .qr-stage-hint { color: var(--muted); font-size: var(--fs-lg); text-align: center; }

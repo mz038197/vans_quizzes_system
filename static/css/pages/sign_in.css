@@ -11,21 +11,21 @@ body.sign-in { background: var(--hero-bg); }
 .lp-banner a { color: inherit; font-weight: 700; text-decoration: underline; }
 
 /* ---- hero ---- */
-.lp-hero { flex: 1; display: flex; align-items: center; position: relative; overflow: hidden; padding: clamp(32px, 7vh, 72px) 0; }
+.lp-hero { flex: 1; display: flex; align-items: center; position: relative; overflow: hidden; padding: clamp(var(--s4), 7vh, calc(var(--s5) * 1.5)) 0; }
 .lp-in {
   position: relative; z-index: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 var(--s2);
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: var(--s5); align-items: center;
 }
-.lp-brand { display: inline-flex; align-items: center; gap: var(--s1); font-family: var(--display); font-weight: 600; font-size: 18px; margin-bottom: var(--s3); }
+.lp-brand { display: inline-flex; align-items: center; gap: var(--s1); font-family: var(--display); font-weight: 600; font-size: var(--fs-lg); margin-bottom: var(--s3); }
 .lp-mark { width: 28px; height: 28px; border-radius: var(--r); display: grid; place-items: center; background: var(--primary); color: var(--on-primary); font-size: var(--fs-sm); }
-.lp-title { font-family: var(--display); font-size: clamp(32px, min(5vw, 7vh), 52px); line-height: 1.15; letter-spacing: -1px; margin-bottom: 28px; }
+.lp-title { font-family: var(--display); font-size: clamp(var(--fs-2xl), min(5vw, 7vh), var(--fs-hero)); line-height: 1.15; letter-spacing: -1px; margin-bottom: var(--s4); }
 .lp-btn {
-  display: inline-flex; align-items: center; min-height: var(--tap); padding: 12px 20px;
+  display: inline-flex; align-items: center; min-height: var(--tap); padding: var(--s1-5) var(--s3);
   background: var(--hero-fg); color: var(--hero-bg); border: 1px solid var(--hero-fg); border-radius: var(--r-sm);
-  font-size: 15px; font-weight: 500;
+  font-size: var(--fs-md); font-weight: 500;
 }
 .lp-btn:hover { background: var(--hero-fg-hover); color: var(--hero-bg); }
-.lp-hint { color: var(--hero-muted); font-size: 13px; margin-top: 12px; }
+.lp-hint { color: var(--hero-muted); font-size: var(--fs-sm); margin-top: var(--s1-5); }
 
 /* ---- breathing glows (JS adds .lp-blob elements) ---- */
 .lp-glow { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
@@ -42,17 +42,17 @@ body.sign-in { background: var(--hero-bg); }
 .sc { position: relative; height: 420px; }
 .sc-card {
   position: absolute; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-lg);
-  padding: 14px 16px; box-shadow: var(--hero-shadow);
+  padding: var(--s2) var(--s2); box-shadow: var(--hero-shadow);
   transform: rotate(var(--tilt)); animation: sc-float var(--fd, 7s) ease-in-out infinite; animation-delay: var(--fdl, 0s);
 }
 @keyframes sc-float { 0%, 100% { transform: translateY(0) rotate(var(--tilt)); } 50% { transform: translateY(-10px) rotate(var(--tilt)); } }
-.sc-kind { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--primary); margin-bottom: var(--s1); display: flex; gap: 6px; align-items: center; }
+.sc-kind { font-size: var(--fs-xs); font-weight: 600; letter-spacing: .04em; color: var(--primary); margin-bottom: var(--s1); display: flex; gap: var(--s1); align-items: center; }
 .sc-q { font-weight: 500; font-size: var(--fs-sm); }
 
 /* 單選題: an answer gets picked, turns green, +10 分 pops up */
 .sc-single { left: 30px; top: 80px; width: 290px; z-index: 3; --tilt: -2deg; --fd: 8s; }
-.sc-code { font-family: var(--mono); font-size: 13px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s1) 10px; margin: var(--s1) 0 10px; }
-.sc-opt { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: var(--r); padding: 7px 10px; margin-top: 6px; font-size: 13px; font-family: var(--mono); }
+.sc-code { font-family: var(--mono); font-size: var(--fs-sm); background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s1) var(--s1); margin: var(--s1) 0 var(--s1); }
+.sc-opt { display: flex; align-items: center; gap: var(--s1); border: 1px solid var(--border); border-radius: var(--r); padding: var(--s1) var(--s1); margin-top: var(--s1); font-size: var(--fs-sm); font-family: var(--mono); }
 .sc-opt .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); flex: none; }
 .sc-opt .ok { margin-left: auto; color: var(--success); opacity: 0; }
 .sc-opt.ans { animation: sc-pick 6s ease-in-out infinite; }
@@ -70,8 +70,8 @@ body.sign-in { background: var(--hero-bg); }
 }
 @keyframes sc-show { 0%, 50%, 100% { opacity: 0; } 56%, 88% { opacity: 1; } }
 .sc-pop {
-  position: absolute; right: -14px; top: -14px; background: var(--success); color: var(--on-primary); font-weight: 700; font-size: 13px;
-  padding: var(--s0) 10px; border-radius: var(--r-pill); box-shadow: var(--hero-pop-shadow); opacity: 0; animation: sc-popup 6s ease-out infinite;
+  position: absolute; right: -14px; top: -14px; background: var(--success); color: var(--on-primary); font-weight: 700; font-size: var(--fs-sm);
+  padding: var(--s0) var(--s1); border-radius: var(--r-pill); box-shadow: var(--hero-pop-shadow); opacity: 0; animation: sc-popup 6s ease-out infinite;
 }
 @keyframes sc-popup {
   0%, 52% { opacity: 0; transform: translateY(6px) scale(.8); }
@@ -106,15 +106,15 @@ body.sign-in { background: var(--hero-bg); }
 @keyframes sc-caret { 50% { border-color: transparent; } }
 
 /* QR card: how students get in (a picture only, not a real link) */
-.sc-qr { right: 20px; bottom: 0; width: 136px; text-align: center; z-index: 5; padding: 10px; --tilt: -4deg; --fd: 8.5s; --fdl: -1s; }
-.sc-qr-img { width: 110px; height: 110px; margin: 0 auto 6px; color: var(--text); }
+.sc-qr { right: 20px; bottom: 0; width: 136px; text-align: center; z-index: 5; padding: var(--s1); --tilt: -4deg; --fd: 8.5s; --fdl: -1s; }
+.sc-qr-img { width: 110px; height: 110px; margin: 0 auto var(--s1); color: var(--text); }
 .sc-qr-img svg { display: block; width: 100%; height: 100%; }
 .sc-qr-t { font-size: var(--fs-xs); font-weight: 500; }
 
 /* chips */
 .sc-chip {
-  position: absolute; z-index: 6; font-size: var(--fs-xs); font-weight: 600; padding: 6px 12px; border-radius: var(--r-pill);
-  color: var(--on-primary); display: flex; gap: 6px; align-items: center; box-shadow: var(--hero-chip-shadow);
+  position: absolute; z-index: 6; font-size: var(--fs-xs); font-weight: 600; padding: var(--s1) var(--s1-5); border-radius: var(--r-pill);
+  color: var(--on-primary); display: flex; gap: var(--s1); align-items: center; box-shadow: var(--hero-chip-shadow);
   --tilt: 0deg; animation: sc-float 6s ease-in-out infinite;
 }
 .sc-chip.c1 { left: 0; top: 30px; background: var(--primary); animation-delay: -1s; }

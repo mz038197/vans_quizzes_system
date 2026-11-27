@@ -4,7 +4,7 @@
 .dash-attn td.act { text-align: right; white-space: nowrap; }
 
 /* 上課發題 panel */
-.qr-box { padding: var(--s2) var(--s3) var(--s3); display: grid; gap: 12px; justify-items: center; }
+.qr-box { padding: var(--s2) var(--s3) var(--s3); display: grid; gap: var(--s1-5); justify-items: center; }
 .qr-box select { width: 100%; }
 .qr-img { width: 184px; height: 184px; display: grid; place-items: center; }
 .qr-img svg { width: 100%; height: 100%; }
@@ -22,7 +22,7 @@
   padding: var(--s2); display: grid; gap: var(--s1); align-content: start;
 }
 .scard.live { border-color: var(--success-line); box-shadow: inset 3px 0 0 var(--success); }
-.scard .nm { font-size: var(--fs-md); font-weight: 600; margin: 2px 0 var(--s0); }
+.scard .nm { font-size: var(--fs-md); font-weight: 600; margin: var(--s0) 0 var(--s0); }
 .scard .bk { list-style: none; margin: 0; padding: 0; color: var(--muted); font-size: var(--fs-sm); }
 .scard .bk li { line-height: 1.6; }
 .scard .bk i { width: 14px; }
