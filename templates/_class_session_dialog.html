@@ -1,0 +1,21 @@
+{#
+  Shared 開課堂 dialog (ticket 09, #11). One copy for every page that opens a Class Session:
+  the Quiz Bank page now; the dashboard, 題庫 page and 課堂 page later (#12, #13, #15).
+
+  Use it in a teacher page:
+    1. In the view, pass  cs_dialog=class_session_dialog_data(current_teacher().user_id)  (app.py).
+    2. At the end of {% block scripts %}:  {% include "_class_session_dialog.html" %}
+    3. Add a button:  <button type="button" class="btn" data-open-session="12,15">開課堂</button>
+       data-open-session: Quiz Bank ids to pick at the start (comma list; empty = none).
+       data-course: a Course id to choose at the start (default: the last-used open Course).
+       data-session-return: where to go after the Class Session is created (default: reload this page).
+    Or from JS:  const created = await ClassSessionDialog.open({ bankIds: [12], courseId: 3 });
+       It resolves to the new Class Session (class_session_json in app.py) or null when cancelled.
+
+  The dialog posts to POST /api/class-sessions (create_class_session in app.py).
+  Data shape: {courses: [{id, name, ends_at}], default_course_id, banks: [{id, title, mode, n_questions, last_time_limit}]}.
+  Times are UTC+8 wall clocks ('YYYY-MM-DDTHH:MM'), as the datetime-local inputs show them.
+#}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/class_session_dialog.css') }}">
+<script type="application/json" id="cs-dialog-data">{{ cs_dialog | tojson }}</script>
+<script src="{{ url_for('static', filename='js/class_session_dialog.js') }}"></script>

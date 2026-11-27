@@ -856,10 +856,12 @@ def manage_quiz_bank(quiz_bank_id):
         scoring_mode=scoring_mode,
         scoring_total=scoring_total,
         tab=tab,
+        class_session_rows=quiz_bank_class_sessions(quiz_bank),
+        cs_dialog=class_session_dialog_data(current_teacher().user_id),
     )
 
 # Tabs of the Quiz Bank manage page, in order. The first one opens by default.
-MANAGE_TABS = ('questions', 'settings', 'import')
+MANAGE_TABS = ('questions', 'sessions', 'settings', 'import')
 
 class StudentEntry:
     """What a student code opens: one Quiz Bank, through a Class Session (or an old Quiz Bank code).
@@ -1658,6 +1660,53 @@ def class_session_json(class_session):
         'banks': [{'quiz_bank_id': o.quiz_bank_id, 'time_limit_minutes': o.time_limit_minutes}
                   for o in class_session.offers],
     }
+
+
+def quiz_bank_class_sessions(quiz_bank, now=None):
+    """The Class Sessions that offer this Quiz Bank, live first, then upcoming (soonest first),
+    then ended (latest end first). Each row: session, offer, status, status_label, n_subs, n_other_banks."""
+    now = now or datetime.utcnow()
+    offers = (ClassSessionBank.query.join(ClassSession)
+              .filter(ClassSessionBank.quiz_bank_id == quiz_bank.id,
+                      ClassSession.teacher_id == quiz_bank.teacher_id).all())
+    counts = dict(
+        db.session.query(Submission.class_session_id, db.func.count(Submission.id))
+        .filter(Submission.quiz_bank_id == quiz_bank.id, Submission.class_session_id.isnot(None))
+        .group_by(Submission.class_session_id).all()
+    )
+    rows = []
+    for offer in offers:
+        class_session = offer.class_session
+        status = class_session_rules.status(class_session, now)
+        rows.append({
+            'session': class_session,
+            'offer': offer,
+            'status': status,
+            'status_label': class_session_status_label(class_session, status, now),
+            'n_subs': counts.get(class_session.id, 0),
+            'n_other_banks': len(class_session.offers) - 1,
+        })
+    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}
+
+    def order(row):
+        class_session = row['session']
+        if row['status'] == class_session_rules.DONE:
+            return (rank[row['status']], -class_session_rules.effective_end(class_session).timestamp())
+        return (rank[row['status']], class_session.starts_at.timestamp())
+
+    return sorted(rows, key=order)
+
+
+def class_session_status_label(class_session, status, now=None):
+    """進行中 / 即將開始 / 已結束, and 已結束（課程已結束） when the Course is not open (spec C8)."""
+    now = now or datetime.utcnow()
+    if status == class_session_rules.LIVE:
+        return '進行中'
+    if status == class_session_rules.SOON:
+        return '即將開始'
+    if not class_session_rules.course_is_open(class_session.course, now):
+        return '已結束（課程已結束）'
+    return '已結束'
 
 
 @app.route('/api/courses', methods=['POST'])

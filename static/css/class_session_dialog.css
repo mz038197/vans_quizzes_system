@@ -1,0 +1,31 @@
+/*
+ * Shared 開課堂 dialog (ticket 09, #11): static/js/class_session_dialog.js, linked by
+ * templates/_class_session_dialog.html. Tokens only. Also the 課堂 tab table on the Quiz Bank page.
+ */
+.csd { gap: var(--s2); }
+.csd .fld { gap: var(--s0); }
+.csd-label { font-weight: 500; }
+.csd-presets { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: var(--s1); }
+.csd-presets .btn { min-height: var(--tap-sm); font-size: var(--fs-xs); padding: 0 10px; }
+.csd-row {
+  display: grid; grid-template-columns: 24px 1fr auto var(--tap-sm); gap: var(--s1); align-items: center;
+  border: 1px solid var(--border); border-radius: var(--r); padding: var(--s1) var(--s1) var(--s1) 12px;
+  margin-bottom: 6px; background: var(--surface);
+}
+.csd-row .n { color: var(--muted); }
+.csd-row b { display: block; font-weight: 500; }
+.csd-lim { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--muted); }
+.csd-lim .inp { width: 80px; }
+.csd-sum { background: var(--bg); border-radius: var(--r); padding: 10px 12px; font-size: var(--fs-sm); color: var(--muted); }
+.csd-sum b { color: var(--text); }
+.csd .err:empty { display: none; }
+
+.cs-table .nowrap { white-space: nowrap; }
+.cs-table .cs-acts { white-space: nowrap; text-align: right; }
+.cs-table .cs-acts .btn { margin-left: var(--s0); }
+
+@media (max-width: 760px) {
+  .csd-row { grid-template-columns: 1fr auto var(--tap-sm); }
+  .csd-row .n { display: none; }
+  .csd-lim .inp { width: 64px; }
+}

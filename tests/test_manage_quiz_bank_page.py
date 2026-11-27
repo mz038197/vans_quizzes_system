@@ -20,11 +20,11 @@ def _selected_tab(html):
     return re.sub(r'<[^>]+>', '', tab.group(1)).strip()
 
 
-def test_manage_page_has_question_settings_and_import_tabs(auth_client):
+def test_manage_page_has_question_sessions_settings_and_import_tabs(auth_client):
     html = _page(auth_client)
     tabs = re.findall(r'<a [^>]*role="tab"[^>]*>(.*?)</a>', html, re.S)
     labels = [re.sub(r'<[^>]+>|\d', '', t).strip() for t in tabs]
-    assert labels == ['題目', '設定', '從 Markdown 追加']
+    assert labels == ['題目', '課堂', '設定', '從 Markdown 追加']  # 課堂 added by ticket 09 (#11)
     assert _selected_tab(html).startswith('題目')
 
 

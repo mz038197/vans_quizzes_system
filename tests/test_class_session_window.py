@@ -192,3 +192,11 @@ def test_a_reopened_course_lets_its_class_sessions_work_again(client):
     assert draw.status_code == 200
     assert client.get(draw.get_json()['redirect']).status_code == 200
     assert _submit(client, code).status_code == 200
+
+
+def test_result_page_links_back_to_the_class_session_not_the_quiz_bank_code(client):
+    code = make_class_session(client._ids)
+    result_url = _submit(client, code).get_json()['result_url']
+    html = _html(client.get(result_url))
+    assert f'href="/quiz/{code}"' in html
+    assert f'href="/quiz/{client._ids["access_code"]}"' not in html
