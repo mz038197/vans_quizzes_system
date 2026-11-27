@@ -91,17 +91,20 @@ def from_json_filter(value):
     except:
         return {}
 
+# Question types in display order, with their names (templates get it as `question_type_names`).
+QUESTION_TYPE_NAMES = {
+    'single_choice': '單選題',
+    'multiple_choice': '多選題',
+    'fill_blank': '填空題',
+    'dropdown': '下拉選單',
+    'dropdown_fillblank': '下拉選單填空題',
+    'parsons': '程式碼排序題',
+}
+app.jinja_env.globals['question_type_names'] = QUESTION_TYPE_NAMES
+
 @app.template_global()
 def get_question_type_name(question_type):
-    type_names = {
-        'single_choice': '單選題',
-        'multiple_choice': '多選題',
-        'fill_blank': '填空題',
-        'dropdown': '下拉選單',
-        'dropdown_fillblank': '下拉選單填空題',
-        'parsons': '程式碼排序題'
-    }
-    return type_names.get(question_type, question_type)
+    return QUESTION_TYPE_NAMES.get(question_type, question_type)
 
 def new_result_token():
     """The secret part of a Result Link (ADR 0008)."""
@@ -750,7 +753,10 @@ def create_quiz_bank():
             'access_code': quiz_bank.access_code
         })
     
-    return render_template('create_quiz_bank.html')
+    tab = request.args.get('tab')
+    if tab not in ('manual', 'import'):
+        tab = 'manual'
+    return render_template('create_quiz_bank.html', tab=tab)
 
 @app.route('/quiz-bank/<int:quiz_bank_id>')
 @teacher_required
@@ -762,8 +768,22 @@ def manage_quiz_bank(quiz_bank_id):
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
     category_stats = {}
     for question in questions:
-        category = (question.category or '未分類').strip()
+        category = (question.category or '').strip() or '未分類'
         category_stats[category] = category_stats.get(category, 0) + 1
+
+    type_counts = []
+    for question_type, name in QUESTION_TYPE_NAMES.items():
+        count = sum(1 for question in questions if question.question_type == question_type)
+        if count:
+            type_counts.append((question_type, name, count))
+
+    scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
+    if scoring_mode != 'average':
+        scoring_total = sum(question.points or 0 for question in questions)
+
+    tab = request.args.get('tab')
+    if tab not in MANAGE_TABS:
+        tab = MANAGE_TABS[0]
 
     return render_template(
         'manage_quiz_bank.html',
@@ -771,7 +791,14 @@ def manage_quiz_bank(quiz_bank_id):
         questions=questions,
         category_stats=category_stats,
         category_ratios=get_category_ratios(quiz_bank),
+        type_counts=type_counts,
+        scoring_mode=scoring_mode,
+        scoring_total=scoring_total,
+        tab=tab,
     )
+
+# Tabs of the Quiz Bank manage page, in order. The first one opens by default.
+MANAGE_TABS = ('questions', 'settings', 'import')
 
 @app.route('/quiz/<access_code>')
 def take_quiz(access_code):
