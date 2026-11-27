@@ -1,6 +1,6 @@
 # Vans Quizzes
 
-Teachers open Class Sessions that offer one or more of their quiz banks; students open a Class Session through its code and take its quiz banks one by one, only inside its time window.
+Teachers open Courses, and inside a Course they open Class Sessions that offer one or more of their quiz banks; students open a Class Session through its code and take its quiz banks one by one, only inside its time window.
 
 ## Language
 
@@ -49,8 +49,12 @@ When the Time Limit expires or the Class Session ends, whichever comes first, th
 _Avoid_: Forced submit (as the user-facing name)
 
 **Class Session**:
-One run of one or more Quiz Banks for students, with a name (such as a class), a start and an end, and its own code. Students open it with its code and take each Quiz Bank it offers as a separate Take, each with its own Submission, only between the start and the end. A Quiz Bank can be offered by many Class Sessions, also at the same time, and each Class Session keeps its own Submissions. Deleting a Class Session permanently deletes its Submissions too.
+One run of one or more Quiz Banks for students, inside exactly one Course, with a name, a start and an end, and its own code. Students open it with its code and take each Quiz Bank it offers as a separate Take, each with its own Submission, only between the start and the end, and only while its Course is open. An ended Course makes every one of its Class Sessions ended, whatever their own end says. A Quiz Bank can be offered by many Class Sessions, also at the same time, and each Class Session keeps its own Submissions. Deleting a Class Session permanently deletes its Submissions too.
 _Avoid_: 教室, Classroom, session (alone), access code (as a Quiz Bank property)
+
+**Course** (課程):
+A teacher-owned container of Class Sessions that outlives one lesson, such as one class for one term. It has a name, an optional end, and is open or ended. Every Class Session belongs to one Course. The Teacher can end a Course at any time (結束課程), and it also ends when its end passes; the Teacher can open it again, and its Class Sessions whose own end is still ahead work again. An ended Course takes no new Class Session. It has no student list and holds no Quiz Banks. Deleting a Course permanently deletes its Class Sessions and their Submissions. It is the same idea as Class on vans_coding_router.
+_Avoid_: Class (alone, too close to Class Session), 班級, semester, Folder (Folders hold Quiz Banks, not Class Sessions)
 
 **Folder**:
 A teacher-owned, named place for Quiz Banks, shown as 資料夾. A Quiz Bank sits in at most one Folder; one with no Folder is shown under “未分類”, which is not a Folder. Folders do not nest. Deleting a Folder moves its Quiz Banks back to “未分類” and deletes no Quiz Bank.
