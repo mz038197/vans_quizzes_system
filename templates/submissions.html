@@ -17,7 +17,7 @@
 {% endblock %}
 
 {% block content %}
-{% set mode_label = '隨機練習' if quiz_bank.quiz_mode == 'practice' else '固定測驗' %}
+{% set mode_label = quiz_mode_label(quiz_bank.quiz_mode) %}
 {% call ui.page_head('成績', sub=quiz_bank.title ~ ' · ' ~ mode_label) %}
 <button type="button" id="export-csv" class="btn"><i class="fas fa-file-csv" aria-hidden="true"></i> 匯出 CSV</button>
 {% endcall %}

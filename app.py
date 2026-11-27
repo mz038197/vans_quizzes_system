@@ -109,6 +109,12 @@ QUESTION_TYPE_NAMES = {
 app.jinja_env.globals['question_type_names'] = QUESTION_TYPE_NAMES
 
 @app.template_global()
+def quiz_mode_label(quiz_mode):
+    """隨機練習 for a practice Quiz Bank, else 固定測驗."""
+    return '隨機練習' if quiz_mode == 'practice' else '固定測驗'
+
+
+@app.template_global()
 def get_question_type_name(question_type):
     return QUESTION_TYPE_NAMES.get(question_type, question_type)
 
@@ -886,8 +892,7 @@ def teacher_dashboard():
         'percent': teacher_stats.submission_percent(s.score, s.total_points),
     } for s, title in recent]
     return render_template('teacher_dashboard.html', banks=banks, numbers=numbers, recent=recent,
-                           sessions=shown, cs_dialog=class_session_dialog_data(teacher_id),
-                           has_session_sheet='class_session_sheet' in app.view_functions)
+                           sessions=shown, cs_dialog=class_session_dialog_data(teacher_id))
 
 
 @app.route('/quiz-banks')
@@ -999,7 +1004,7 @@ def teacher_bank_overview(teacher_id, now=None, sessions=None):
             average, [(r['session'].name, r['status'], r['session'].starts_at, r['n_subs']) for r in own], now)
         overview.append({
             'bank': bank,
-            'mode': '隨機練習' if bank.quiz_mode == 'practice' else '固定測驗',
+            'mode': quiz_mode_label(bank.quiz_mode),
             'n_questions': question_counts.get(bank.id, 0),
             'n_subs': len(scores.get(bank.id, [])),
             'average': average,
@@ -2249,7 +2254,7 @@ def class_session_dialog_data(teacher_id, current_folder_id=None):
         'current_folder_id': current_folder_id if any(f.id == current_folder_id for f in folders) else None,
         'banks': [{
             'id': b.id, 'title': b.title,
-            'mode': '隨機練習' if b.quiz_mode == 'practice' else '固定測驗',
+            'mode': quiz_mode_label(b.quiz_mode),
             'n_questions': question_counts.get(b.id, 0),
             'last_time_limit': limits.get(b.id),
             'folder_id': b.folder_id,
@@ -2611,7 +2616,7 @@ def class_session_action(class_session_id, action):
         if status != class_session_rules.DONE:
             return jsonify({'error': '只有已結束的課堂可以重新開放'}), 400
         class_session.ends_at = now + REOPEN_FOR
-        message = f'「{class_session.name}」重新開放 30 分鐘'
+        message = f'「{class_session.name}」重新開放 {int(REOPEN_FOR.total_seconds() // 60)} 分鐘'
     db.session.commit()
     data = class_session_edit_json(class_session, now)
     data['message'] = message
@@ -2777,8 +2782,6 @@ def class_sessions():
         page=class_sessions_page_data(teacher_id, status_filter, query),
         tabs=SESSION_TABS, status_filter=status_filter, query=query,
         cs_dialog=class_session_dialog_data(teacher_id),
-        has_session_sheet='class_session_sheet' in app.view_functions,
-        has_course_sheet='course_sheet' in app.view_functions,
     )
 
 

@@ -42,11 +42,7 @@
             {% if row.status == 'live' %}<progress class="pg" max="100" value="{{ row.progress }}" aria-label="課堂時間已過 {{ row.progress }}%">{{ row.progress }}%</progress>{% endif %}
             <div class="acts">
                 <button type="button" class="btn btn-primary" data-qr="{{ cs.code }}" data-title="{{ cs.course.name }} · {{ cs.name }}"><i class="fas fa-qrcode" aria-hidden="true"></i> 投影 QR</button>
-                {% if has_session_sheet %}
                 <a class="btn" href="{{ url_for('class_session_sheet', class_session_id=cs.id) }}"><i class="fas fa-table" aria-hidden="true"></i> 總表</a>
-                {% elif cs.offers %}
-                <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=cs.offers[0].quiz_bank_id) }}"><i class="fas fa-table" aria-hidden="true"></i> 總表</a>
-                {% endif %}
             </div>
         </article>
         {% endfor %}
