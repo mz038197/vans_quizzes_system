@@ -71,7 +71,8 @@ def test_submit_persists_elapsed_seconds_and_lists_it(auth_client):
     assert match['elapsed_seconds'] == 2538
 
 
-def test_submit_ignores_elapsed_seconds_when_bank_untimed(auth_client):
+def test_submit_stores_elapsed_seconds_also_when_untimed(auth_client):
+    # Spec #2: Elapsed Time is stored for every Submission (was: ignored when untimed).
     ids = auth_client._ids
     access_code = ids['access_code']
     question_id = ids['question_id']
@@ -86,4 +87,4 @@ def test_submit_ignores_elapsed_seconds_when_bank_untimed(auth_client):
         },
     )
     assert submit_response.status_code == 200
-    assert submit_response.get_json()['elapsed_seconds'] is None
+    assert submit_response.get_json()['elapsed_seconds'] == 120

@@ -97,7 +97,8 @@ def test_student_pages_use_the_shared_layout_without_teacher_nav(client):
 
 
 @pytest.mark.parametrize('path', ['/static/css/app.css', '/static/css/legacy.css',
-                                  '/static/css/pages/dashboard.css', '/static/css/pages/quiz_banks.css'])
+                                  '/static/css/pages/dashboard.css', '/static/css/pages/quiz_banks.css',
+                                  '/static/css/class_session_dialog.css', '/static/css/pages/quiz.css'])
 def test_shared_stylesheets_take_every_colour_from_the_tokens(client, path):
     css = _text(client.get(path))
     assert not HEX.findall(css)
@@ -138,7 +139,8 @@ def test_no_page_uses_browser_dialog_boxes(auth_client):
 
 
 @pytest.mark.parametrize('path', ['/static/js/main.js', '/static/js/ui.js',
-                                  '/static/js/pages/dashboard.js', '/static/js/pages/quiz_banks.js'])
+                                  '/static/js/pages/dashboard.js', '/static/js/pages/quiz_banks.js',
+                                  '/static/js/class_session_dialog.js', '/static/js/pages/class_session_gate.js'])
 def test_shared_scripts_use_no_browser_dialog_boxes(client, path):
     js = _text(client.get(path))
     assert not BROWSER_DIALOG.findall(js)

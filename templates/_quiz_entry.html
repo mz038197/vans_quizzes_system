@@ -1,31 +1,40 @@
 {#
   Student start page card (style A). Used by take_quiz.html (fixed) and practice_landing.html.
   {% from "_quiz_entry.html" import entry %}
-  {% call entry(quiz_bank, question_count, total_points, start_label, start_action) %}extra notes{% endcall %}
-  Fact values: question_count (int), total_points (number or None), quiz_bank.time_limit_minutes.
+  {% call entry(quiz_bank, question_count, total_points, start_label, start_action,
+                 time_limit=..., class_session=..., ends_at=...) %}extra notes{% endcall %}
+  Fact values: question_count (int), total_points (number or None), time_limit (the Class Session's
+  Time Limit for this Quiz Bank, minutes or None). With class_session, the card names it and shows the
+  green 「開放到」 note with ends_at (the effective end, naive UTC).
 #}
 {% macro num(value) -%}{{ '%g'|format(value) }}{%- endmacro %}
 
-{% macro entry(quiz_bank, question_count, total_points, start_label, start_action, mode_label='固定測驗') -%}
+{% macro entry(quiz_bank, question_count, total_points, start_label, start_action, mode_label='固定測驗', time_limit=None, class_session=None, ends_at=None) -%}
 <section class="qz-entry" id="student-info-section">
   <div class="form-card">
     <div>
-      <div class="muted small"><i class="fas fa-clipboard-list" aria-hidden="true"></i> {{ mode_label }}</div>
+      <div class="muted small"><i class="fas fa-clipboard-list" aria-hidden="true"></i> {{ mode_label }}{% if class_session %} · {{ class_session.name }}{% endif %}</div>
       <h1>{{ quiz_bank.title }}</h1>
       {% if quiz_bank.description %}<p class="muted small">{{ quiz_bank.description }}</p>{% endif %}
     </div>
+    {% if class_session and ends_at %}
+    <div class="qz-window" role="status">
+      <i class="far fa-clock" aria-hidden="true"></i>
+      <span>開放到 {{ ends_at | utc8('%m/%d %H:%M') }}。請在這之前交卷。</span>
+    </div>
+    {% endif %}
     {{ caller() if caller }}
     <div class="qz-facts">
       <div><b>{{ question_count }}</b><span>題</span></div>
-      {% if quiz_bank.time_limit_minutes %}
-      <div><b>{{ quiz_bank.time_limit_minutes }}</b><span>分鐘</span></div>
+      {% if time_limit %}
+      <div><b>{{ time_limit }}</b><span>分鐘</span></div>
       {% else %}
       <div><b>不限</b><span>時限</span></div>
       {% endif %}
       <div><b>{{ num(total_points) if total_points is not none else '依題目' }}</b><span>總分</span></div>
     </div>
     <ul class="qz-rules">
-      {% if quiz_bank.time_limit_minutes %}
+      {% if time_limit %}
       <li><i class="far fa-clock" aria-hidden="true"></i>按「{{ start_label }}」後開始倒數，時間到會自動交卷。</li>
       {% else %}
       <li><i class="far fa-clock" aria-hidden="true"></i>這份題庫不限時，畫面會顯示已作答時間。</li>

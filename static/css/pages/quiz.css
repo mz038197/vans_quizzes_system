@@ -200,3 +200,18 @@
   .top, .qz-filters, .qz-res-actions, .qz-keep { display: none !important; }
   .qz-rv[hidden] { display: block !important; }
 }
+
+/* ===== Class Session (ticket 09, #11): window note on the start page, not-started and ended pages ===== */
+.qz-window {
+  display: flex; gap: var(--s1); align-items: center;
+  background: var(--success-soft); color: var(--success);
+  border-radius: var(--r); padding: 10px 12px; font-size: 13px; font-weight: 500;
+}
+.qz-gate { max-width: 480px; margin: var(--s5) auto 120px; }
+.qz-gate .form-card { text-align: center; justify-items: center; padding: var(--s4); gap: var(--s2); }
+.qz-gate h1 { font-family: var(--display); font-size: var(--fs-xl); }
+.qz-gate-ico { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 26px; }
+.qz-gate-ico.is-wait { background: var(--primary-soft); color: var(--primary); }
+.qz-gate-ico.is-closed { background: var(--bg); color: var(--muted); }
+.qz-gate-cd { font-family: var(--mono); font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--primary); }
+.qz-gate-when { background: var(--bg); border-radius: var(--r); padding: 10px var(--s2); width: 100%; }

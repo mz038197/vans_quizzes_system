@@ -16,15 +16,16 @@
 {% block content %}
 {% set head_sub = ((quiz_bank.description ~ ' · ') if quiz_bank.description else '') ~ mode_name ~ ' · 題庫代碼 ' ~ quiz_bank.access_code %}
 {% call ui.page_head(quiz_bank.title, sub=head_sub) %}
+    <button type="button" class="btn" data-open-session="{{ quiz_bank.id }}" data-session-return="?tab=sessions"><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i> 開課堂</button>
     <a class="btn" href="{{ url_for('export_quiz_bank_pdf', quiz_bank_id=quiz_bank.id) }}"><i class="far fa-file-pdf" aria-hidden="true"></i> 匯出 PDF</a>
     <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}"><i class="fas fa-chart-bar" aria-hidden="true"></i> 成績</a>
     <button type="button" class="btn btn-primary" onclick="showAddQuestionModal()"><i class="fas fa-plus" aria-hidden="true"></i> 新增題目</button>
 {% endcall %}
 
-{% set tabs = [('questions', '題目'), ('settings', '設定'), ('import', '從 Markdown 追加')] %}
+{% set tabs = [('questions', '題目'), ('sessions', '課堂'), ('settings', '設定'), ('import', '從 Markdown 追加')] %}
 <nav class="tabs" role="tablist" aria-label="題庫管理">
     {% for key, label in tabs %}
-    <a role="tab" id="tab-{{ key }}" href="?tab={{ key }}" data-tab="{{ key }}" aria-controls="panel-{{ key }}" aria-selected="{{ 'true' if tab == key else 'false' }}">{{ label }}{% if key == 'questions' %}<span class="cnt">{{ questions|length }}</span>{% endif %}</a>
+    <a role="tab" id="tab-{{ key }}" href="?tab={{ key }}" data-tab="{{ key }}" aria-controls="panel-{{ key }}" aria-selected="{{ 'true' if tab == key else 'false' }}">{{ label }}{% if key == 'questions' %}<span class="cnt">{{ questions|length }}</span>{% elif key == 'sessions' %}<span class="cnt">{{ class_session_rows|length }}</span>{% endif %}</a>
     {% endfor %}
 </nav>
 
@@ -165,6 +166,54 @@
                 <a class="linkish" href="?tab=settings" data-tab-link="settings">修改設定 →</a>
             </div>
         </aside>
+    </div>
+</section>
+
+{# ===== 課堂 (ticket 09, #11) ===== #}
+<section id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions"{% if tab != 'sessions' %} hidden{% endif %}>
+    <div class="panel">
+        <div class="panel-h">
+            <div>
+                <h2>課堂</h2>
+                <p class="muted small">學生只能在課堂的開始和結束時間之間作答。每個課堂有自己的連結和成績。</p>
+            </div>
+            <button type="button" class="btn btn-primary" data-open-session="{{ quiz_bank.id }}" data-session-return="?tab=sessions"><i class="fas fa-plus" aria-hidden="true"></i> 開課堂</button>
+        </div>
+        {% if class_session_rows %}
+        <div class="table-wrap">
+            <table class="table cs-table">
+                <thead><tr><th>課堂</th><th>時間</th><th>狀態</th><th>代碼</th><th class="num">作答</th><th><span class="sr-only">動作</span></th></tr></thead>
+                <tbody>
+                {% for row in class_session_rows %}
+                {% set cs = row.session %}
+                <tr data-class-session="{{ cs.id }}">
+                    <td><div class="t-sub">{{ cs.course.name }}</div><div class="t-title">{{ cs.name }}</div></td>
+                    <td class="num">
+                        <div class="nowrap">{{ class_session_window(cs) }}</div>
+                        <div class="t-sub">{% if row.offer.time_limit_minutes %}時限 {{ row.offer.time_limit_minutes }} 分鐘{% else %}不限時{% endif %}</div>
+                    </td>
+                    <td>{{ ui.status_pill(row.status, row.status_label) }}</td>
+                    <td><span class="code">{{ cs.code }}</span></td>
+                    <td class="num">
+                        {{ row.n_subs }} 人
+                        {% if row.n_other_banks %}<div class="t-sub">另有 {{ row.n_other_banks }} 份題庫</div>{% endif %}
+                    </td>
+                    <td class="cs-acts">
+                        {% if row.status != 'done' %}
+                        <button type="button" class="btn btn-icon" data-copy-url="{{ url_for('take_quiz', access_code=cs.code, _external=True) }}" title="複製連結" aria-label="複製「{{ cs.name }}」的連結"><i class="fas fa-link" aria-hidden="true"></i></button>
+                        {% endif %}
+                        <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}">成績</a>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        {% call ui.empty('沒有課堂。開一堂課，學生才能用課堂的連結或 QR code 作答。', icon='fa-chalkboard-teacher') %}
+        <button type="button" class="btn btn-primary" data-open-session="{{ quiz_bank.id }}" data-session-return="?tab=sessions"><i class="fas fa-plus" aria-hidden="true"></i> 開課堂</button>
+        {% endcall %}
+        {% endif %}
     </div>
 </section>
 
@@ -1987,4 +2036,17 @@ document.addEventListener('DOMContentLoaded', function() {
 <script>const QUESTION_TYPE_NAMES = {{ question_type_names | tojson }};</script>
 <script src="{{ url_for('static', filename='js/md_drop.js') }}"></script>
 <script src="{{ url_for('static', filename='js/md_preview.js') }}"></script>
+{% include "_class_session_dialog.html" %}
+<script>
+/* 課堂 tab: copy a Class Session link (button turns green: 已複製). */
+document.addEventListener('click', async function (event) {
+    const button = event.target.closest('[data-copy-url]');
+    if (!button) return;
+    const ok = await copyToClipboard(button.dataset.copyUrl);
+    if (!ok) { UI.toast('無法複製，請手動複製連結', 'error'); return; }
+    button.classList.add('is-ok');
+    UI.toast('已複製連結', 'ok');
+    setTimeout(() => button.classList.remove('is-ok'), 2000);
+});
+</script>
 {% endblock %}
