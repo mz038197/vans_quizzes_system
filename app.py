@@ -1,13 +1,12 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, login_user, logout_user, login_required, current_user, UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
 from flask_cors import CORS
 import base64
 import binascii
 import json
 import logging
 import re
+import secrets
 from datetime import datetime
 import os
 import sys
@@ -23,25 +22,44 @@ from practice_utils import (
     validate_category_ratios,
 )
 from time_display import format_wall_clock_utc8
+from teacher_auth import (
+    DEFAULT_SECRET_KEY,
+    LoginError,
+    check_environment,
+    configure_teacher_auth,
+    current_teacher,
+    teacher_required,
+)
 
 logger = logging.getLogger(__name__)
 
 # 環境設置
-ENVIRONMENT = os.environ.get('FLASK_ENV', 'development')
+# No default: a missing FLASK_ENV must not quietly become development (teacher_auth.check_environment).
+ENVIRONMENT = check_environment(os.environ.get('FLASK_ENV'))
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', DEFAULT_SECRET_KEY)
 app.jinja_env.filters['utc8'] = format_wall_clock_utc8
+
+def normalize_database_url(database_url):
+    """Name the psycopg2 driver outright.
+
+    render.com gives `postgres://`. SQLAlchemy 2.1 reads a bare `postgresql://` as psycopg 3,
+    which requirements.txt does not install, so the app would not start.
+    """
+    for prefix in ('postgres://', 'postgresql://'):
+        if database_url.startswith(prefix):
+            return 'postgresql+psycopg2://' + database_url[len(prefix):]
+    return database_url
 
 # 根據環境選擇數據庫
 if ENVIRONMENT == 'production':
-    # 處理 render.com 中的 postgres:// 前綴問題
-    database_url = os.environ.get('DATABASE_URL', '')
-    if database_url.startswith('postgres://'):
-        database_url = database_url.replace('postgres://', 'postgresql://', 1)
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    app.config['SQLALCHEMY_DATABASE_URI'] = normalize_database_url(os.environ.get('DATABASE_URL', ''))
 else:  # development
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quiz_platform.db'
+    # Tests point this at a temporary database; Flask-SQLAlchemy binds the engine at import time.
+    app.config['SQLALCHEMY_DATABASE_URI'] = normalize_database_url(
+        os.environ.get('QUIZZES_DEV_DATABASE_URL', 'sqlite:///quiz_platform.db')
+    )
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH'] = 4 * 1024 * 1024
@@ -55,10 +73,8 @@ _DATA_URL_IMAGE_RE = re.compile(
 )
 
 db = SQLAlchemy(app)
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
 CORS(app)
+configure_teacher_auth(app, ENVIRONMENT)
 
 # 模板過濾器
 @app.template_filter('from_json')
@@ -80,18 +96,44 @@ def get_question_type_name(question_type):
     }
     return type_names.get(question_type, question_type)
 
-# 資料庫模型
-class User(UserMixin, db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(120), nullable=False)
-    is_teacher = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    # 關聯
-    quiz_banks = db.relationship('QuizBank', backref='owner', lazy=True)
+def new_result_token():
+    """The secret part of a Result Link (ADR 0008)."""
+    return secrets.token_urlsafe(24)
 
+def parse_owner_router_user_id(raw):
+    """QUIZZES_OWNER_ROUTER_USER_ID as a router user id, or None. Never guesses (ADR 0007)."""
+    raw = (raw or '').strip()
+    if raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    if raw:
+        logger.error('QUIZZES_OWNER_ROUTER_USER_ID must be a positive integer; the owner move did not run.')
+    else:
+        logger.warning('The "user" table still exists. Set QUIZZES_OWNER_ROUTER_USER_ID to move Quiz Banks.')
+    return None
+
+def sqlite_owner_move_statements(owner_id, col_defs, col_names):
+    """The SQLite owner move (ADR 0007) as one ordered list of (statement, params).
+
+    The first statement is DML, so SQLite opens the transaction there and every later DDL
+    statement stays inside it. Rebuilding quiz_bank drops its foreign key to "user"; the
+    rebuild keeps columns and foreign keys only, so the indexes come back. Delete together with
+    the owner move in ensure_schema_updates.
+    """
+    tmp_table = 'quiz_bank__owner_mig'
+    cols_csv = ', '.join(col_names)
+    return [
+        ('UPDATE quiz_bank SET teacher_id = :owner', {'owner': owner_id}),
+        (f'DROP TABLE IF EXISTS {tmp_table}', None),
+        (f'CREATE TABLE {tmp_table} ({", ".join(col_defs)})', None),
+        (f'INSERT INTO {tmp_table} ({cols_csv}) SELECT {cols_csv} FROM quiz_bank', None),
+        ('DROP TABLE quiz_bank', None),
+        (f'ALTER TABLE {tmp_table} RENAME TO quiz_bank', None),
+        ('CREATE UNIQUE INDEX IF NOT EXISTS ix_quiz_bank_access_code ON quiz_bank (access_code)', None),
+        ('CREATE INDEX IF NOT EXISTS ix_quiz_bank_teacher_id ON quiz_bank (teacher_id)', None),
+        ('DROP TABLE "user"', None),
+    ]
+
+# 資料庫模型
 class QuizBank(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
@@ -105,7 +147,7 @@ class QuizBank(db.Model):
     scoring_total_points = db.Column(db.Float, default=100)
     time_limit_minutes = db.Column(db.Integer)  # optional Time Limit; null = untimed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, nullable=False, index=True)  # router user id (ADR 0007)
     
     # 關聯
     questions = db.relationship('Question', backref='quiz_bank', lazy=True, cascade='all, delete-orphan')
@@ -138,10 +180,11 @@ class Submission(db.Model):
     elapsed_seconds = db.Column(db.Integer)  # Elapsed Time for timed Takes
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     quiz_bank_id = db.Column(db.Integer, db.ForeignKey('quiz_bank.id'), nullable=False)
+    result_token = db.Column(db.String(64), unique=True, index=True, default=new_result_token)  # Result Link (ADR 0008)
 
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
+def is_own_quiz_bank(quiz_bank):
+    """A Teacher manages only the Quiz Banks they own; an admin is no exception (ADR 0007)."""
+    return quiz_bank.teacher_id == current_teacher().user_id
 
 def generate_access_code():
     """生成6位數的存取代碼"""
@@ -165,8 +208,11 @@ def parse_points(value, default=1.0):
     return points, None
 
 
-def ensure_schema_updates():
-    """為既有資料庫補上新欄位（SQLite / PostgreSQL 簡易 migration）。"""
+def ensure_schema_updates(owner_router_user_id=None):
+    """為既有資料庫補上新欄位（SQLite / PostgreSQL 簡易 migration）。
+
+    `owner_router_user_id` is QUIZZES_OWNER_ROUTER_USER_ID for the one-time owner move (ADR 0007).
+    """
     from sqlalchemy import inspect, text
 
     inspector = inspect(db.engine)
@@ -216,12 +262,14 @@ def ensure_schema_updates():
         }],
     }
 
-    def sqlite_foreign_key_defs(table_name):
+    def sqlite_foreign_key_defs(table_name, exclude_referred_table=None):
         fks = inspector.get_foreign_keys(table_name)
         if not fks:
             fks = expected_sqlite_foreign_keys.get(table_name, [])
         defs = []
         for fk in fks:
+            if fk['referred_table'] == exclude_referred_table:
+                continue
             constrained = ', '.join(fk['constrained_columns'])
             referred_table = fk['referred_table']
             referred = ', '.join(fk['referred_columns'])
@@ -252,8 +300,8 @@ def ensure_schema_updates():
                 return True
         return False
 
-    def rebuild_sqlite_table(table_name, type_overrides=None):
-        """Rebuild a SQLite table, optionally overriding column types, preserving FKs."""
+    def sqlite_table_definition(table_name, type_overrides=None, exclude_referred_table=None):
+        """Column and foreign key definitions of a SQLite table, for a rebuild."""
         type_overrides = type_overrides or {}
         columns = inspector.get_columns(table_name)
         col_names = [column['name'] for column in columns]
@@ -268,8 +316,12 @@ def ensure_schema_updates():
                 pieces.append('NOT NULL')
             col_defs.append(' '.join(pieces))
 
-        col_defs.extend(sqlite_foreign_key_defs(table_name))
+        col_defs.extend(sqlite_foreign_key_defs(table_name, exclude_referred_table))
+        return col_defs, col_names
 
+    def rebuild_sqlite_table(table_name, type_overrides=None):
+        """Rebuild a SQLite table, optionally overriding column types, preserving FKs."""
+        col_defs, col_names = sqlite_table_definition(table_name, type_overrides)
         tmp_table = f'{table_name}__float_mig'
         cols_csv = ', '.join(col_names)
         db.session.execute(text('PRAGMA foreign_keys=OFF'))
@@ -368,6 +420,72 @@ def ensure_schema_updates():
 
     for statement in statements:
         apply_statement(statement)
+
+    # ADR 0008: every Submission gets a Result Link token. Delete once production and the
+    # owner's local database have run it (move result_token into the model's CREATE TABLE).
+    def ensure_result_tokens():
+        inspector.clear_cache()
+        if 'submission' not in inspector.get_table_names():
+            return
+        if 'result_token' not in column_names('submission'):
+            db.session.execute(text('ALTER TABLE submission ADD COLUMN result_token VARCHAR(64)'))
+        missing = db.session.execute(text('SELECT id FROM submission WHERE result_token IS NULL')).fetchall()
+        for (submission_id,) in missing:
+            db.session.execute(
+                text('UPDATE submission SET result_token = :token WHERE id = :id'),
+                {'token': new_result_token(), 'id': submission_id},
+            )
+        db.session.execute(text(
+            'CREATE UNIQUE INDEX IF NOT EXISTS ix_submission_result_token ON submission (result_token)'
+        ))
+        db.session.commit()
+
+    run_migration('submission.result_token', ensure_result_tokens)
+
+    # ADR 0007: the one-time owner move. Every Quiz Bank goes to the router user id in
+    # QUIZZES_OWNER_ROUTER_USER_ID, then the old "user" table is dropped. With the table
+    # present and no value set, nothing changes and Teacher pages stay closed. The move is one
+    # transaction, so a failure leaves the old state and the next start tries again.
+    # Delete once production and the owner's local database have both run it.
+    def move_quiz_banks_to_router_owner(owner_id):
+        if is_postgres:
+            for fk in inspector.get_foreign_keys('quiz_bank'):
+                if fk['referred_table'] == 'user' and fk.get('name'):
+                    db.session.execute(text(f'ALTER TABLE quiz_bank DROP CONSTRAINT "{fk["name"]}"'))
+            db.session.execute(text('UPDATE quiz_bank SET teacher_id = :owner'), {'owner': owner_id})
+            db.session.execute(text('DROP TABLE "user"'))
+            db.session.commit()
+        elif is_sqlite:
+            col_defs, col_names = sqlite_table_definition('quiz_bank', exclude_referred_table='user')
+            statements = sqlite_owner_move_statements(owner_id, col_defs, col_names)
+            db.session.commit()  # release the session's connection before using our own
+            with db.engine.connect() as connection:
+                # PRAGMA foreign_keys has no effect inside a transaction, so set it around it.
+                foreign_keys_were_on = connection.exec_driver_sql('PRAGMA foreign_keys').scalar()
+                connection.exec_driver_sql('PRAGMA foreign_keys=OFF')
+                connection.commit()
+                try:
+                    with connection.begin():
+                        for statement, params in statements:
+                            connection.execute(text(statement), params or {})
+                finally:
+                    if foreign_keys_were_on:
+                        connection.exec_driver_sql('PRAGMA foreign_keys=ON')
+                        connection.commit()
+
+    inspector.clear_cache()
+    if 'user' in inspector.get_table_names():
+        owner_id = parse_owner_router_user_id(owner_router_user_id)
+        if owner_id is not None:
+            run_migration('move Quiz Banks to the router owner', lambda: move_quiz_banks_to_router_owner(owner_id))
+        inspector.clear_cache()
+
+    # ADR 0007: teacher_id now names a router user and every Teacher page filters on it.
+    # create_all adds this index on a new database only.
+    if 'quiz_bank' in inspector.get_table_names():
+        apply_statement('CREATE INDEX IF NOT EXISTS ix_quiz_bank_teacher_id ON quiz_bank (teacher_id)')
+
+    app.config['QUIZZES_OWNER_MOVE_PENDING'] = 'user' in inspector.get_table_names()
 
 def get_bank_scoring(quiz_bank):
     mode = (getattr(quiz_bank, 'scoring_mode', None) or 'explicit').strip().lower()
@@ -639,65 +757,17 @@ def grade_question(question, user_answer, points=None):
 # 路由定義
 @app.route('/')
 def index():
-    return render_template('index.html')
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        data = request.get_json()
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
-        
-        if User.query.filter_by(username=username).first():
-            return jsonify({'error': '用戶名已存在'}), 400
-        
-        if User.query.filter_by(email=email).first():
-            return jsonify({'error': '電子郵件已被使用'}), 400
-        
-        user = User(
-            username=username,
-            email=email,
-            password_hash=generate_password_hash(password),
-            is_teacher=True
-        )
-        db.session.add(user)
-        db.session.commit()
-        
-        return jsonify({'message': '註冊成功', 'redirect': '/login'})
-    
-    return render_template('register.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        data = request.get_json()
-        username = data.get('username')
-        password = data.get('password')
-        
-        user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password_hash, password):
-            login_user(user)
-            return jsonify({'message': '登入成功', 'redirect': '/teacher-dashboard'})
-        
-        return jsonify({'error': '用戶名或密碼錯誤'}), 401
-    
-    return render_template('login.html')
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
+    login_error = LoginError.notice_for(request.args.get('error'))
+    return render_template('index.html', login_error=login_error)
 
 @app.route('/teacher-dashboard')
-@login_required
+@teacher_required
 def teacher_dashboard():
-    quiz_banks = QuizBank.query.filter_by(teacher_id=current_user.id).all()
+    quiz_banks = QuizBank.query.filter_by(teacher_id=current_teacher().user_id).all()
     return render_template('teacher_dashboard.html', quiz_banks=quiz_banks)
 
 @app.route('/create-quiz-bank', methods=['GET', 'POST'])
-@login_required
+@teacher_required
 def create_quiz_bank():
     if request.method == 'POST':
         data = request.get_json()
@@ -708,7 +778,7 @@ def create_quiz_bank():
             title=title,
             description=description,
             access_code=generate_access_code(),
-            teacher_id=current_user.id
+            teacher_id=current_teacher().user_id
         )
         db.session.add(quiz_bank)
         db.session.commit()
@@ -722,10 +792,10 @@ def create_quiz_bank():
     return render_template('create_quiz_bank.html')
 
 @app.route('/quiz-bank/<int:quiz_bank_id>')
-@login_required
+@teacher_required
 def manage_quiz_bank(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return redirect(url_for('teacher_dashboard'))
 
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
@@ -789,10 +859,10 @@ def play_quiz(access_code):
 
 # API 路由
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/toggle', methods=['POST'])
-@login_required
+@teacher_required
 def toggle_quiz_bank(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return jsonify({'error': '無權限操作'}), 403
     
     quiz_bank.is_active = not quiz_bank.is_active
@@ -801,10 +871,10 @@ def toggle_quiz_bank(quiz_bank_id):
     return jsonify({'message': '操作成功', 'is_active': quiz_bank.is_active})
 
 @app.route('/api/quiz-bank/<int:quiz_bank_id>', methods=['DELETE'])
-@login_required
+@teacher_required
 def delete_quiz_bank(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return jsonify({'error': '無權限操作'}), 403
 
     submission_count = Submission.query.filter_by(quiz_bank_id=quiz_bank_id).count()
@@ -827,10 +897,10 @@ def delete_quiz_bank(quiz_bank_id):
         return jsonify({'error': '刪除失敗，請稍後再試'}), 500
 
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/questions', methods=['GET', 'POST'])
-@login_required
+@teacher_required
 def manage_questions(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return jsonify({'error': '無權限操作'}), 403
     
     if request.method == 'GET':
@@ -881,12 +951,12 @@ def manage_questions(quiz_bank_id):
         return jsonify({'message': '題目新增成功', 'question_id': question.id})
 
 @app.route('/api/question/<int:question_id>', methods=['PUT', 'DELETE'])
-@login_required
+@teacher_required
 def manage_question(question_id):
     question = Question.query.get_or_404(question_id)
     quiz_bank = question.quiz_bank
     
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return jsonify({'error': '無權限操作'}), 403
     
     if request.method == 'PUT':
@@ -915,10 +985,10 @@ def manage_question(question_id):
         return jsonify({'message': '題目刪除成功'})
 
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/practice-config', methods=['PUT'])
-@login_required
+@teacher_required
 def update_practice_config(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return jsonify({'error': '無權限操作'}), 403
 
     data = request.get_json() or {}
@@ -1003,7 +1073,7 @@ def draw_practice_quiz(access_code):
     })
 
 @app.route('/api/import-quiz-md/preview', methods=['POST'])
-@login_required
+@teacher_required
 def preview_import_quiz_md():
     try:
         uploaded = request.files.get('file')
@@ -1035,7 +1105,7 @@ def preview_import_quiz_md():
     })
 
 @app.route('/api/import-quiz-md/confirm', methods=['POST'])
-@login_required
+@teacher_required
 def confirm_import_quiz_md():
     uploaded = request.files.get('file')
     if not uploaded or not uploaded.filename:
@@ -1047,7 +1117,7 @@ def confirm_import_quiz_md():
         return jsonify({'success': False, 'errors': parsed['errors']}), 400
 
     try:
-        quiz_bank = create_quiz_bank_from_data(current_user.id, parsed['bank'])
+        quiz_bank = create_quiz_bank_from_data(current_teacher().user_id, parsed['bank'])
         create_questions_for_bank(quiz_bank.id, parsed['questions'])
         db.session.commit()
     except Exception:
@@ -1063,12 +1133,12 @@ def confirm_import_quiz_md():
     })
 
 @app.route('/api/import-quiz-md/template')
-@login_required
+@teacher_required
 def download_import_template():
     return send_from_directory('static/templates', 'quiz_template.md', as_attachment=True)
 
 @app.route('/api/quiz-bank/import-md/questions-template')
-@login_required
+@teacher_required
 def download_append_questions_template():
     return send_from_directory('static/templates', 'quiz_questions_append.md', as_attachment=True)
 
@@ -1085,10 +1155,10 @@ def _build_append_preview(questions):
     return preview_questions
 
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/import-md/preview', methods=['POST'])
-@login_required
+@teacher_required
 def preview_append_quiz_md(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return jsonify({'success': False, 'errors': ['無權限操作']}), 403
 
     try:
@@ -1117,10 +1187,10 @@ def preview_append_quiz_md(quiz_bank_id):
     })
 
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/import-md/confirm', methods=['POST'])
-@login_required
+@teacher_required
 def confirm_append_quiz_md(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return jsonify({'success': False, 'errors': ['無權限操作']}), 403
 
     uploaded = request.files.get('file')
@@ -1237,15 +1307,28 @@ def submit_quiz(access_code):
         'total_points': total_points,
         'percentage': round((score / total_points * 100) if total_points > 0 else 0, 2),
         'submission_id': submission.id,
+        'result_url': url_for('view_result', result_token=submission.result_token),
         'is_practice': is_practice,
         'retry_url': url_for('take_quiz', access_code=access_code) if is_practice else None,
         'elapsed_seconds': submission.elapsed_seconds,
     })
 
-@app.route('/result/<int:submission_id>')
-def view_result(submission_id):
-    submission = Submission.query.get_or_404(submission_id)
+@app.route('/result/<result_token>')
+def view_result(result_token):
+    """The student's Result Link (ADR 0008). A numeric submission id never opens a result here."""
+    submission = Submission.query.filter_by(result_token=result_token).first_or_404()
+    return render_submission_result(submission)
 
+@app.route('/quiz-bank/<int:quiz_bank_id>/submissions/<int:submission_id>')
+@teacher_required
+def view_submission_as_teacher(quiz_bank_id, submission_id):
+    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
+    if not is_own_quiz_bank(quiz_bank):
+        return redirect(url_for('teacher_dashboard'))
+    submission = Submission.query.filter_by(id=submission_id, quiz_bank_id=quiz_bank.id).first_or_404()
+    return render_submission_result(submission)
+
+def render_submission_result(submission):
     if submission.session_question_ids:
         question_ids = json.loads(submission.session_question_ids)
         loaded = Question.query.filter(Question.id.in_(question_ids)).all()
@@ -1272,19 +1355,19 @@ def view_result(submission_id):
     )
 
 @app.route('/quiz-bank/<int:quiz_bank_id>/submissions')
-@login_required
+@teacher_required
 def view_submissions_page(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return redirect(url_for('teacher_dashboard'))
     
     return render_template('submissions.html', quiz_bank=quiz_bank)
 
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/submissions')
-@login_required
+@teacher_required
 def view_submissions(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return jsonify({'error': '無權限查看'}), 403
     
     submissions = Submission.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Submission.submitted_at.desc()).all()
@@ -1306,12 +1389,12 @@ def view_submissions(quiz_bank_id):
     return jsonify(submissions_data)
 
 @app.route('/api/submission/<int:submission_id>', methods=['DELETE'])
-@login_required
+@teacher_required
 def delete_submission(submission_id):
     submission = Submission.query.get_or_404(submission_id)
     quiz_bank = submission.quiz_bank
     
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return jsonify({'error': '無權限操作'}), 403
     
     try:
@@ -1332,10 +1415,10 @@ def get_environment():
 
 # PDF 導出功能（使用前端渲染）
 @app.route('/quiz-bank/<int:quiz_bank_id>/export-pdf')
-@login_required
+@teacher_required
 def export_quiz_bank_pdf(quiz_bank_id):
     quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if quiz_bank.teacher_id != current_user.id:
+    if not is_own_quiz_bank(quiz_bank):
         return redirect(url_for('teacher_dashboard'))
     
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
@@ -1363,7 +1446,7 @@ def export_quiz_bank_pdf(quiz_bank_id):
 def initialize_database():
     with app.app_context():
         db.create_all()
-        ensure_schema_updates()
+        ensure_schema_updates(os.environ.get('QUIZZES_OWNER_ROUTER_USER_ID'))
 
 initialize_database()
 

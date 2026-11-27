@@ -4,6 +4,10 @@ Teachers publish quiz banks that students take via a shareable access code; time
 
 ## Language
 
+**Teacher**:
+A person with the teacher or admin role on vans_coding_router who signed in here through the router. This system has no accounts of its own; the router decides who is a Teacher, and an admin is a Teacher like any other. Students are never Teachers and never sign in.
+_Avoid_: Account, user, admin (as a separate role here)
+
 **Quiz Bank**:
 A teacher-owned collection of questions that students open with an access code. Modes are fixed (all questions) or practice (drawn subset). Deleting a Quiz Bank permanently removes it with its questions and Submissions; deactivating leaves Submissions intact. After deletion its access code may be reused.
 _Avoid_: Exam, test paper, quiz set
@@ -27,6 +31,10 @@ _Avoid_: Bookmark, deferred, mark for grading, difficult tag (as the concept nam
 **Submission**:
 A student's completed set of answers for one Take of a Quiz Bank, including score, when it was handed in, Elapsed Time when the Quiz Bank had a Time Limit, the Take Order for that Take, and which questions still had a Review Flag at hand-in. Hand-in time is shown in UTC+8.
 _Avoid_: Attempt, result record (for the persisted hand-in itself)
+
+**Result Link**:
+The unguessable link that opens one Submission's result for the student who handed it in. Anyone who holds the link can open it, so it is shared only on purpose; the Teacher opens the same result from the submissions list after signing in.
+_Avoid_: Result URL with a submission number, score link
 
 **Elapsed Time**:
 How long a Take lasted from start until hand-in, stored on the Submission and shown on the student result and the teacher's submission list.

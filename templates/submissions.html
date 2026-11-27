@@ -200,7 +200,7 @@ function displaySubmissionsTable() {
             </td>
             <td style="padding: 1rem; text-align: center;">
                 <div style="display: flex; gap: 0.5rem; justify-content: center;">
-                    <a href="/result/${submission.id}" target="_blank" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
+                    <a href="/quiz-bank/{{ quiz_bank.id }}/submissions/${submission.id}" target="_blank" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
                         查看詳情
                     </a>
                     <button onclick="deleteSubmission(${submission.id}, '${submission.student_name}')" class="btn btn-danger" style="padding: 6px 12px; font-size: 0.9rem;">

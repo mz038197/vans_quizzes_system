@@ -41,14 +41,10 @@ pip install -r requirements.txt
 
 2. **設置環境變數**
 ```bash
-# 開發環境
+# 開發環境（教師登入使用本機的假 router 頁面）
 export FLASK_ENV=development
-export SECRET_KEY="your-development-secret-key"
 
-# 或生產環境
-export FLASK_ENV=production
-export SECRET_KEY="your-production-secret-key"
-export DATABASE_URL="postgresql://username:password@host:port/database"
+# 生產環境：見下方「環境變數設定」
 ```
 
 3. **啟動應用程式**
@@ -77,7 +73,7 @@ gunicorn app:app
 - **框架**: Flask (Python)
 - **資料庫**: SQLite (可升級至PostgreSQL)
 - **ORM**: SQLAlchemy
-- **用戶認證**: Flask-Login
+- **教師登入**: 透過 vans_coding_router 的 OAuth（`openid teacher`，Google），本系統不存帳號（ADR 0007）
 - **表單處理**: WTForms
 
 ### 前端技術
@@ -150,22 +146,33 @@ gunicorn app:app
 - 適合部署在Render.com等雲端平台
 
 ### 環境變數設定
-```bash
-# 必要變數
-export FLASK_ENV="production"  # 或 "development"
-export SECRET_KEY="your-secret-key"
 
-# 生產環境必要
-export DATABASE_URL="postgresql://username:password@host:port/database"
-```
+| 變數 | 何時需要 | 說明 |
+|---|---|---|
+| `FLASK_ENV` | 一律必填 | 只能是 `production` 或 `development`。沒設定或拼錯時，程式拒絕啟動：預設值會打開開發用的假登入頁。 |
+| `SECRET_KEY` | 正式環境必填 | 至少 32 個字元的隨機值。它簽章教師 cookie；太短或用預設值時，正式環境會拒絕啟動。 |
+| `DATABASE_URL` | 正式環境必填 | PostgreSQL 連線字串 |
+| `QUIZZES_OAUTH_CLIENT_SECRET` | 正式環境必填 | router 上 `quizzes` OAuth Client 的 secret。router 只存它的 SHA-256。 |
+| `ROUTER_URL` | 選填 | 預設 `https://ai.vanscoding.com`。開發環境沒設定時，改用本機的假 router 登入頁。 |
+| `PUBLIC_URL` | 選填 | 預設 `https://quizzes.vanscoding.com`。用來組 callback 網址與檢查 `Origin`。 |
+| `QUIZZES_OAUTH_CLIENT_ID` | 選填 | 預設 `quizzes` |
+| `QUIZZES_OWNER_ROUTER_USER_ID` | 只在一次性搬移時 | 把所有舊題庫指定給這個 router 使用者編號，再刪掉舊的 `user` 資料表（ADR 0007）。搬移完成後刪掉這個變數。 |
+| `QUIZZES_DEV_DATABASE_URL` | 選填（開發、測試） | 預設 `sqlite:///quiz_platform.db` |
+
+### 教師登入
+
+- 老師在首頁按「用 Google 登入（vcrouter）」，經 router 登入。只有在 router 有 teacher 或 admin 角色的人能登入。
+- 學生不登入。學生用題庫連結 `/quiz/<access_code>` 作答，交卷後拿到不能猜的成績連結 `/result/<result_token>`（ADR 0008）。
+- 本機開發不必跑 router：沒有設定 `ROUTER_URL` 時，`/auth/login` 會轉到 `/dev/fake-router/authorize`，輸入任意 router 使用者編號即可登入。正式環境沒有這一頁。
 
 ### Render.com部署指南
 1. 在Render.com建立新的Web Service
 2. 連接到您的GitHub倉庫
 3. 設定環境變數：
    - `FLASK_ENV=production`
-   - `SECRET_KEY=your-secret-key`
+   - `SECRET_KEY=<至少 32 個字元的隨機值>`
    - `DATABASE_URL=postgresql://...`
+   - `QUIZZES_OAUTH_CLIENT_SECRET=<router 上 quizzes client 的 secret>`
 4. 設定啟動命令：`gunicorn app:app`
 5. 建立服務並等待部署完成
 

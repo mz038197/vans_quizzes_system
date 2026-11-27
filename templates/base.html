@@ -32,26 +32,25 @@
         <nav class="navbar">
             <h1><i class="fas fa-book"></i> 智慧題庫</h1>
             <div class="nav-links">
-                {% if current_user.is_authenticated %}
+                {% if current_teacher %}
                     <a href="{{ url_for('teacher_dashboard') }}" class="{{ 'active' if request.endpoint == 'teacher_dashboard' else '' }}">
                         <i class="fas fa-tachometer-alt"></i> 儀表板
                     </a>
                     <a href="{{ url_for('create_quiz_bank') }}" class="{{ 'active' if request.endpoint == 'create_quiz_bank' else '' }}">
                         <i class="fas fa-plus-circle"></i> 新增題庫
                     </a>
-                    <a href="{{ url_for('logout') }}">
-                        <i class="fas fa-sign-out-alt"></i> 登出 ({{ current_user.username }})
-                    </a>
+                    <form method="post" action="{{ url_for('teacher_auth.logout') }}" class="nav-logout-form">
+                        <button type="submit" class="nav-logout">
+                            <i class="fas fa-sign-out-alt"></i> 登出 ({{ current_teacher.display_name }})
+                        </button>
+                    </form>
                 {% else %}
                     <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">
                         <i class="fas fa-home"></i> 首頁
                     </a>
-                    <a href="{{ url_for('login') }}" class="{{ 'active' if request.endpoint == 'login' else '' }}">
-                        <i class="fas fa-sign-in-alt"></i> 登入
+                    <a href="{{ url_for('teacher_auth.login') }}">
+                        <i class="fas fa-sign-in-alt"></i> 教師登入
                     </a>
-                    <!--<a href="{{ url_for('register') }}" class="{{ 'active' if request.endpoint == 'register' else '' }}">
-                        <i class="fas fa-user-plus"></i> 註冊
-                    </a>-->
                 {% endif %}
             </div>
         </nav>
