@@ -6,24 +6,24 @@ Class Session statuses come from class_session_rules.status (an ended Course mak
 
 from datetime import timedelta, timezone
 
+import grade_stats
 from class_session_rules import LIVE, SOON, UTC8
 
-ATTENTION_BELOW_PERCENT = 60
+ATTENTION_BELOW_PERCENT = grade_stats.PASS_PERCENT
 WEEK = timedelta(days=7)
 # 需要注意 rule 2: a live Class Session that started this long ago and has no Submission.
 EMPTY_LIVE_AFTER = timedelta(minutes=10)
 
 
 def submission_percent(score, total_points):
-    """Score of one Submission in percent, or None when it has no points."""
-    if not total_points:
-        return None
-    return (score or 0) / total_points * 100
+    """grade_stats.percent, but None when the Submission has no points: the dashboard shows — for it
+    and leaves it out of averages (grade_stats.percent gives 0)."""
+    return grade_stats.percent(score, total_points) if total_points else None
 
 
 def average_percent(score_pairs):
     """Mean percent over (score, total_points) pairs; None when no pair has points."""
-    percents = [p for p in (submission_percent(s, t) for s, t in score_pairs) if p is not None]
+    percents = [grade_stats.percent(s, t) for s, t in score_pairs if t]
     if not percents:
         return None
     return sum(percents) / len(percents)
@@ -99,7 +99,7 @@ def week_numbers(hand_ins, now):
             continue
         if submitted_at >= week_start:
             week_subs += 1
-            names.add((name or '').strip())
+            names.add(grade_stats.trimmed_name(name))
         elif submitted_at >= last_week_start:
             last_week_subs += 1
     return {

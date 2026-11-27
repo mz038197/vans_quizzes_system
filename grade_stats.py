@@ -3,7 +3,9 @@
 Plain functions over plain data: app.py runs the queries and passes rows in.
 """
 
-PASS_PERCENT = 60
+# The one set of grade thresholds (percent). grade_sheets.band, teacher_stats and the 成績 page use these.
+PASS_PERCENT = 60   # 及格; below it a Quiz Bank average needs attention, and the band is 'lo'
+HIGH_PERCENT = 80   # from here the band is 'hi'
 BANDS = (('90–100', 90), ('80–89', 80), ('70–79', 70), ('60–69', 60), ('0–59', 0))
 MOST_MISSED_LIMIT = 5
 

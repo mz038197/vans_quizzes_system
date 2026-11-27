@@ -147,9 +147,13 @@ function pctText(value) {
     return value == null ? '—' : (Math.round(value * 10) / 10).toString();
 }
 
+// Grade thresholds from grade_stats (PASS_PERCENT, HIGH_PERCENT), as grade_sheets.band uses them.
+const PASS_PERCENT = {{ pass_percent }};
+const HIGH_PERCENT = {{ high_percent }};
+
 function tierOf(pct) {
-    if (pct >= 80) return 'hi';
-    if (pct >= 60) return 'mid';
+    if (pct >= HIGH_PERCENT) return 'hi';
+    if (pct >= PASS_PERCENT) return 'mid';
     return 'lo';
 }
 
@@ -204,7 +208,7 @@ function displayStatistics() {
     document.getElementById('kpi-min').textContent = pctText(s.lowest);
     document.getElementById('kpi-max-d').textContent = s.highest == null ? '' : `差距 ${pctText(s.highest - s.lowest)} 分`;
     document.getElementById('kpi-pass').textContent = pctText(s.pass_rate);
-    document.getElementById('kpi-pass-d').textContent = `60 分以上：${s.passed} / ${s.count}`;
+    document.getElementById('kpi-pass-d').textContent = `${PASS_PERCENT} 分以上：${s.passed} / ${s.count}`;
 }
 
 function displayBands() {

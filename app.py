@@ -1912,6 +1912,7 @@ def view_submissions_page(quiz_bank_id):
         return redirect(url_for('teacher_dashboard'))
     
     return render_template('submissions.html', quiz_bank=quiz_bank,
+                           pass_percent=grade_stats.PASS_PERCENT, high_percent=grade_stats.HIGH_PERCENT,
                            class_session_options=grade_class_session_options(quiz_bank),
                            selected_class_session=request.args.get('class_session', ''))
 
