@@ -1363,6 +1363,25 @@ def play_quiz(code):
     questions_data = build_questions_data(questions, points_map)
     return render_template('take_quiz.html', questions=questions_data, is_practice=False, **entry.page_context())
 
+
+@app.route('/api/quiz/<code>/status')
+def take_status(code):
+    """The Class Session end as the take page needs it (spec #2 C5, story 90).
+
+    The take page polls this, so 結束課程, 立即結束, 延長 and 重新開放 made during a Take reach its clock.
+    `ends_in` counts seconds from the server's now, so a wrong device clock does not matter.
+    """
+    entry = find_student_entry(code, request.args.get('bank'))
+    now = datetime.utcnow()
+    status = entry.status(now)
+    ended = status == class_session_rules.DONE
+    return jsonify({
+        'status': status,
+        'ended': ended,
+        'ends_in': 0 if ended else entry.ends_in_seconds(now),
+        'ends_hm': format_wall_clock_utc8(entry.ends_at, '%H:%M'),
+    })
+
 # API 路由
 @app.route('/api/quiz-bank/<int:quiz_bank_id>', methods=['DELETE'])
 @teacher_required
