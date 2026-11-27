@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{#
+  Grade sheets (ticket 16, #18). kind == 'session': 課堂總表 (/class-sessions/<id>), one column per
+  offered Quiz Bank. kind == 'course': 課程總表 (/courses/<id>), one column per Class Session × Quiz Bank,
+  Class Sessions in start order, then 平均 and 寫了. Data: `sheet` from grade_sheet() in app.py.
+  Actions (review fix 3): the 課堂總表 has 編輯課堂 and the status action (static/js/class_session_actions.js,
+  shared dialog); the 課程總表 has the Course actions (static/js/course_actions.js) on `.page-head[data-course]`.
+#}
+
+{% macro pct(value) %}{{ grade_whole_percent(value) }}%{% endmacro %}
+
+{% macro cell(c) -%}
+{% if c %}<a class="cell {{ grade_band(c.percent) }}" href="{{ url_for('view_submission_as_teacher', quiz_bank_id=c.quiz_bank_id, submission_id=c.submission_id) }}">{{ pct(c.percent) }}</a>
+{%- if c.takes > 1 %} <span class="times" title="寫了 {{ c.takes }} 次，顯示最後一次">×{{ c.takes }}</span>{% endif %}
+{%- else %}<span class="muted">未作答</span>{% endif %}
+{%- endmacro %}
+
+{% macro column_sub(col) -%}
+{{ col.offer.time_limit_minutes ~ ' 分鐘' if col.offer.time_limit_minutes else '不限時' }} · {{ col.handed_in }} 人交卷 · 平均 {{ pct(col.average) if col.average is not none else '—' }}
+{%- endmacro %}
+
+{% block title %}{{ class_session.name if kind == 'session' else course.name }} - {{ '課堂總表' if kind == 'session' else '課程總表' }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/grade_sheet.css') }}">
+{% endblock %}
+
+{% block crumbs %}
+{% set sessions_nav = teacher_nav | selectattr('area', 'equalto', 'sessions') | first %}
+{% set first = ('課堂', sessions_nav.url if sessions_nav else None) %}
+{% if kind == 'session' %}
+{{ ui.crumbs([first, (course.name, url_for('course_sheet', course_id=course.id)), (class_session.name, None)]) }}
+{% else %}
+{{ ui.crumbs([first, (course.name, None)]) }}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+{% if kind == 'session' %}<div class="page-head">{% else %}
+<div class="page-head" data-course="{{ course.id }}" data-name="{{ course.name }}" data-ends-on="{{ course_info.ends_on or '' }}"
+     data-active="{{ course_info.n_active }}" data-sessions="{{ course_info.n_sessions }}" data-subs="{{ course_info.n_subs }}">{% endif %}
+  <div>
+    {% if kind == 'session' %}
+    <h1>{{ class_session.name }} {{ ui.status_pill(status, status_label) }}</h1>
+    <p class="sub">課堂總表 · {{ class_session_window(class_session) }} · 每一列是一位學生，每一欄是一份題庫 ·
+      <a href="{{ url_for('course_sheet', course_id=course.id) }}">看「{{ course.name }}」的課程總表 →</a></p>
+    {% else %}
+    <h1><i class="fas fa-graduation-cap" aria-hidden="true"></i> {{ course.name }} {{ ui.status_pill('live' if course_open else 'done', '進行中' if course_open else '已結束') }}</h1>
+    <p class="sub">課程總表 · 每一列是一位學生，每一欄是一個課堂裡的一份題庫{% if course.ends_at %} · 到 {{ course.ends_at | utc8('%m/%d %H:%M') }}{% endif %}</p>
+    {% endif %}
+  </div>
+  <div class="actions">
+    {% set csv_url = url_for('class_session_sheet_csv', class_session_id=class_session.id) if kind == 'session' else url_for('course_sheet_csv', course_id=course.id) %}
+    <a class="btn" id="export-csv" href="{{ csv_url }}"><i class="fas fa-file-csv" aria-hidden="true"></i> 匯出 CSV</a>
+    {% if kind == 'session' %}
+    {% if status == 'live' %}
+    <button type="button" class="btn" data-cs-action="end" data-id="{{ class_session.id }}">立即結束</button>
+    {% elif status == 'soon' %}
+    <button type="button" class="btn" data-cs-action="start-now" data-id="{{ class_session.id }}">現在開始</button>
+    {% elif course_open %}
+    <button type="button" class="btn" data-cs-action="reopen" data-id="{{ class_session.id }}">重新開放</button>
+    {% endif %}
+    <button type="button" class="btn" data-cs-edit="{{ class_session.id }}"><i class="fas fa-pen" aria-hidden="true"></i> 編輯課堂</button>
+    {% else %}
+    <button type="button" class="btn" data-course-action="edit"><i class="fas fa-pen" aria-hidden="true"></i> 編輯課程</button>
+    {% if course_open %}
+    <button type="button" class="btn" data-course-action="end">結束課程</button>
+    {% else %}
+    <button type="button" class="btn" data-course-action="reopen">重新開啟課程</button>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+{% if not sheet.columns %}
+{{ ui.empty('這裡還沒有題庫，所以沒有總表。' if kind == 'session' else '這個課程還沒有課堂。', icon='fa-table') }}
+{% else %}
+<div class="panel">
+  <div class="table-wrap">
+    <table class="table sheet">
+      <thead>
+        {% if kind == 'session' %}
+        <tr>
+          <th scope="col">學生</th>
+          {% for col in sheet.columns %}
+          <th scope="col">{{ col.quiz_bank.title }}<div class="t-sub">{{ column_sub(col) }}</div></th>
+          {% endfor %}
+        </tr>
+        {% else %}
+        <tr>
+          <th scope="col" rowspan="2">學生</th>
+          {% for g in groups %}
+          <th scope="colgroup" colspan="{{ g.span }}" class="grp-h"><a href="{{ url_for('class_session_sheet', class_session_id=g.session.id) }}">{{ g.session.name }}</a><div class="t-sub">{{ class_session_window(g.session) }}</div></th>
+          {% endfor %}
+          <th scope="col" rowspan="2">平均</th>
+          <th scope="col" rowspan="2">寫了</th>
+        </tr>
+        <tr>
+          {% for col in sheet.columns %}
+          <th scope="col" class="bank-h">{{ col.quiz_bank.title }}<div class="t-sub">{{ column_sub(col) }}</div></th>
+          {% endfor %}
+        </tr>
+        {% endif %}
+      </thead>
+      <tbody>
+        {% for row in sheet.rows %}
+        <tr>
+          <td class="t-title">{{ row.name }}</td>
+          {% for c in row.cells %}<td>{{ cell(c) }}</td>{% endfor %}
+          {% if kind == 'course' %}
+          <td>{% if row.average is not none %}<b class="{{ grade_band(row.average) }}">{{ pct(row.average) }}</b>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="muted num">{{ row.answered }} / {{ row.cells | length }}</td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ sheet.columns | length + (3 if kind == 'course' else 1) }}" class="muted">還沒有學生交卷。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<p class="sheet-help muted small">
+  {% if kind == 'session' %}
+  依姓名把同一位學生排在同一列（會先去掉頭尾空白）。寫了好幾次的，顯示<b>最後一次</b>，旁邊標「×N」。點分數看那一份作答。
+  {% else %}
+  依姓名把同一位學生排在同一列（會先去掉頭尾空白），跨這個課程所有的課堂。每格顯示<b>最後一次</b>的分數；「平均」只算有作答的格子，「寫了」是有作答的格子數。點課堂名稱看那個課堂的總表。
+  {% endif %}
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/class_session_actions.js') }}"></script>
+{% if kind == 'session' %}
+{% include "_class_session_dialog.html" %}
+{% else %}
+<script src="{{ url_for('static', filename='js/course_actions.js') }}"></script>
+{% endif %}
+{% endblock %}

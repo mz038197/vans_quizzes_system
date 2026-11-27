@@ -1,64 +1,50 @@
 {% extends "quiz_base.html" %}
+{% from "_quiz_entry.html" import entry %}
 
 {% block title %}{{ quiz_bank.title }} - 隨機練習{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/quiz.css') }}">
+{% endblock %}
+
 {% block content %}
-<div class="form-container practice-landing">
-    <div class="card">
-        <div class="card-header practice-landing__header">
-            <h1 class="practice-landing__title">🎯 {{ quiz_bank.title }}</h1>
-        </div>
-        <div class="card-body">
-            <div style="background: #f8f9fa; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;">
-                <h3 style="margin-top: 0;">練習模式說明</h3>
-                <p style="margin-bottom: 0.5rem;">每次練習將隨機抽出 <strong>{{ quiz_bank.session_question_count }}</strong> 題。</p>
-                <p style="margin-bottom: 0; color: #666;">同一場練習內題目不重複；多次練習仍可能抽到相同題目，適合反覆刷題。</p>
-            </div>
-
-            <div id="alert-container"></div>
-
-            <h3 style="margin-bottom: 1rem;">請先填寫您的資料</h3>
-            <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                <div class="form-group" style="flex: 1; min-width: 200px;">
-                    <label for="student-name">姓名 *</label>
-                    <input type="text" id="student-name" required placeholder="請輸入您的姓名">
-                </div>
-                <div class="form-group" style="flex: 1; min-width: 200px;">
-                    <label for="student-email">電子郵件（可選）</label>
-                    <input type="email" id="student-email" placeholder="您的電子郵件">
-                </div>
-            </div>
-
-            <button onclick="startPractice()" class="btn" id="start-btn">
-                <span id="start-text">開始練習</span>
-                <span id="start-loading" class="loading" style="display: none;"></span>
-            </button>
-        </div>
-    </div>
+{% call entry(quiz_bank, question_count, total_points, '開始練習', 'startPractice()', mode_label='隨機練習', time_limit=time_limit_minutes, class_session=class_session, ends_at=session_ends_at, ends_in=session_ends_in) %}
+<div class="note" role="status">
+  <i class="fas fa-random" aria-hidden="true"></i>
+  <span>每次練習隨機抽出 {{ question_count }} 題，同一場練習內題目不重複。多次練習可能抽到相同題目。</span>
 </div>
+{% endcall %}
+{% endblock %}
 
+{% block scripts %}
 <script>
 async function startPractice() {
-    const studentName = document.getElementById('student-name').value.trim();
+    const nameInput = document.getElementById('student-name');
+    const studentName = nameInput.value.trim();
     if (!studentName) {
-        showAlert('請輸入您的姓名', 'error');
+        nameInput.setAttribute('aria-invalid', 'true');
+        UI.toast('請輸入你的姓名', 'warn');
+        nameInput.focus();
         return;
     }
+    nameInput.removeAttribute('aria-invalid');
 
-    setLoading(true);
+    const button = document.getElementById('start-btn');
+    setButtonLoading(button, true);
     try {
-        const response = await fetch('/api/quiz/{{ quiz_bank.access_code }}/draw', {
+        const response = await fetch({{ url_for('draw_practice_quiz', code=student_code) | tojson }}, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 student_name: studentName,
-                student_email: document.getElementById('student-email').value.trim()
+                student_email: document.getElementById('student-email').value.trim(),
+                quiz_bank_id: {{ quiz_bank.id }}
             })
         });
         const result = await response.json();
 
         if (!response.ok) {
-            showAlert(result.error || '抽題失敗', 'error');
+            UI.toast(result.error || '抽題失敗', 'error');
             return;
         }
 
@@ -72,21 +58,14 @@ async function startPractice() {
 
         window.location.href = result.redirect;
     } catch (error) {
-        showAlert('網路錯誤，請稍後再試', 'error');
+        UI.toast('網路錯誤，請稍後再試', 'error');
     } finally {
-        setLoading(false);
+        setButtonLoading(button, false);
     }
 }
 
-function showAlert(message, type) {
-    document.getElementById('alert-container').innerHTML =
-        `<div class="alert alert-${type}">${message}</div>`;
-}
-
-function setLoading(loading) {
-    document.getElementById('start-text').style.display = loading ? 'none' : 'inline';
-    document.getElementById('start-loading').style.display = loading ? 'inline-block' : 'none';
-    document.getElementById('start-btn').disabled = loading;
-}
+document.getElementById('student-name').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { startPractice(); }
+});
 </script>
 {% endblock %}

@@ -1,0 +1,83 @@
+/* 題庫 page (ticket 06, #8). Tokens only. */
+.bank-table tr.is-attn td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
+.bank-table .attn-note { color: var(--warning); font-size: var(--fs-xs); margin-top: var(--s0); }
+.bank-table td.act { white-space: nowrap; text-align: right; }
+.bank-table td.act .btn { vertical-align: middle; }
+
+/* Folders (ticket 07, #9). Tokens only. A card sets --fc with .fc-<color>. */
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--s2); margin: var(--s2) 0 var(--s3); }
+.fcard {
+  display: grid; gap: var(--s0); align-content: start; min-height: calc(var(--tap) * 2);
+  padding: var(--s2); border: 1px solid var(--border); border-top: 4px solid var(--fc, var(--border-strong));
+  border-radius: var(--r); background: var(--surface); color: var(--text); text-decoration: none;
+  box-shadow: var(--shadow-1); text-align: left; font: inherit; cursor: pointer;
+}
+.fcard:hover { border-color: var(--fc, var(--border-strong)); box-shadow: var(--shadow-2); }
+.fcard-name { font-weight: 600; display: flex; gap: var(--s1); align-items: center; }
+.fcard-name i { color: var(--fc, var(--muted)); }
+.fcard-meta { color: var(--muted); font-size: var(--fs-sm); }
+.fcard-attn { color: var(--warning); font-size: var(--fs-xs); }
+.fcard-new { border-style: dashed; border-top-width: 1px; background: transparent; box-shadow: none; color: var(--muted); }
+.fcard-new .fcard-name i { color: var(--muted); }
+.section-title { font-size: var(--fs-md); margin: var(--s2) 0 var(--s1); }
+.folder-chips { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; margin-bottom: var(--s2); }
+.folder-chips .chip { text-decoration: none; min-height: var(--tap-sm); color: var(--text); }
+
+/* Folder dialog: six colour swatches as radio buttons. */
+.color-pick { display: flex; gap: var(--s1); flex-wrap: wrap; }
+.color-pick label { position: relative; cursor: pointer; }
+.color-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.color-pick .swatch {
+  display: block; width: var(--tap-sm); height: var(--tap-sm); border-radius: 50%;
+  background: var(--fc); border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--border);
+}
+.color-pick input:checked + .swatch { box-shadow: 0 0 0 2px var(--text); }
+.color-pick input:focus-visible + .swatch { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* 移動到… list. */
+.move-list { display: grid; gap: var(--s0); min-width: 280px; }
+.move-item {
+  display: flex; gap: var(--s1); align-items: center; min-height: var(--tap); width: 100%;
+  padding: var(--s1) var(--s2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.move-item:hover:not(:disabled) { background: var(--bg); }
+.move-item:disabled { cursor: default; background: var(--bg); }
+.move-item .move-name { flex: 1; }
+.move-item i { width: 16px; color: var(--muted); }
+.move-new { border-style: dashed; color: var(--primary); }
+.move-new i { color: var(--primary); }
+
+/* Drag, bulk move and search (ticket 08, #10). Tokens only. */
+.bank-table .chk { width: 64px; white-space: nowrap; }
+.bank-table .chk input { width: 18px; height: 18px; vertical-align: middle; accent-color: var(--primary); cursor: pointer; }
+.bank-table .grip { color: var(--border-strong); cursor: grab; padding: var(--s0); }
+.bank-table tr[draggable="true"]:hover .grip { color: var(--muted); }
+.bank-table tr.is-dragging { opacity: .4; }
+.bank-table tr.is-picked td { background: var(--primary-soft); }
+.bulk {
+  display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; justify-content: space-between;
+  padding: var(--s1) var(--s2); background: var(--primary-soft); color: var(--primary-strong);
+  border-bottom: 1px solid var(--border); font-weight: 500;
+}
+.panel-h .search .inp { width: 260px; max-width: 100%; }
+.panel-h .hint-drag { margin-left: auto; }
+.fname { display: inline-flex; gap: var(--s0); align-items: center; color: var(--text); text-decoration: none; font-size: var(--fs-sm); }
+.fname:hover { text-decoration: underline; }
+.fcard.drop-ok, .folder-chips .chip.drop-ok {
+  border-color: var(--fc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fc) 30%, transparent);
+  background: color-mix(in srgb, var(--fc) 8%, var(--surface));
+}
+.fcard.drop-ok { transform: scale(1.02); }
+.crumbs a.drop-ok { border-color: var(--primary); background: var(--primary-soft); }
+@media (max-width: 760px) {
+  .panel-h .hint-drag { display: none; }
+  .panel-h .search, .panel-h .search .inp { width: 100%; }
+}
+
+/* Class Session status of a Quiz Bank (ticket 13, #15): ● N 堂進行中 / 下一堂 … / 沒有課堂 */
+.bstat { font-size: var(--fs-xs); white-space: nowrap; }
+.bstat.live { color: var(--success); font-weight: 500; }
+.bstat.soon { color: var(--primary); }
+.bstat.none { color: var(--muted); }
+.fcard-meta .bstat { margin-left: var(--s0); }

@@ -1,94 +1,132 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
-{% block title %}成績查看 - {{ quiz_bank.title }}{% endblock %}
+{% block title %}成績 - {{ quiz_bank.title }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/submissions.css') }}">
+{% endblock %}
+
+{% block crumbs %}
+{% set banks_nav = teacher_nav | selectattr('area', 'equalto', 'banks') | first %}
+{{ ui.crumbs([
+    ('題庫', banks_nav.url if banks_nav else url_for('teacher_dashboard')),
+    (quiz_bank.title, url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id)),
+    ('成績', None),
+]) }}
+{% endblock %}
 
 {% block content %}
-<div>
-    <div class="quiz-page-header">
-        <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="quiz-page-header__back">← 返回題庫</a>
-        <h1 class="quiz-page-header__title">📊 成績統計</h1>
-        <p class="quiz-page-header__meta">{{ quiz_bank.title }} - 題庫代碼：{{ quiz_bank.access_code }}</p>
-        <div class="quiz-page-header__toolbar">
-            <button onclick="exportToCSV()" class="btn btn-secondary">📄 匯出CSV</button>
+{% set mode_label = quiz_mode_label(quiz_bank.quiz_mode) %}
+{% call ui.page_head('成績', sub=quiz_bank.title ~ ' · ' ~ mode_label) %}
+<button type="button" id="export-csv" class="btn"><i class="fas fa-file-csv" aria-hidden="true"></i> 匯出 CSV</button>
+{% endcall %}
+
+<div id="subs-loading" class="subs-loading" role="status">
+    <div class="spin" aria-hidden="true"></div>
+    <p>載入成績資料中…</p>
+</div>
+
+<div id="subs-error" hidden>
+    {% call ui.empty('無法載入成績資料，請稍後再試。', icon='fa-exclamation-circle') %}
+    <button type="button" id="subs-retry" class="btn btn-primary">重新載入</button>
+    {% endcall %}
+</div>
+
+<div id="subs-empty" hidden>
+    {% call ui.empty('還沒有學生作答。學生用課堂的連結或 QR 碼進入測驗後，成績會出現在這裡。', icon='fa-inbox') %}
+    <a class="btn" href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id, tab='sessions') }}"><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i> 看這個題庫的課堂</a>
+    {% endcall %}
+</div>
+
+<div id="subs-body" hidden>
+    <div class="kpis">
+        <div class="kpi">
+            <div class="k">作答</div>
+            <div class="v num"><span id="kpi-count">0</span><span class="of"> 次</span></div>
+            <div class="d" id="kpi-count-d"></div>
         </div>
-    </div>
-    
-    <div id="submissions-container">
-        <div style="text-align: center; padding: 2rem;">
-            <div class="loading" style="margin: 0 auto;"></div>
-            <p style="margin-top: 1rem; color: #666;">載入成績資料中...</p>
+        <div class="kpi">
+            <div class="k">平均</div>
+            <div class="v num"><span id="kpi-avg">—</span><span class="of">%</span></div>
+            <div class="d" id="kpi-avg-d"></div>
         </div>
-    </div>
-    
-    <!-- 統計摘要 -->
-    <div id="statistics-summary" style="display: none; margin-bottom: 2rem;">
-        <div class="card">
-            <div class="card-header">
-                <h3 style="margin: 0;">📈 統計摘要</h3>
-            </div>
-            <div class="card-body">
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
-                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
-                        <div style="font-size: 2rem; font-weight: bold; color: #667eea;" id="total-submissions">0</div>
-                        <div style="color: #666;">總作答人數</div>
-                    </div>
-                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
-                        <div style="font-size: 2rem; font-weight: bold; color: #27ae60;" id="average-score">0%</div>
-                        <div style="color: #666;">平均分數</div>
-                    </div>
-                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
-                        <div style="font-size: 2rem; font-weight: bold; color: #e74c3c;" id="highest-score">0%</div>
-                        <div style="color: #666;">最高分數</div>
-                    </div>
-                    <div style="text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
-                        <div style="font-size: 2rem; font-weight: bold; color: #f39c12;" id="pass-rate">0%</div>
-                        <div style="color: #666;">及格率 (60分以上)</div>
+        <div class="kpi">
+            <div class="k">最高 / 最低</div>
+            <div class="v num"><span id="kpi-max">—</span><span class="of"> / <span id="kpi-min">—</span>%</span></div>
+            <div class="d" id="kpi-max-d"></div>
+        </div>
+        <div class="kpi">
+            <div class="k">及格率</div>
+            <div class="v num"><span id="kpi-pass">—</span><span class="of">%</span></div>
+            <div class="d" id="kpi-pass-d"></div>
+        </div>
+    </div><!-- /kpis -->
+
+    <div class="grid-main-side subs-grid">
+        <section class="panel">
+            <div class="panel-h subs-filters">
+                <h2>每一份作答</h2>
+                <div class="row">
+                    <label class="sr-only" for="cs-filter">課堂</label>
+                    <select id="cs-filter" class="inp">
+                        <option value="">全部課堂（{{ class_session_options | length }}）</option>
+                        {% for cs in class_session_options %}
+                        <option value="{{ cs.id }}" data-status="{{ cs.status }}"{% if selected_class_session == cs.id | string %} selected{% endif %}>{{ cs.name }} · {{ cs.status_label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="search">
+                        <i class="fas fa-search" aria-hidden="true"></i>
+                        <label class="sr-only" for="subs-search">搜尋姓名</label>
+                        <input id="subs-search" class="inp" type="search" placeholder="搜尋姓名" autocomplete="off">
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
-    
-    <!-- 成績列表 -->
-    <div id="submissions-table" style="display: none;">
-        <div class="card">
-            <div class="card-header">
-                <h3 style="margin: 0;">📋 詳細成績</h3>
-            </div>
-            <div class="card-body" style="padding: 0; overflow-x: auto;">
-                <table style="width: 100%; border-collapse: collapse;">
+            <div class="table-wrap">
+                <table class="table subs-table">
                     <thead>
-                        <tr style="background: #f8f9fa;">
-                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">排名</th>
-                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">學生姓名</th>
-                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">電子郵件</th>
-                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: center;">得分</th>
-                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: center;">百分比</th>
-                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">所花時間</th>
-                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: left;">完成時間</th>
-                            <th style="padding: 1rem; border-bottom: 1px solid #e9ecef; text-align: center;">操作</th>
+                        <tr>
+                            <th>名次</th>
+                            <th>姓名</th>
+                            <th>Email</th>
+                            <th>課堂</th>
+                            <th class="r">分數</th>
+                            <th>用時</th>
+                            <th>交卷時間</th>
+                            <th><span class="sr-only">操作</span></th>
                         </tr>
                     </thead>
-                    <tbody id="submissions-tbody">
-                    </tbody>
+                    <tbody id="subs-tbody"></tbody>
                 </table>
             </div>
-        </div>
-    </div>
-    
-    <div id="no-submissions" style="display: none; text-align: center; padding: 3rem; background: #f8f9fa; border-radius: 10px;">
-        <h3 style="color: #666; margin-bottom: 1rem;">📝 還沒有學生作答</h3>
-        <p style="color: #888; margin-bottom: 2rem;">等待學生使用題庫代碼進行測驗</p>
-        <div style="background: white; padding: 1rem; border-radius: 8px; display: inline-block;">
-            <strong>題庫代碼：</strong>
-            <span class="access-code" style="font-size: 1.2rem;">{{ quiz_bank.access_code }}</span>
-            <button onclick="copyQuizLink('{{ quiz_bank.access_code }}')" class="btn btn-secondary" style="margin-left: 1rem; padding: 6px 12px;">📋 複製連結</button>
-        </div>
+            <p id="subs-none" class="empty" hidden></p>
+        </section>
+
+        <aside class="stack">
+            <section class="panel">
+                <div class="panel-h"><h2>分數分布</h2></div>
+                <div class="panel-b dist" id="dist"></div>
+            </section>
+            <section class="panel">
+                <div class="panel-h"><h2>最常答錯</h2></div>
+                <div class="table-wrap">
+                    <table class="table missed-table"><tbody id="missed-tbody"></tbody></table>
+                </div>
+                <p id="missed-none" class="empty small" hidden>沒有答錯的題目。</p>
+            </section>
+        </aside>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-let submissionsData = [];
+const QUIZ_BANK_ID = {{ quiz_bank.id }};
+const SUBMISSIONS_URL = {{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) | tojson }};
+const GRADES_URL = {{ url_for('quiz_bank_grades_api', quiz_bank_id=quiz_bank.id) | tojson }};
+const CSV_URL = {{ url_for('export_submissions_csv', quiz_bank_id=quiz_bank.id) | tojson }};
+const TYPE_NAMES = {{ question_type_names | tojson }};
+let grades = null;
 
 function formatElapsedSeconds(elapsedSeconds) {
     if (elapsedSeconds == null) {
@@ -99,223 +137,183 @@ function formatElapsedSeconds(elapsedSeconds) {
     return `${minutes} 分 ${seconds} 秒`;
 }
 
-// 載入成績資料
+function pctText(value) {
+    return value == null ? '—' : (Math.round(value * 10) / 10).toString();
+}
+
+// Grade thresholds from grade_stats (PASS_PERCENT, HIGH_PERCENT), as grade_sheets.band uses them.
+const PASS_PERCENT = {{ pass_percent }};
+const HIGH_PERCENT = {{ high_percent }};
+
+function tierOf(pct) {
+    if (pct >= HIGH_PERCENT) return 'hi';
+    if (pct >= PASS_PERCENT) return 'mid';
+    return 'lo';
+}
+
+function show(id) {
+    for (const part of ['subs-loading', 'subs-error', 'subs-empty', 'subs-body']) {
+        document.getElementById(part).hidden = part !== id;
+    }
+}
+
+function filterParams(withSearch) {
+    const params = new URLSearchParams();
+    const cs = document.getElementById('cs-filter').value;
+    if (cs) params.set('class_session', cs);
+    const q = document.getElementById('subs-search').value.trim();
+    if (withSearch && q) params.set('q', q);
+    return params;
+}
+
 async function loadSubmissions() {
+    show('subs-loading');
+    const params = filterParams(false);
+    history.replaceState(null, '', params.toString() ? `?${params}` : window.location.pathname);
     try {
-        const response = await fetch('/api/quiz-bank/{{ quiz_bank.id }}/submissions');
-        if (response.ok) {
-            submissionsData = await response.json();
-            displaySubmissions();
-        } else {
-            throw new Error('載入失敗');
-        }
+        const response = await fetch(`${GRADES_URL}?${params}`);
+        if (!response.ok) throw new Error('載入失敗');
+        grades = await response.json();
+        displaySubmissions();
     } catch (error) {
-        document.getElementById('submissions-container').innerHTML = `
-            <div style="text-align: center; padding: 2rem; color: #e74c3c;">
-                <h3>載入失敗</h3>
-                <p>無法載入成績資料，請稍後再試</p>
-                <button onclick="loadSubmissions()" class="btn">重新載入</button>
-            </div>
-        `;
+        show('subs-error');
     }
 }
 
 function displaySubmissions() {
-    document.getElementById('submissions-container').style.display = 'none';
-    
-    if (submissionsData.length === 0) {
-        document.getElementById('no-submissions').style.display = 'block';
+    if (grades.stats.count === 0 && !document.getElementById('cs-filter').value) {
+        show('subs-empty');
         return;
     }
-    
-    // 顯示統計摘要
     displayStatistics();
-    
-    // 顯示成績表格
+    displayBands();
+    displayMostMissed();
     displaySubmissionsTable();
+    show('subs-body');
 }
 
 function displayStatistics() {
-    const totalSubmissions = submissionsData.length;
-    const averageScore = totalSubmissions > 0 ? 
-        submissionsData.reduce((sum, s) => sum + s.percentage, 0) / totalSubmissions : 0;
-    const highestScore = totalSubmissions > 0 ? 
-        Math.max(...submissionsData.map(s => s.percentage)) : 0;
-    const passCount = submissionsData.filter(s => s.percentage >= 60).length;
-    const passRate = totalSubmissions > 0 ? (passCount / totalSubmissions) * 100 : 0;
-    
-    document.getElementById('total-submissions').textContent = totalSubmissions;
-    document.getElementById('average-score').textContent = averageScore.toFixed(1) + '%';
-    document.getElementById('highest-score').textContent = highestScore.toFixed(1) + '%';
-    document.getElementById('pass-rate').textContent = passRate.toFixed(1) + '%';
-    
-    document.getElementById('statistics-summary').style.display = 'block';
+    const s = grades.stats;
+    document.getElementById('kpi-count').textContent = s.count;
+    document.getElementById('kpi-count-d').textContent = `${s.students} 位學生`;
+    document.getElementById('kpi-avg').textContent = pctText(s.average);
+    document.getElementById('kpi-avg-d').textContent = s.median == null ? '' : `中位數 ${pctText(s.median)}%`;
+    document.getElementById('kpi-max').textContent = pctText(s.highest);
+    document.getElementById('kpi-min').textContent = pctText(s.lowest);
+    document.getElementById('kpi-max-d').textContent = s.highest == null ? '' : `差距 ${pctText(s.highest - s.lowest)} 分`;
+    document.getElementById('kpi-pass').textContent = pctText(s.pass_rate);
+    document.getElementById('kpi-pass-d').textContent = `${PASS_PERCENT} 分以上：${s.passed} / ${s.count}`;
+}
+
+function displayBands() {
+    const box = document.getElementById('dist');
+    const most = Math.max(1, ...grades.bands.map(b => b.count));
+    const tiers = ['hi', 'hi', 'mid', 'mid', 'lo'];
+    box.innerHTML = '';
+    grades.bands.forEach((band, i) => {
+        const row = document.createElement('div');
+        row.className = 'dist-row';
+        row.innerHTML = `<span>${UI.escape(band.label)}</span><div class="track"><div class="fill bg-${tiers[i]}"></div></div><span class="c num">${band.count}</span>`;
+        row.querySelector('.fill').style.width = (band.count / most * 100) + '%';
+        box.appendChild(row);
+    });
+}
+
+function displayMostMissed() {
+    const tbody = document.getElementById('missed-tbody');
+    tbody.innerHTML = '';
+    for (const m of grades.most_missed) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><span class="tb t-${UI.escape(m.question_type)}">${UI.escape(TYPE_NAMES[m.question_type] || m.type_name)}</span> 第 ${m.number} 題<div class="t-sub">${UI.escape(m.title)}</div></td>
+            <td class="num r ${tierOf(100 - m.wrong_rate)} nowrap">${Math.round(m.wrong_rate)}% 答錯<div class="t-sub">${m.wrong} / ${m.seen}</div></td>
+        `;
+        tbody.appendChild(row);
+    }
+    document.getElementById('missed-none').hidden = grades.most_missed.length > 0;
+}
+
+function visibleRows() {
+    const q = document.getElementById('subs-search').value.trim().toLowerCase();
+    return grades.submissions.filter(s => !q || (s.student_name || '').toLowerCase().includes(q));
 }
 
 function displaySubmissionsTable() {
-    // 按分數排序
-    const sortedSubmissions = [...submissionsData].sort((a, b) => b.percentage - a.percentage);
-    
-    const tbody = document.getElementById('submissions-tbody');
+    const tbody = document.getElementById('subs-tbody');
     tbody.innerHTML = '';
-    
-    sortedSubmissions.forEach((submission, index) => {
+    const rows = visibleRows();
+    rows.forEach((s) => {
+        const tier = tierOf(s.percentage);
         const row = document.createElement('tr');
-        row.style.borderBottom = '1px solid #e9ecef';
-        
-        // 設定排名顏色
-        let rankColor = '#666';
-        if (index === 0) rankColor = '#f39c12'; // 金色
-        else if (index === 1) rankColor = '#95a5a6'; // 銀色
-        else if (index === 2) rankColor = '#e67e22'; // 銅色
-        
-        // 設定分數顏色
-        let scoreColor = '#e74c3c';
-        if (submission.percentage >= 80) scoreColor = '#27ae60';
-        else if (submission.percentage >= 60) scoreColor = '#f39c12';
-        
         row.innerHTML = `
-            <td style="padding: 1rem; color: ${rankColor}; font-weight: bold;">
-                ${index + 1}
-                ${index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : ''}
-            </td>
-            <td style="padding: 1rem; font-weight: bold;">
-                ${submission.student_name}
-                ${submission.is_practice ? '<span style="margin-left:0.5rem; color:#667eea; font-size:0.85rem;">練習</span>' : ''}
-            </td>
-            <td style="padding: 1rem; color: #666;">
-                ${submission.student_email || '-'}
-            </td>
-            <td style="padding: 1rem; text-align: center;">
-                ${submission.score} / ${submission.total_points}
-            </td>
-            <td style="padding: 1rem; text-align: center; font-weight: bold; color: ${scoreColor};">
-                ${submission.percentage.toFixed(1)}%
-            </td>
-            <td style="padding: 1rem; color: #666;">
-                ${formatElapsedSeconds(submission.elapsed_seconds)}
-            </td>
-            <td style="padding: 1rem; color: #666;">
-                ${submission.submitted_at}
-            </td>
-            <td style="padding: 1rem; text-align: center;">
-                <div style="display: flex; gap: 0.5rem; justify-content: center;">
-                    <a href="/quiz-bank/{{ quiz_bank.id }}/submissions/${submission.id}" target="_blank" class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.9rem;">
-                        查看詳情
-                    </a>
-                    <button onclick="deleteSubmission(${submission.id}, '${submission.student_name}')" class="btn btn-danger" style="padding: 6px 12px; font-size: 0.9rem;">
-                        🗑️ 刪除
-                    </button>
+            <td><span class="rank${s.rank <= 3 ? ' top' : ''}">${s.rank}</span></td>
+            <td><div class="t-title">${UI.escape(s.student_name)}${s.takes > 1 ? ` <span class="times">第 ${s.take} 次</span>` : ''}${s.is_practice ? ' <span class="badge badge-info">練習</span>' : ''}</div></td>
+            <td class="t-sub">${s.student_email ? UI.escape(s.student_email) : '—'}</td>
+            <td class="t-sub nowrap">${s.class_session ? UI.escape(s.class_session) : '—'}</td>
+            <td class="r">
+                <div class="pct">
+                    <b class="num ${tier}">${s.percentage.toFixed(1)}%</b>
+                    <div class="track"><div class="fill bg-${tier}"></div></div>
+                    <span class="pts num">${UI.escape(s.score)} / ${UI.escape(s.total_points)}</span>
                 </div>
             </td>
+            <td class="num t-sub nowrap">${formatElapsedSeconds(s.elapsed_seconds)}${s.time_up ? ' <span class="badge badge-warn">時間到</span>' : ''}</td>
+            <td class="num t-sub nowrap">${UI.escape(s.submitted_at)}</td>
+            <td class="t-actions">
+                <a class="btn" href="${SUBMISSIONS_URL}/${s.id}" target="_blank" rel="noopener">看答卷</a>
+                <button type="button" class="btn btn-icon btn-ghost" data-delete="${s.id}" title="刪除" aria-label="刪除 ${UI.escape(s.student_name)} 的作答"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
+            </td>
         `;
-        
+        row.querySelector('.fill').style.width = Math.max(0, Math.min(100, s.percentage)) + '%';
         tbody.appendChild(row);
     });
-    
-    document.getElementById('submissions-table').style.display = 'block';
+    const none = document.getElementById('subs-none');
+    none.hidden = rows.length > 0;
+    none.textContent = grades.submissions.length ? '沒有符合的姓名。' : '這堂課還沒有作答。';
 }
 
 function exportToCSV() {
-    if (submissionsData.length === 0) {
-        alert('沒有資料可以匯出');
+    if (!grades || visibleRows().length === 0) {
+        UI.toast('沒有資料可以匯出', 'warn');
         return;
     }
-    
-    // 準備CSV資料
-    const headers = ['排名', '學生姓名', '電子郵件', '得分', '總分', '百分比', '所花時間', '完成時間'];
-    const sortedSubmissions = [...submissionsData].sort((a, b) => b.percentage - a.percentage);
-    
-    let csvContent = headers.join(',') + '\n';
-    
-    sortedSubmissions.forEach((submission, index) => {
-        const row = [
-            index + 1,
-            `"${submission.student_name}"`,
-            `"${submission.student_email || ''}"`,
-            submission.score,
-            submission.total_points,
-            submission.percentage.toFixed(1),
-            `"${formatElapsedSeconds(submission.elapsed_seconds)}"`,
-            `"${submission.submitted_at}"`
-        ];
-        csvContent += row.join(',') + '\n';
+    window.location.href = `${CSV_URL}?${filterParams(true)}`;
+}
+
+async function deleteSubmission(submissionId) {
+    const submission = grades.submissions.find(s => s.id === submissionId);
+    const name = submission ? submission.student_name : '';
+    const ok = await UI.ask(`確定要刪除「${name}」的作答嗎？刪除後無法復原。`, {
+        title: '刪除作答', okText: '刪除', danger: true,
     });
-    
-    // 下載CSV檔案
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `{{ quiz_bank.title }}_成績統計.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
+    if (!ok) return;
 
-function copyQuizLink(accessCode) {
-    const link = window.location.origin + '/quiz/' + accessCode;
-    
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(link).then(() => {
-            alert('題庫連結已複製到剪貼簿！\n' + link);
-        }).catch(() => {
-            fallbackCopyTextToClipboard(link);
-        });
-    } else {
-        fallbackCopyTextToClipboard(link);
-    }
-}
-
-function fallbackCopyTextToClipboard(text) {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-999999px";
-    textArea.style.top = "-999999px";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    
-    try {
-        document.execCommand('copy');
-        alert('題庫連結已複製到剪貼簿！\n' + text);
-    } catch (err) {
-        alert('無法複製連結，請手動複製：\n' + text);
-    }
-    
-    document.body.removeChild(textArea);
-}
-
-async function deleteSubmission(submissionId, studentName) {
-    if (!confirm(`確定要刪除 ${studentName} 的成績嗎？\n\n⚠️ 此操作無法復原！`)) {
-        return;
-    }
-    
     try {
         const response = await fetch(`/api/submission/${submissionId}`, {
             method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            }
+            headers: { 'Content-Type': 'application/json' },
         });
-        
         const result = await response.json();
-        
         if (response.ok) {
-            alert(result.message);
-            // 重新載入成績資料
+            UI.toast(result.message, 'ok');
             loadSubmissions();
         } else {
-            alert(result.error || '刪除失敗，請稍後再試');
+            UI.toast(result.error || '刪除失敗，請稍後再試', 'error');
         }
     } catch (error) {
-        alert('網路錯誤，請檢查連線');
+        UI.toast('網路錯誤，請檢查連線', 'error');
     }
 }
 
-// 頁面載入時載入資料
+document.getElementById('export-csv').addEventListener('click', exportToCSV);
+document.getElementById('subs-retry').addEventListener('click', loadSubmissions);
+document.getElementById('cs-filter').addEventListener('change', loadSubmissions);
+document.getElementById('subs-search').addEventListener('input', () => { if (grades) displaySubmissionsTable(); });
+document.getElementById('subs-tbody').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-delete]');
+    if (button) deleteSubmission(Number(button.dataset.delete));
+});
+
 document.addEventListener('DOMContentLoaded', loadSubmissions);
 </script>
 {% endblock %}

@@ -1,0 +1,41 @@
+/* 儀表板 page (ticket 06, #8). Tokens only. */
+.dash-attn { margin-bottom: var(--s3); }
+.dash-attn .panel-h h2 { display: flex; align-items: center; gap: var(--s1); }
+.dash-attn td.act { text-align: right; white-space: nowrap; }
+
+/* 上課發題 panel */
+.qr-box { padding: var(--s2) var(--s3) var(--s3); display: grid; gap: var(--s1-5); justify-items: center; }
+.qr-box select { width: 100%; }
+.qr-img { width: 184px; height: 184px; display: grid; place-items: center; }
+.qr-img svg { width: 100%; height: 100%; }
+.qr-url { color: var(--muted); font-size: var(--fs-sm); text-align: center; word-break: break-all; }
+.qr-url b { color: var(--text); }
+.qr-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1); width: 100%; }
+.qr-actions .btn { justify-content: center; }
+
+/* 進行中・即將開始的課堂 cards (ticket 13, #15) */
+.dash-sessions { margin-bottom: var(--s3); }
+.section-title { font-size: var(--fs-md); margin: var(--s2) 0 var(--s1); }
+.sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--s2); }
+.scard {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r);
+  padding: var(--s2); display: grid; gap: var(--s1); align-content: start;
+}
+.scard.live { border-color: var(--success-line); box-shadow: inset 3px 0 0 var(--success); }
+.scard .nm { font-size: var(--fs-md); font-weight: 600; margin: var(--s0) 0 var(--s0); }
+.scard .bk { list-style: none; margin: 0; padding: 0; color: var(--muted); font-size: var(--fs-sm); }
+.scard .bk li { line-height: 1.6; }
+.scard .bk i { width: 14px; }
+.scard .tm {
+  display: flex; justify-content: space-between; gap: var(--s1);
+  color: var(--muted); font-size: var(--fs-sm); font-variant-numeric: tabular-nums;
+}
+.scard .pg {
+  appearance: none; width: 100%; height: 4px; border: 0; border-radius: var(--r-pill);
+  background: var(--bg); overflow: hidden; color: var(--success);
+}
+.scard .pg::-webkit-progress-bar { background: var(--bg); }
+.scard .pg::-webkit-progress-value { background: var(--success); }
+.scard .pg::-moz-progress-bar { background: var(--success); }
+.scard .acts { display: flex; gap: var(--s0); }
+.scard .acts .btn { flex: 1; justify-content: center; }

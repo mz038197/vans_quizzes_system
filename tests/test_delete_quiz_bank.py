@@ -1,14 +1,16 @@
 """API seam: DELETE /api/quiz-bank/<id> — hard-delete with Submission confirm gate."""
 
 from app import QuizBank, Question, Submission
+from conftest import live_code
 
 
 def _submit(auth_client, student_name='Alice'):
     ids = auth_client._ids
     response = auth_client.post(
-        f'/api/quiz/{ids["access_code"]}/submit',
+        f'/api/quiz/{live_code(auth_client)}/submit',
         json={
             'student_name': student_name,
+            'quiz_bank_id': ids['quiz_bank_id'],
             'student_email': '',
             'answers': {str(ids['question_id']): 'A'},
         },
@@ -30,7 +32,7 @@ def test_delete_quiz_bank_without_submissions_succeeds(auth_client):
         assert Question.query.get(question_id) is None
 
 
-def test_delete_quiz_bank_with_submissions_requires_confirm(auth_client):
+def test_delete_quiz_bank_with_submissions_requires_confirm_flag(auth_client):
     quiz_bank_id = auth_client._ids['quiz_bank_id']
     _submit(auth_client, 'Alice')
     _submit(auth_client, 'Bob')

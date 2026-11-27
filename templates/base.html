@@ -1,65 +1,59 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}智慧題庫 - 線上教學平台{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    
-    <!-- MathJax for LaTeX support -->
-    <script>
-        MathJax = {
-            tex: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                processEscapes: true,
-                processEnvironments: true
-            },
-            options: {
-                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-                ignoreHtmlClass: 'tex2jax_ignore',
-                processHtmlClass: 'tex2jax_process'
-            }
-        };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
-    
+    {% include "_head.html" %}
+    <title>{% block title %}智慧題庫{% endblock %}</title>
     {% block head %}{% endblock %}
 </head>
-<body>
-    <div class="container">
-        <nav class="navbar">
-            <h1><i class="fas fa-book"></i> 智慧題庫</h1>
-            <div class="nav-links">
-                {% if current_teacher %}
-                    <a href="{{ url_for('teacher_dashboard') }}" class="{{ 'active' if request.endpoint == 'teacher_dashboard' else '' }}">
-                        <i class="fas fa-tachometer-alt"></i> 儀表板
-                    </a>
-                    <a href="{{ url_for('create_quiz_bank') }}" class="{{ 'active' if request.endpoint == 'create_quiz_bank' else '' }}">
-                        <i class="fas fa-plus-circle"></i> 新增題庫
-                    </a>
-                    <form method="post" action="{{ url_for('teacher_auth.logout') }}" class="nav-logout-form">
-                        <button type="submit" class="nav-logout">
-                            <i class="fas fa-sign-out-alt"></i> 登出 ({{ current_teacher.display_name }})
-                        </button>
-                    </form>
-                {% else %}
-                    <a href="{{ url_for('index') }}" class="{{ 'active' if request.endpoint == 'index' else '' }}">
-                        <i class="fas fa-home"></i> 首頁
-                    </a>
-                    <a href="{{ url_for('teacher_auth.login') }}">
-                        <i class="fas fa-sign-in-alt"></i> 教師登入
-                    </a>
-                {% endif %}
+{#
+  Teacher layout (style A). Blocks:
+    title      page title
+    head       extra <link>/<style> for this page
+    body_class class on <body>
+    topbar     the top bar; override with an empty block for a page without one (sign-in page)
+    main_class class of <main> (default "page", max 1200px)
+    crumbs     breadcrumb above the page head (use ui.crumbs)
+    content    the page
+    scripts    page scripts (ui.js and main.js are already loaded)
+  Active nav area: from page_nav.AREA_BY_ENDPOINT, or `{% set nav_area = 'banks' %}` in the page.
+#}
+{% set _area = nav_area if nav_area is defined else default_nav_area %}
+<body class="{% block body_class %}{% endblock %}">
+    {% block topbar %}
+    <header class="top">
+        <div class="top-in">
+            <a class="top-logo" href="{{ url_for('teacher_dashboard') if current_teacher else url_for('index') }}">
+                <i class="fas fa-book-open" aria-hidden="true"></i> 智慧題庫
+            </a>
+            {% if current_teacher %}
+            <nav class="top-nav" aria-label="主要導覽">
+                {% for item in teacher_nav %}
+                <a href="{{ item.url }}"{% if item.area == _area %} aria-current="page"{% endif %}>
+                    <i class="fas {{ item.icon }}" aria-hidden="true"></i> {{ item.label }}
+                </a>
+                {% endfor %}
+            </nav>
+            <div class="top-user">
+                <span><i class="fas fa-user-circle" aria-hidden="true"></i> {{ current_teacher.display_name }}</span>
+                <form method="post" action="{{ url_for('teacher_auth.logout') }}">
+                    <button type="submit" class="btn btn-ghost"><i class="fas fa-sign-out-alt" aria-hidden="true"></i> 登出</button>
+                </form>
             </div>
-        </nav>
-        
-        <div class="content">
-            {% block content %}{% endblock %}
+            {% else %}
+            <div class="top-user">
+                <a class="btn btn-ghost" href="{{ url_for('teacher_auth.login') }}"><i class="fas fa-sign-in-alt" aria-hidden="true"></i> 教師登入</a>
+            </div>
+            {% endif %}
         </div>
-    </div>
-    
+    </header>
+    {% endblock %}
+
+    <main class="{% block main_class %}page{% endblock %}" id="main">
+        {% block crumbs %}{% endblock %}
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

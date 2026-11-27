@@ -1,0 +1,73 @@
+{#
+  Shared UI macros (style A). Import in a page:
+    {% import "_ui.html" as ui %}
+
+  ui.crumbs([('題庫', url_for('teacher_dashboard')), ('資料夾名', None)])
+  {% call ui.page_head('題庫', sub='12 個題庫') %}<a class="btn btn-primary" href="...">建立題庫</a>{% endcall %}
+  ui.kpi('本週作答', 42, delta='比上週 +5', href=None)
+  ui.empty('還沒有題庫', icon='fa-inbox')           (a {% call %} body adds actions under the text)
+  ui.type_badge(question.question_type)           coloured question-type badge
+  ui.status_pill('live')                          Class Session status: live / soon / done
+  ui.folder_dot('green')                          Folder colour dot
+  ui.note('這份題庫正在上課中', kind='warn')        in-page banner: info / ok / warn / danger
+#}
+
+{% macro crumbs(items) -%}
+<nav class="crumbs" aria-label="麵包屑">
+  {%- for label, href in items -%}
+    {%- if not loop.first %}<span class="sep" aria-hidden="true">/</span>{% endif -%}
+    {%- if href and not loop.last -%}
+      <a href="{{ href }}">{{ label }}</a>
+    {%- else -%}
+      <span{% if loop.last %} aria-current="page"{% endif %}>{{ label }}</span>
+    {%- endif -%}
+  {%- endfor -%}
+</nav>
+{%- endmacro %}
+
+{% macro page_head(title, sub=None, icon=None) -%}
+<div class="page-head">
+  <div>
+    <h1>{% if icon %}<i class="fas {{ icon }}" aria-hidden="true"></i> {% endif %}{{ title }}</h1>
+    {% if sub %}<p class="sub">{{ sub }}</p>{% endif %}
+  </div>
+  {% if caller is defined %}<div class="actions">{{ caller() }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro kpi(label, value, delta=None, href=None) -%}
+{% if href %}<a class="kpi" href="{{ href }}">{% else %}<div class="kpi">{% endif %}
+  <div class="k">{{ label }}</div>
+  <div class="v">{{ value }}</div>
+  {% if delta %}<div class="d">{{ delta }}</div>{% endif %}
+{% if href %}</a>{% else %}</div>{% endif %}
+{%- endmacro %}
+
+{% macro empty(text, icon='fa-inbox') -%}
+<div class="empty">
+  <i class="fas {{ icon }}" aria-hidden="true"></i>
+  <p>{{ text }}</p>
+  {% if caller is defined %}{{ caller() }}{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro type_badge(question_type) -%}
+<span class="tb t-{{ question_type }}">{{ get_question_type_name(question_type) }}</span>
+{%- endmacro %}
+
+{% set _status_labels = {'live': '進行中', 'soon': '即將開始', 'done': '已結束'} %}
+{% macro status_pill(status, label=None) -%}
+<span class="sp {{ status }}">{% if status == 'live' %}<span aria-hidden="true">●</span> {% endif %}{{ label or _status_labels.get(status, status) }}</span>
+{%- endmacro %}
+
+{% macro folder_dot(color) -%}
+<span class="fdot fc-{{ color }}" aria-hidden="true"></span>
+{%- endmacro %}
+
+{% set _note_icons = {'info': 'fa-info-circle', 'ok': 'fa-check-circle', 'warn': 'fa-exclamation-triangle', 'danger': 'fa-times-circle'} %}
+{% macro note(text, kind='info') -%}
+<div class="note{% if kind != 'info' %} note-{{ kind }}{% endif %}" role="{{ 'alert' if kind in ('warn', 'danger') else 'status' }}">
+  <i class="fas {{ _note_icons.get(kind, 'fa-info-circle') }}" aria-hidden="true"></i>
+  <span>{{ text }}</span>
+</div>
+{%- endmacro %}

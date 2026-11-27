@@ -1,0 +1,20 @@
+{#
+  Full-screen 投影 QR for a Class Session code (ticket 13, #15; shared by review fix 4).
+  Used by the 儀表板 cards and the 課堂 page rows.
+
+  Use it in a teacher page:
+    1. At the end of {% block scripts %}, before page scripts that call QrStage:  {% include "_qr_stage.html" %}
+    2. Add a button:  <button type="button" class="btn" data-qr="<code>" data-title="<Course> · <Class Session>">投影 QR</button>
+  JS: QrStage.open(code, title), QrStage.svg(text), QrStage.link(code), QrStage.shortLink(element, code).
+  QR codes come from static/js/vendor/qrcode.js (qrcode-generator 1.4.4, MIT), not a CDN.
+#}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/qr_stage.css') }}">
+<div class="qr-stage" id="qr-stage" role="dialog" aria-modal="true" aria-labelledby="qr-stage-title" hidden>
+    <button type="button" class="btn qr-close" id="qr-close"><i class="fas fa-times" aria-hidden="true"></i> 關閉（Esc）</button>
+    <h1 id="qr-stage-title"></h1>
+    <div class="qr-stage-img" id="qr-stage-img"></div>
+    <div class="qr-stage-url mono" id="qr-stage-url"></div>
+    <p class="qr-stage-hint">用手機相機掃描，輸入姓名就能開始作答，不用登入。</p>
+</div>
+<script src="{{ url_for('static', filename='js/vendor/qrcode.js') }}"></script>
+<script src="{{ url_for('static', filename='js/qr_stage.js') }}"></script>

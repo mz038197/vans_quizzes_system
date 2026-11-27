@@ -1,6 +1,7 @@
 """Seams for Take Order and Review Flag normalization / persistence."""
 
 from practice_utils import normalize_review_flag_ids, build_take_order
+from conftest import live_code
 
 
 class _FakeRng:
@@ -29,7 +30,7 @@ def test_fixed_take_reuses_take_order_across_reloads(client):
     import app as app_module
 
     ids = client._ids
-    access_code = ids['access_code']
+    access_code = live_code(client)
     quiz_bank_id = ids['quiz_bank_id']
 
     with app_module.app.app_context():
@@ -56,14 +57,14 @@ def test_fixed_take_reuses_take_order_across_reloads(client):
     first = client.get(f'/quiz/{access_code}')
     assert first.status_code == 200
     with client.session_transaction() as sess:
-        first_order = list(sess[f'take_session_{access_code}']['question_ids'])
+        first_order = list(sess[f'take_session_{access_code}-{ids["quiz_bank_id"]}']['question_ids'])
     assert len(first_order) == 3
     assert set(first_order) == bank_ids
 
     second = client.get(f'/quiz/{access_code}')
     assert second.status_code == 200
     with client.session_transaction() as sess:
-        assert sess[f'take_session_{access_code}']['question_ids'] == first_order
+        assert sess[f'take_session_{access_code}-{ids["quiz_bank_id"]}']['question_ids'] == first_order
 
 
 def test_submit_persists_take_order_and_review_flags(client):
@@ -71,7 +72,7 @@ def test_submit_persists_take_order_and_review_flags(client):
     import json
 
     ids = client._ids
-    access_code = ids['access_code']
+    access_code = live_code(client)
     q1 = ids['question_id']
 
     with app_module.app.app_context():
@@ -90,12 +91,13 @@ def test_submit_persists_take_order_and_review_flags(client):
 
     take_order = [q2_id, q1]
     with client.session_transaction() as sess:
-        sess[f'take_session_{access_code}'] = {'question_ids': take_order}
+        sess[f'take_session_{access_code}-{ids["quiz_bank_id"]}'] = {'question_ids': take_order}
 
     response = client.post(
         f'/api/quiz/{access_code}/submit',
         json={
             'student_name': 'Carol',
+            'quiz_bank_id': ids['quiz_bank_id'],
             'answers': {str(q1): 'A', str(q2_id): 'B'},
             'review_flag_question_ids': [q1, 999, str(q2_id)],
         },
@@ -115,7 +117,7 @@ def test_submit_without_take_session_uses_bank_order_not_new_permutation(client)
     import json
 
     ids = client._ids
-    access_code = ids['access_code']
+    access_code = live_code(client)
     q1 = ids['question_id']
 
     with app_module.app.app_context():
@@ -142,6 +144,7 @@ def test_submit_without_take_session_uses_bank_order_not_new_permutation(client)
         f'/api/quiz/{access_code}/submit',
         json={
             'student_name': 'Dana',
+            'quiz_bank_id': ids['quiz_bank_id'],
             'answers': {str(q1): 'A', str(q2_id): 'A'},
         },
     )

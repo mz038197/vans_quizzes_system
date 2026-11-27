@@ -1,0 +1,109 @@
+/*
+ * Design tokens: style A, the `clean` spec (.claude/skills/design-system/SKILL.md).
+ * Every colour, font, spacing and size value of the site is defined here, once.
+ * Other stylesheets use only var(--...). Do not write raw colours anywhere else.
+ */
+:root {
+  /* ---- colours (clean spec) ---- */
+  --primary: #3B82F6;
+  --primary-hover: #2563EB;
+  --primary-soft: #EFF6FF;
+  --primary-strong: #1E40AF;   /* text on --primary-soft */
+  --secondary: #8B5CF6;
+  --success: #16A34A;
+  --success-soft: #F0FDF4;
+  --success-line: #86EFAC;     /* border of a success box */
+  --warning: #D97706;
+  --warning-soft: #FFFBEB;
+  --danger: #DC2626;
+  --danger-hover: #B91C1C;
+  --danger-soft: #FEF2F2;
+  --danger-line: #FCA5A5;      /* border of a danger box */
+  --surface: #FFFFFF;
+  --bg: #F9FAFB;
+  --border: #E5E7EB;
+  --border-strong: #CBD5E1;    /* hovered border, drag grip */
+  --text: #111827;
+  --muted: #6B7280;
+  --focus: #93C5FD;
+  --on-primary: #FFFFFF;       /* text on a filled colour button or a dark bar */
+  --overlay: rgb(15 23 42 / .4);          /* dialog backdrop */
+  --shadow-1: 0 1px 2px rgb(15 23 42 / .06);
+  --shadow-2: 0 12px 32px rgb(15 23 42 / .15);
+  --shadow-3: 0 24px 48px rgb(15 23 42 / .25);
+
+  /* ---- question-type colours (one per type) ---- */
+  --type-single: #3B82F6;   /* single_choice */
+  --type-multi: #8B5CF6;    /* multiple_choice */
+  --type-fill: #0891B2;     /* fill_blank */
+  --type-dd: #D97706;       /* dropdown */
+  --type-dfill: #DB2777;    /* dropdown_fillblank */
+  --type-parsons: #16A34A;  /* parsons */
+
+  /* ---- Folder colours (six choices) ---- */
+  --f-blue: #3B82F6;
+  --f-green: #16A34A;
+  --f-purple: #8B5CF6;
+  --f-amber: #D97706;
+  --f-pink: #DB2777;
+  --f-cyan: #0891B2;
+
+  /* ---- 8-point spacing ---- */
+  --s0: 4px;
+  --s1: 8px;
+  --s1-5: 12px;  /* half step: row gaps and table cells */
+  --s2: 16px;
+  --s3: 24px;
+  --s4: 32px;
+  --s5: 48px;
+
+  /* ---- shape and size ---- */
+  --r: 8px;            /* radius of boxes and buttons */
+  --r-sm: 6px;         /* radius of chips and small boxes */
+  --r-lg: 12px;        /* radius of dialogs */
+  --r-pill: 999px;
+  --tap: 44px;         /* minimum height of a button or a clickable row */
+  --tap-sm: 36px;      /* icon button inside a table row */
+  --page-max: 1200px;  /* teacher page width */
+  --quiz-max: 720px;   /* student page width */
+  --top-h: 64px;       /* top bar height */
+
+  /* ---- type (12/14/16/20/24/32; display 40/52) ---- */
+  --font: 'Roboto', 'Noto Sans TC', system-ui, sans-serif;
+  --display: 'Poppins', 'Noto Sans TC', sans-serif;
+  --mono: 'Inconsolata', 'JetBrains Mono', Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 20px;
+  --fs-xl: 24px;
+  --fs-2xl: 32px;
+  --fs-3xl: 40px;   /* display: projector title, countdown, score ring */
+  --fs-hero: 52px;  /* display: sign-in title at its largest */
+
+  /* ---- motion ---- */
+  --ease: 150ms ease;
+
+  /* ---- layers ---- */
+  --z-menu: 200;
+  --z-dialog: 1000;   /* in-page dialogs; later dialogs stack on earlier ones */
+  --z-toast: 1100;
+}
+
+/* ---- sign-in page hero (templates/index.html, static/css/pages/sign_in.css) ---- */
+:root {
+  --hero-bg: #0F2A24;          /* chalk green */
+  --hero-fg: #FAFAFA;
+  --hero-fg-hover: #E4E4E7;    /* hovered light button */
+  --hero-muted: #9CC5B8;
+  --hero-border: #1F4A40;
+  --hero-shadow: 0 24px 48px rgb(0 0 0 / .28);
+  --hero-chip-shadow: 0 10px 24px rgb(0 0 0 / .25);
+  --hero-pop-shadow: 0 8px 20px rgb(22 163 74 / .4);
+  --glow-1: #3B82F6;   /* blue */
+  --glow-2: #8B5CF6;   /* purple */
+  --glow-3: #06B6D4;   /* cyan */
+  --glow-4: #EC4899;   /* pink */
+  --glow-5: #16A34A;   /* green */
+  --glow-6: #F59E0B;   /* amber */
+}

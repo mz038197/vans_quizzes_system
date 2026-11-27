@@ -1,174 +1,182 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
-{% block title %}新增題庫 - 線上題庫系統{% endblock %}
+{% block title %}建立題庫 - 智慧題庫{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/quiz_bank.css') }}">
+{% endblock %}
+
+{% block crumbs %}
+{% set banks_url = (teacher_nav | selectattr('area', 'equalto', 'banks') | map(attribute='url') | first) or url_for('teacher_dashboard') %}
+<div class="narrow">{{ ui.crumbs([('題庫', banks_url), ('建立題庫', None)]) }}</div>
+{% endblock %}
 
 {% block content %}
-<div class="form-container" style="max-width: 760px;">
-    <h2 style="text-align: center; margin-bottom: 2rem; color: #333;">📝 建立新題庫</h2>
+{% set banks_url = (teacher_nav | selectattr('area', 'equalto', 'banks') | map(attribute='url') | first) or url_for('teacher_dashboard') %}
+<div class="narrow">
+    {{ ui.page_head('建立題庫', sub='先建立空的題庫再加題目，或直接匯入整份 Markdown。') }}
 
-    <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem;">
-        <button type="button" class="btn btn-secondary tab-btn active" data-tab="manual" onclick="switchTab('manual')">手動建立</button>
-        <button type="button" class="btn btn-secondary tab-btn" data-tab="import" onclick="switchTab('import')">從 MD 匯入</button>
+    <div class="pick" role="tablist" aria-label="建立方式">
+        <a href="?tab=manual{{ '&folder=' ~ folder.id if folder }}" data-pick="manual" role="tab" aria-controls="manual-tab" aria-current="{{ 'true' if tab == 'manual' else 'false' }}" aria-selected="{{ 'true' if tab == 'manual' else 'false' }}">
+            <span class="ico"><i class="fas fa-pen" aria-hidden="true"></i></span>
+            <div><b>手動建立</b><span>填標題和描述，之後一題一題加入。</span></div>
+        </a>
+        <a href="?tab=import{{ '&folder=' ~ folder.id if folder }}" data-pick="import" role="tab" aria-controls="import-tab" aria-current="{{ 'true' if tab == 'import' else 'false' }}" aria-selected="{{ 'true' if tab == 'import' else 'false' }}">
+            <span class="ico"><i class="fab fa-markdown" aria-hidden="true"></i></span>
+            <div><b>從 Markdown 匯入</b><span>上傳一份 .md 檔，一次建立題庫和所有題目。</span></div>
+        </a>
     </div>
 
     <div id="alert-container"></div>
 
-    <div id="manual-tab">
-        <form id="create-quiz-form">
-            <div class="form-group">
+    {# Folder for the new Quiz Bank (ticket 07, #9). Empty = 未分類. #}
+    <div id="target-folder" data-folder-id="{{ folder.id if folder else '' }}">
+        {% if folder %}{{ ui.note('新題庫會放進資料夾「' ~ folder.name ~ '」。') }}{% endif %}
+    </div>
+
+    <div id="manual-tab" role="tabpanel"{% if tab != 'manual' %} hidden{% endif %}>
+        <form id="create-quiz-form" class="form-card" novalidate>
+            <div class="fld">
                 <label for="title">題庫標題 *</label>
-                <input type="text" id="title" name="title" required placeholder="例如：程式設計基礎測驗">
+                <input class="inp" type="text" id="title" name="title" required placeholder="例如：Python 基礎測驗">
+                <span class="err" id="title-error" hidden>請輸入題庫標題。</span>
             </div>
-
-            <div class="form-group">
-                <label for="description">題庫描述</label>
-                <textarea id="description" name="description" rows="4" placeholder="描述這個題庫的內容和目的..."></textarea>
+            <div class="fld">
+                <label for="description">描述</label>
+                <textarea class="inp" id="description" name="description" placeholder="選填。學生在開始作答前會看到。"></textarea>
             </div>
-
-            <div style="display: flex; gap: 1rem;">
-                <button type="submit" class="btn" style="flex: 1;">
-                    <span id="create-text">建立題庫</span>
-                    <span id="create-loading" class="loading" style="display: none;"></span>
-                </button>
-                <a href="{{ url_for('teacher_dashboard') }}" class="btn btn-secondary" style="flex: 1; text-align: center; line-height: 1.5;">取消</a>
+            <div class="form-actions">
+                <a class="btn" href="{{ banks_url }}">取消</a>
+                <button type="submit" class="btn btn-primary" id="create-btn">建立題庫</button>
             </div>
         </form>
     </div>
 
-    <div id="import-tab" style="display: none;">
-        <div class="form-group">
-            <label for="md-file">上傳 Markdown 檔案 *</label>
-            <input type="file" id="md-file" accept=".md,text/markdown">
-        </div>
+    <div id="import-tab" role="tabpanel" class="stack-lg"{% if tab != 'import' %} hidden{% endif %}>
+        <label class="drop" id="create-drop" for="md-file">
+            <input type="file" id="md-file" class="sr-only" accept=".md,text/markdown">
+            <span class="drop-empty">
+                <i class="fab fa-markdown" aria-hidden="true"></i>
+                <span><b>拖曳 .md 檔到這裡</b>，或 <span class="linkish">選擇檔案</span></span>
+            </span>
+            <span class="drop-file">
+                <i class="fas fa-file-alt" aria-hidden="true"></i>
+                <span><b class="drop-name"></b><span class="drop-info small"></span></span>
+                <span class="btn">換一個檔案</span>
+            </span>
+        </label>
+        <p class="help">檔案裡的標題會變成題庫名稱。<a class="linkish" href="/api/import-quiz-md/template">下載範本</a></p>
 
-        <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
-            <button type="button" class="btn btn-secondary" onclick="downloadTemplate()">下載範本</button>
-            <button type="button" class="btn" onclick="previewImport()">
-                <span id="preview-text">預覽匯入</span>
-                <span id="preview-loading" class="loading" style="display: none;"></span>
-            </button>
-        </div>
-
-        <div id="import-preview" style="display: none;">
-            <div class="card" style="margin-bottom: 1rem;">
-                <div class="card-header">
-                    <h3 style="margin: 0;">預覽結果</h3>
-                </div>
-                <div class="card-body">
-                    <div id="import-summary"></div>
-                    <div style="overflow-x: auto; margin-top: 1rem;">
-                        <table style="width: 100%; border-collapse: collapse;">
-                            <thead>
-                                <tr style="background: #f8f9fa;">
-                                    <th style="padding: 0.75rem; text-align: left;">題號</th>
-                                    <th style="padding: 0.75rem; text-align: left;">標題</th>
-                                    <th style="padding: 0.75rem; text-align: left;">題型</th>
-                                    <th style="padding: 0.75rem; text-align: left;">分類</th>
-                                    <th style="padding: 0.75rem; text-align: center;">分數</th>
-                                </tr>
-                            </thead>
-                            <tbody id="import-preview-body"></tbody>
-                        </table>
-                    </div>
-                </div>
+        <div class="panel" id="import-preview" hidden>
+            <div class="panel-h"><h2>預覽</h2><span class="muted small">確認後才會建立題庫</span></div>
+            <div class="panel-b" id="import-summary"></div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>#</th><th>題型</th><th>題目</th><th>分類</th><th>分數</th><th>答案</th><th><span class="sr-only">狀態</span></th></tr></thead>
+                    <tbody id="import-preview-body"></tbody>
+                </table>
             </div>
-
-            <button type="button" class="btn" id="confirm-import-btn" onclick="confirmImport()" disabled>
-                <span id="confirm-text">確認建立</span>
-                <span id="confirm-loading" class="loading" style="display: none;"></span>
-            </button>
+            <p class="preview-problems danger-text" id="import-problems" role="alert" hidden><i class="fas fa-exclamation-circle" aria-hidden="true"></i> 第 <span id="import-problem-list"></span> 題要先修正，才能匯入。</p>
         </div>
-    </div>
-
-    <div style="margin-top: 2rem; padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
-        <h4 style="color: #333; margin-bottom: 1rem;">💡 建立題庫後您可以：</h4>
-        <ul style="color: #666; line-height: 1.6;">
-            <li>新增各種類型的題目（單選、多選、填空、程式碼排序等）</li>
-            <li>設定每次隨機練習的題數與分類比例</li>
-            <li>獲得專屬的題庫代碼，分享給學生</li>
-            <li>查看學生的作答結果和成績統計</li>
-        </ul>
+        <div class="form-actions">
+            <a class="btn" href="{{ banks_url }}">取消</a>
+            <button type="button" class="btn btn-primary" id="confirm-import-btn" onclick="confirmImport()" disabled>建立題庫</button>
+        </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/md_drop.js') }}"></script>
+<script src="{{ url_for('static', filename='js/md_preview.js') }}"></script>
 <script>
+const QUESTION_TYPE_NAMES = {{ question_type_names | tojson }};
 let previewReady = false;
+let importFile = null;
+
+function targetFolderId() {
+    const id = document.getElementById('target-folder').dataset.folderId;
+    return id ? Number(id) : null;
+}
 
 function switchTab(tab) {
-    document.getElementById('manual-tab').style.display = tab === 'manual' ? 'block' : 'none';
-    document.getElementById('import-tab').style.display = tab === 'import' ? 'block' : 'none';
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === tab);
+    document.querySelectorAll('[data-pick]').forEach(card => {
+        const on = card.dataset.pick === tab;
+        card.setAttribute('aria-current', on ? 'true' : 'false');
+        card.setAttribute('aria-selected', on ? 'true' : 'false');
     });
+    document.getElementById('manual-tab').hidden = tab !== 'manual';
+    document.getElementById('import-tab').hidden = tab !== 'import';
+    const url = new URL(location.href);
+    url.searchParams.set('tab', tab);
+    history.replaceState(null, '', url);
     clearAlert();
 }
 
-function showAlert(message, type) {
-    document.getElementById('alert-container').innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+document.querySelectorAll('[data-pick]').forEach(card => card.addEventListener('click', event => {
+    event.preventDefault();
+    switchTab(card.dataset.pick);
+}));
+
+function showAlert(messageHtml, kind) {
+    const icons = { ok: 'fa-check-circle', danger: 'fa-times-circle', warn: 'fa-exclamation-triangle' };
+    document.getElementById('alert-container').innerHTML =
+        `<div class="note note-${kind}" role="${kind === 'ok' ? 'status' : 'alert'}"><i class="fas ${icons[kind]}" aria-hidden="true"></i><span>${messageHtml}</span></div>`;
 }
 
 function clearAlert() {
     document.getElementById('alert-container').innerHTML = '';
 }
 
-function setLoading(prefix, loading) {
-    document.getElementById(`${prefix}-text`).style.display = loading ? 'none' : 'inline';
-    document.getElementById(`${prefix}-loading`).style.display = loading ? 'inline-block' : 'none';
-}
-
 document.getElementById('create-quiz-form').addEventListener('submit', async function(e) {
     e.preventDefault();
 
-    const title = document.getElementById('title').value.trim();
+    const titleInput = document.getElementById('title');
+    const title = titleInput.value.trim();
     const description = document.getElementById('description').value.trim();
     clearAlert();
 
+    const titleError = document.getElementById('title-error');
+    titleError.hidden = Boolean(title);
     if (!title) {
-        showAlert('請輸入題庫標題', 'error');
+        titleInput.setAttribute('aria-invalid', 'true');
+        titleInput.focus();
         return;
     }
+    titleInput.removeAttribute('aria-invalid');
 
-    setLoading('create', true);
+    const button = document.getElementById('create-btn');
+    setButtonLoading(button, true);
     try {
         const response = await fetch('/create-quiz-bank', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, description })
+            body: JSON.stringify({ title, description, folder_id: targetFolderId() })
         });
         const data = await response.json();
 
         if (response.ok) {
-            showAlert(`題庫建立成功！題庫代碼：${data.access_code}`, 'success');
-            setTimeout(() => {
-                window.location.href = `/quiz-bank/${data.quiz_bank_id}`;
-            }, 1200);
-        } else {
-            showAlert(data.error || '建立題庫失敗，請稍後再試', 'error');
+            UI.flash(`已建立題庫「${title}」`, 'ok');
+            window.location.href = `/quiz-bank/${data.quiz_bank_id}`;
+            return;
         }
+        showAlert(UI.escape(data.error || '建立題庫失敗，請稍後再試'), 'danger');
     } catch (error) {
-        showAlert('網路錯誤，請檢查連線', 'error');
-    } finally {
-        setLoading('create', false);
+        showAlert('網路錯誤，請檢查連線', 'danger');
     }
+    setButtonLoading(button, false);
 });
 
-function downloadTemplate() {
-    window.location.href = '/api/import-quiz-md/template';
-}
-
-async function previewImport() {
-    const fileInput = document.getElementById('md-file');
-    if (!fileInput.files.length) {
-        showAlert('請先選擇 .md 檔案', 'error');
-        return;
-    }
-
+async function previewImport(file) {
+    importFile = file;
     const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
+    formData.append('file', file);
     clearAlert();
-    setLoading('preview', true);
     previewReady = false;
-    document.getElementById('confirm-import-btn').disabled = true;
+    const confirmButton = document.getElementById('confirm-import-btn');
+    confirmButton.disabled = true;
+    MdDrop.setInfo('create-drop', '解析中…');
 
     try {
         const response = await fetch('/api/import-quiz-md/preview', {
@@ -176,51 +184,47 @@ async function previewImport() {
             body: formData
         });
         const data = await response.json();
+        const ok = response.ok && data.success;
+        const rows = data.questions || [];
 
-        if (!response.ok || !data.success) {
-            const errors = (data.errors || [data.error || '預覽失敗']).join('<br>');
-            showAlert(errors, 'error');
-            document.getElementById('import-preview').style.display = 'none';
+        if (!rows.length) {
+            const errors = (data.errors || [data.error || '預覽失敗']).map(UI.escape).join('<br>');
+            showAlert(errors, 'danger');
+            MdDrop.setInfo('create-drop', '這個檔案有問題，請修正後再選一次');
+            document.getElementById('import-preview').hidden = true;
             return;
         }
 
+        const fileErrors = data.file_errors || [];
+        if (fileErrors.length) showAlert(fileErrors.map(UI.escape).join('<br>'), 'danger');
+        const bad = MdPreview.render('import', data, QUESTION_TYPE_NAMES);
+        MdDrop.setInfo('create-drop', bad ? `解析到 ${rows.length} 題，${bad} 題有問題` : `解析到 ${rows.length} 題`);
         const bank = data.bank || {};
+        document.getElementById('import-summary').hidden = !ok;
         document.getElementById('import-summary').innerHTML = `
-            <p><strong>題庫標題：</strong>${bank.title || ''}</p>
-            <p><strong>模式：</strong>${bank.quiz_mode === 'practice' ? '隨機練習' : '固定測驗'}</p>
-            <p><strong>題目數量：</strong>${data.question_count}</p>
+            <dl class="kv kv-left">
+                <dt>題庫標題</dt><dd>${UI.escape(bank.title || '')}</dd>
+                <dt>模式</dt><dd>${bank.quiz_mode === 'practice' ? '隨機練習' : '固定測驗'}</dd>
+                <dt>題數</dt><dd>${data.question_count} 題</dd>
+            </dl>
         `;
-
-        const tbody = document.getElementById('import-preview-body');
-        tbody.innerHTML = data.questions.map(item => `
-            <tr>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.index}</td>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.title}</td>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.question_type}</td>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.category || '-'}</td>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee; text-align: center;">${item.points}</td>
-            </tr>
-        `).join('');
-
-        document.getElementById('import-preview').style.display = 'block';
-        document.getElementById('confirm-import-btn').disabled = false;
-        previewReady = true;
-        showAlert('預覽成功，請確認後建立題庫', 'success');
+        document.getElementById('import-preview').hidden = false;
+        confirmButton.textContent = `建立題庫（${rows.length} 題）`;
+        confirmButton.disabled = !ok;
+        previewReady = ok;
     } catch (error) {
-        showAlert('網路錯誤，請檢查連線', 'error');
-    } finally {
-        setLoading('preview', false);
+        showAlert('網路錯誤，請檢查連線', 'danger');
     }
 }
 
 async function confirmImport() {
-    if (!previewReady) return;
+    if (!previewReady || !importFile) return;
 
-    const fileInput = document.getElementById('md-file');
     const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    setLoading('confirm', true);
+    formData.append('file', importFile);
+    if (targetFolderId()) formData.append('folder_id', targetFolderId());
+    const button = document.getElementById('confirm-import-btn');
+    setButtonLoading(button, true);
     try {
         const response = await fetch('/api/import-quiz-md/confirm', {
             method: 'POST',
@@ -229,20 +233,20 @@ async function confirmImport() {
         const data = await response.json();
 
         if (!response.ok || !data.success) {
-            const errors = (data.errors || [data.error || '匯入失敗']).join('<br>');
-            showAlert(errors, 'error');
+            const errors = (data.errors || [data.error || '匯入失敗']).map(UI.escape).join('<br>');
+            showAlert(errors, 'danger');
+            setButtonLoading(button, false);
             return;
         }
 
-        showAlert(`題庫匯入成功！題庫代碼：${data.access_code}`, 'success');
-        setTimeout(() => {
-            window.location.href = `/quiz-bank/${data.quiz_bank_id}`;
-        }, 1200);
+        UI.flash(`已匯入 ${data.question_count} 題`, 'ok');
+        window.location.href = `/quiz-bank/${data.quiz_bank_id}`;
     } catch (error) {
-        showAlert('網路錯誤，請檢查連線', 'error');
-    } finally {
-        setLoading('confirm', false);
+        showAlert('網路錯誤，請檢查連線', 'danger');
+        setButtonLoading(button, false);
     }
 }
+
+MdDrop.attach('create-drop', 'md-file', previewImport);
 </script>
 {% endblock %}

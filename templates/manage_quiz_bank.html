@@ -1,357 +1,380 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
-{% block title %}管理題庫 - {{ quiz_bank.title }}{% endblock %}
+{% block title %}{{ quiz_bank.title }} - 題庫管理{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/quiz_bank.css') }}">
+{% endblock %}
+
+{% set banks_url = (teacher_nav | selectattr('area', 'equalto', 'banks') | map(attribute='url') | first) or url_for('teacher_dashboard') %}
+{% set is_practice = quiz_bank.quiz_mode == 'practice' %}
+{% set mode_name = '隨機練習' if is_practice else '固定測驗' %}
+
+{% block crumbs %}{{ ui.crumbs([('題庫', banks_url), (quiz_bank.title, None)]) }}{% endblock %}
 
 {% block content %}
-<div>
-    <div class="quiz-page-header">
-        <a href="{{ url_for('teacher_dashboard') }}" class="quiz-page-header__back">← 返回儀表板</a>
-        <h1 class="quiz-page-header__title">📝 {{ quiz_bank.title }}</h1>
-        <p class="quiz-page-header__meta">題庫代碼：<span class="access-code">{{ quiz_bank.access_code }}</span></p>
-        <div class="quiz-page-header__toolbar">
-            <button onclick="showAddQuestionModal()" class="btn">➕ 新增題目</button>
-            <div class="quiz-page-header__toolbar-secondary">
-                <a href="{{ url_for('export_quiz_bank_pdf', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" title="導出題庫為PDF文件">📄 導出PDF</a>
-                <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary">📊 查看成績</a>
-            </div>
-        </div>
-    </div>
+{% set head_sub = ((quiz_bank.description ~ ' · ') if quiz_bank.description else '') ~ mode_name %}
+{% call ui.page_head(quiz_bank.title, sub=head_sub) %}
+    <button type="button" class="btn" data-open-session="{{ quiz_bank.id }}" data-session-return="?tab=sessions"><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i> 開課堂</button>
+    <a class="btn" href="{{ url_for('export_quiz_bank_pdf', quiz_bank_id=quiz_bank.id) }}"><i class="far fa-file-pdf" aria-hidden="true"></i> 匯出 PDF</a>
+    <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}"><i class="fas fa-chart-bar" aria-hidden="true"></i> 成績</a>
+    <button type="button" class="btn btn-primary" onclick="showAddQuestionModal()"><i class="fas fa-plus" aria-hidden="true"></i> 新增題目</button>
+{% endcall %}
 
-    <div class="card" style="margin-bottom: 2rem;">
-        <div class="card-header">
-            <h3 style="margin: 0;">⚙️ 題庫模式設定</h3>
-        </div>
-        <div class="card-body">
-            <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
-                <div class="form-group" style="min-width: 180px;">
-                    <label for="quiz-mode">題庫模式</label>
-                    <select id="quiz-mode">
-                        <option value="fixed" {% if quiz_bank.quiz_mode != 'practice' %}selected{% endif %}>固定測驗</option>
-                        <option value="practice" {% if quiz_bank.quiz_mode == 'practice' %}selected{% endif %}>隨機練習</option>
-                    </select>
-                </div>
-                <div class="form-group" style="min-width: 180px;">
-                    <label for="session-question-count">每次出題數</label>
-                    <input type="number" id="session-question-count" min="1" value="{{ quiz_bank.session_question_count or 10 }}"{% if quiz_bank.quiz_mode != 'practice' %} disabled{% endif %}>
-                    <p id="session-question-count-hint" style="color: #666; font-size: 0.85rem; margin-top: 0.35rem; {% if quiz_bank.quiz_mode == 'practice' %}display: none;{% endif %}">
-                        固定測驗一次出全部題目，此設定不適用。
-                    </p>
-                </div>
-            </div>
+{% set tabs = [('questions', '題目'), ('sessions', '課堂'), ('settings', '設定'), ('import', '從 Markdown 追加')] %}
+<nav class="tabs" role="tablist" aria-label="題庫管理">
+    {% for key, label in tabs %}
+    <a role="tab" id="tab-{{ key }}" href="?tab={{ key }}" data-tab="{{ key }}" aria-controls="panel-{{ key }}" aria-selected="{{ 'true' if tab == key else 'false' }}">{{ label }}{% if key == 'questions' %}<span class="cnt">{{ questions|length }}</span>{% elif key == 'sessions' %}<span class="cnt">{{ class_session_rows|length }}</span>{% endif %}</a>
+    {% endfor %}
+</nav>
 
-            <div id="practice-config-section" style="{% if quiz_bank.quiz_mode != 'practice' %}display: none;{% endif %}">
-                <h4 style="margin-bottom: 1rem;">分類比例（加總須為 100%）</h4>
-                <div id="ratio-rows"></div>
-                <button type="button" class="btn btn-secondary" onclick="addRatioRow()" style="margin-top: 0.5rem;">➕ 新增分類</button>
+{# ===== 題目 ===== #}
+<section id="panel-questions" role="tabpanel" aria-labelledby="tab-questions"{% if tab != 'questions' %} hidden{% endif %}>
+    {% set n_live = class_session_rows | selectattr('status', 'equalto', 'live') | list | length %}
+    {% if n_live %}{{ ui.note('有 %d 堂課正在進行，改題目會影響正在作答的學生' % n_live, 'warn') }}{% endif %}
+    <div class="grid-main-side">
+        <div class="ql" id="questions-container">
+            {% for question in questions %}
+            {% set data = (question.question_data | from_json) if question.question_data else {} %}
+            <article class="qi" data-question-id="{{ question.id }}">
+                <div class="no num">{{ loop.index }}</div>
+                <div class="qi-body">
+                    <div class="meta">
+                        {{ ui.type_badge(question.question_type) }}
+                        {% if question.category and question.category.strip() %}
+                        <span class="chip">{{ question.category }}</span>
+                        {% else %}
+                        <span class="chip chip-none">未分類</span>
+                        {% endif %}
+                        {% if data.image and data.image.data_url %}
+                        <span class="chip"><i class="far fa-image" aria-hidden="true"></i> 附圖</span>
+                        {% endif %}
+                        <span class="pts num">{{ question.points }} 分</span>
+                    </div>
+                    <div class="txt">{{ question.title }}</div>
+                    <div class="qtext">{{ question.question_text | trim }}</div>
 
-                {% if category_stats %}
-                <div style="margin-top: 1.5rem;">
-                    <h4>目前題數統計</h4>
-                    <ul style="line-height: 1.8; padding-left: 1.5rem; margin-top: 0.5rem;">
-                        {% for category, count in (category_stats or {}).items() %}
-                        <li><strong>{{ category }}</strong>：{{ count }} 題</li>
+                    {% if question.question_type in ['single_choice', 'multiple_choice'] %}
+                    <ul class="opts">
+                        {% for option in data.options or [] %}
+                        {% set correct = (question.question_type == 'single_choice' and option == data.correct_answer) or (question.question_type == 'multiple_choice' and option in (data.correct_answers or [])) %}
+                        <li class="{{ 'is-correct' if correct }}">
+                            <i class="{{ 'fas fa-check-circle' if correct else 'far fa-circle' }}" aria-hidden="true"></i>
+                            <span>{{ option }}</span>
+                            {% if correct %}<span class="sr-only">（正確答案）</span>{% endif %}
+                        </li>
                         {% endfor %}
                     </ul>
-                </div>
-                {% endif %}
-            </div>
-
-            <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee;">
-                <h4 style="margin-bottom: 0.75rem;">時限</h4>
-                <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
-                    選填。設定後，學生進入作答畫面即開始倒數；時間到會自動繳交。留空表示不限時。
-                </p>
-                <div class="form-group" style="min-width: 220px; max-width: 280px;">
-                    <label for="time-limit-minutes">時限（分鐘）</label>
-                    <input
-                        type="number"
-                        id="time-limit-minutes"
-                        min="1"
-                        step="1"
-                        placeholder="空白＝不限時"
-                        value="{{ quiz_bank.time_limit_minutes if quiz_bank.time_limit_minutes else '' }}"
-                    >
-                </div>
-            </div>
-
-            <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee;">
-                <h4 style="margin-bottom: 0.75rem;">計分設定</h4>
-                <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
-                    切換模式不會改寫各題儲存的分數，只影響之後學生答題與交卷的計分方式。
-                </p>
-                <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
-                    <div class="form-group" style="min-width: 220px;">
-                        <label for="scoring-mode">計分模式</label>
-                        <select id="scoring-mode" onchange="toggleScoringTotalInput()">
-                            <option value="explicit" {% if (quiz_bank.scoring_mode or 'explicit') != 'average' %}selected{% endif %}>使用各題設定分數</option>
-                            <option value="average" {% if quiz_bank.scoring_mode == 'average' %}selected{% endif %}>依題數平均</option>
-                        </select>
-                    </div>
-                    <div class="form-group" style="min-width: 180px;" id="scoring-total-group">
-                        <label for="scoring-total-points">平均模式總分</label>
-                        <input type="number" id="scoring-total-points" min="0.01" step="any" value="{{ quiz_bank.scoring_total_points if quiz_bank.scoring_total_points is not none else 100 }}">
-                    </div>
-                </div>
-                <p id="scoring-preview" style="color: #667eea; font-size: 0.9rem; margin-top: 0.5rem;"></p>
-            </div>
-
-            <button type="button" class="btn" onclick="savePracticeConfig()" style="margin-top: 1rem;">儲存模式設定</button>
-            <div id="practice-config-alert" style="margin-top: 1rem;"></div>
-        </div>
-    </div>
-
-    <div class="card" style="margin-bottom: 2rem;">
-        <div class="card-header">
-            <h3 style="margin: 0;">📥 從 MD 追加題目</h3>
-        </div>
-        <div class="card-body">
-            <p style="color: #666; margin-bottom: 1rem;">
-                上傳 Markdown 檔，將題目追加到此題庫。可只含題目，也可使用完整格式（題庫設定會被忽略）。
-                {% if quiz_bank.quiz_mode == 'practice' %}
-                <br>目前為練習模式，每題必須有 <code>category</code>。
-                {% endif %}
-            </p>
-
-            <div id="append-alert"></div>
-
-            <div class="form-group">
-                <label for="append-md-file">上傳 Markdown 檔案 *</label>
-                <input type="file" id="append-md-file" accept=".md,text/markdown">
-            </div>
-
-            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
-                <button type="button" class="btn btn-secondary" onclick="downloadAppendTemplate()">下載追加範本</button>
-                <button type="button" class="btn" onclick="previewAppendImport()">
-                    <span id="append-preview-text">預覽追加</span>
-                    <span id="append-preview-loading" class="loading" style="display: none;"></span>
-                </button>
-            </div>
-
-            <div id="append-preview" style="display: none;">
-                <div id="append-summary" style="margin-bottom: 1rem;"></div>
-                <div style="overflow-x: auto; margin-bottom: 1rem;">
-                    <table style="width: 100%; border-collapse: collapse;">
-                        <thead>
-                            <tr style="background: #f8f9fa;">
-                                <th style="padding: 0.75rem; text-align: left;">題號</th>
-                                <th style="padding: 0.75rem; text-align: left;">標題</th>
-                                <th style="padding: 0.75rem; text-align: left;">題型</th>
-                                <th style="padding: 0.75rem; text-align: left;">分類</th>
-                                <th style="padding: 0.75rem; text-align: center;">分數</th>
-                            </tr>
-                        </thead>
-                        <tbody id="append-preview-body"></tbody>
-                    </table>
-                </div>
-                <button type="button" class="btn" id="confirm-append-btn" onclick="confirmAppendImport()" disabled>
-                    <span id="append-confirm-text">確認追加</span>
-                    <span id="append-confirm-loading" class="loading" style="display: none;"></span>
-                </button>
-            </div>
-        </div>
-    </div>
-    
-    <div id="questions-container">
-        {% if questions %}
-            {% for question in questions %}
-            <div class="question-item" data-question-id="{{ question.id }}">
-                <div class="question-header">
-                    <div>
-                        <strong>{{ question.title }}</strong>
-                        <span class="question-type-badge">{{ get_question_type_name(question.question_type) }}</span>
-                        {% if question.question_data %}
-                            {% set data = question.question_data | from_json %}
-                            {% if data.image and data.image.data_url %}
-                            <span style="color: #667eea; margin-left: 0.5rem; font-size: 0.85rem;">🖼️ 有附圖</span>
-                            {% endif %}
-                        {% endif %}
-                        {% if question.category %}
-                        <span style="color: #667eea; margin-left: 0.5rem;">{{ question.category }}</span>
-                        {% endif %}
-                        <span style="color: #666; margin-left: 1rem;">{{ question.points }} 分</span>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem;">
-                        <button onclick="editQuestion({{ question.id }})" class="btn" style="padding: 6px 12px;">✏️ 編輯</button>
-                        <button onclick="deleteQuestion({{ question.id }})" class="btn btn-danger" style="padding: 6px 12px;">🗑️ 刪除</button>
-                    </div>
-                </div>
-                <div class="question-content">
-                    <p style="white-space: pre-wrap; font-family: Consolas, monospace;">{{ question.question_text | trim }}</p>
-                    {% if question.question_data %}
-                        {% set data = question.question_data | from_json %}
-                        {% if question.question_type in ['single_choice', 'multiple_choice'] %}
-                            <div style="margin-top: 1rem;">
-                                {% for option in data.options %}
-                                <div class="option" style="background: #f8f9fa;">
-                                    <div class="option-text">{{ option }}</div>
-                                    {% if (question.question_type == 'single_choice' and option == data.correct_answer) or 
-                                           (question.question_type == 'multiple_choice' and option in data.correct_answers) %}
-                                    <div class="option-correct">✓ 正確答案</div>
-                                    {% endif %}
-                                </div>
-                                {% endfor %}
-                            </div>
-                        {% elif question.question_type == 'fill_blank' %}
-                            <div style="margin-top: 1rem; color: #27ae60;">
-                                <strong>正確答案：</strong> {{ data.correct_answer }}
-                            </div>
-                        {% elif question.question_type == 'dropdown' %}
-                            <div style="margin-top: 1rem;">
-                                <strong>選項：</strong> {{ data.options | join(', ') }}<br>
-                                <strong style="color: #27ae60;">正確答案：</strong> {{ data.correct_answer }}
-                            </div>
-                        {% elif question.question_type == 'dropdown_fillblank' %}
-                            <div style="margin-top: 1rem;">
-                                <div style="background: #f8f9fa; padding: 1rem; border-radius: 6px; margin-bottom: 1rem;">
-                                    <strong>題目文字：</strong>
-                                    <div style="margin-top: 0.5rem; font-family: Consolas, monospace;">{{ data.fillblank_text }}</div>
-                                </div>
-                                <strong>空格設定：</strong>
-                                {% for blank in data.blanks %}
-                                <div style="border: 1px solid #ddd; border-radius: 4px; padding: 0.8rem; margin: 0.5rem 0; background: white;">
-                                    <div style="font-weight: bold; color: #666; margin-bottom: 0.5rem;">空格 {{ loop.index }}:</div>
-                                    <div style="margin-bottom: 0.5rem;">
-                                        <strong>選項：</strong> {{ blank.options | join(', ') }}
-                                    </div>
-                                    <div style="color: #27ae60;">
-                                        <strong>正確答案：</strong> {{ blank.correct_answer }}
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        {% elif question.question_type == 'parsons' %}
-                            <div style="margin-top: 1rem;">
-                                <div class="parsons-preview-container" style="display: flex; gap: 2rem; margin-top: 1rem;">
-                                    <div class="parsons-preview-bank" style="flex: 1; border: 2px dashed #ddd; border-radius: 8px; padding: 1rem; background: #fafafa;">
-                                        <h4 style="text-align: center; margin-bottom: 1rem; color: #666; font-size: 1rem;">可選程式碼塊</h4>
-                                        {% for label in data.code_blocks.keys() | sort %}
-                                        <div class="code-block-preview" style="background: #2d3748; color: #e2e8f0; padding: 0.4rem 1rem; margin: 0.3rem 0; border-radius: 6px; font-family: Consolas, monospace;  line-height: 1.4; font-size: 14px; overflow-x: auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); height: auto; min-height: 0; white-space: pre-wrap;">{{ data.code_blocks[label] | safe }}</div>
-                                        {% endfor %}
-                                    </div>
-                                    <div class="parsons-preview-target" style="flex: 1; border: 2px dashed #667eea; border-radius: 8px; padding: 1rem; background: #f8f9ff;">
-                                        <h4 style="text-align: center; margin-bottom: 1rem; color: #667eea; font-size: 1rem;">答題區 (共 {{ data.answer_slots }} 個空格)</h4>
-                                        {% set slot_indents = data.slot_indents or {} %}
-                                        {% for i in range(1, data.answer_slots + 1) %}
-                                        {% set slot_num = i|string %}
-                                        {% set correct_label = data.slot_answers.get(slot_num, '') %}
-                                        {% set is_fixed = data.fixed_blocks and (slot_num in data.fixed_blocks) %}
-                                        {% set indent_level = slot_indents.get(slot_num, 0) if slot_indents else 0 %}
-                                        {% if is_fixed %}
-                                            {% set fixed = data.fixed_blocks[slot_num] %}
-                                            {% set fixed_indent = fixed.indent if fixed.indent is defined else 0 %}
-                                            {% set indent_level = fixed_indent %}
-                                        {% endif %}
-                                        {% set indent_px = indent_level * 20 %}
-                                        <div class="answer-slot-preview" style="border: 2px dashed #bbb; border-radius: 8px; margin: 0.5rem 0; min-height: 60px; display: flex; align-items: center; padding: 0.5rem; background: white; position: relative; margin-left: {{ indent_px }}px;">
-                                            {% if is_fixed %}
-                                            <!-- 固定區塊 -->
-                                            <div style="flex: 1; background: #2d3748; color: #e2e8f0; padding: 0.4rem 1rem; border-radius: 6px; font-family: Consolas, monospace; line-height: 1.4; white-space: pre-wrap; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">{{ fixed.content | safe }}</div>
-                                            {% elif correct_label %}
-                                            <div class="answer-block" style="flex: 1; background: #e8f5e8; color: #2d3748; padding: 0.4rem 1rem; border-radius: 6px; font-family: Consolas, monospace; line-height: 1.4; border: 2px solid #27ae60; font-size: 14px; overflow-x: auto; height: auto; min-height: 0;">
-                                                <div style="display: flex; align-items: flex-start;">
-                                                    <span style="color: #27ae60; font-weight: bold; margin-right: 0.5rem; display: inline-block; width: 30px; text-align: center; flex-shrink: 0;">✓ {{ correct_label }}</span>
-                                                    <div style="text-align: left; flex-grow: 1; white-space: pre;">{{ data.code_blocks.get(correct_label, '') | safe }}</div>
-                                                </div>
-                                            </div>
-                                            {% else %}
-                                            <div style="flex: 1; color: #999; font-style: italic;">將程式碼塊拖拉到這裡</div>
-                                            {% endif %}
-                                        </div>
-                                        {% endfor %}
-                                    </div>
-                                </div>
-                            </div>
-                        {% endif %}
-                        {% if data.explanation %}
-                        <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: #f0f4ff; border-radius: 6px; color: #333;">
-                            <strong>解析：</strong>
-                            <span style="white-space: pre-wrap;">{% if data.explanation|length > 120 %}{{ data.explanation[:120] }}…{% else %}{{ data.explanation }}{% endif %}</span>
+                    {% elif question.question_type == 'fill_blank' %}
+                    <div class="ans"><i class="fas fa-check" aria-hidden="true"></i> 正確答案：{{ data.correct_answer }}</div>
+                    {% elif question.question_type == 'dropdown' %}
+                    <div class="qsub">選項：{{ (data.options or []) | join('、') }}</div>
+                    <div class="ans"><i class="fas fa-check" aria-hidden="true"></i> 正確答案：{{ data.correct_answer }}</div>
+                    {% elif question.question_type == 'dropdown_fillblank' %}
+                    <div class="qcode">{{ data.fillblank_text }}</div>
+                    <ol class="blanks">
+                        {% for blank in data.blanks or [] %}
+                        <li>
+                            <span class="qsub">空格 {{ loop.index }}：{{ (blank.options or []) | join('、') }}</span>
+                            <span class="ans"><i class="fas fa-check" aria-hidden="true"></i> {{ blank.correct_answer }}</span>
+                        </li>
+                        {% endfor %}
+                    </ol>
+                    {% elif question.question_type == 'parsons' %}
+                    <div class="parsons">
+                        <div class="parsons-col">
+                            <div class="parsons-h">可選程式碼塊</div>
+                            {% for label in (data.code_blocks or {}).keys() | sort %}
+                            <div class="pblock">{{ data.code_blocks[label] | safe }}</div>
+                            {% endfor %}
                         </div>
-                        {% endif %}
+                        <div class="parsons-col">
+                            <div class="parsons-h">答題區（共 {{ data.answer_slots }} 個空格）</div>
+                            {% set slot_indents = data.slot_indents or {} %}
+                            {% for i in range(1, (data.answer_slots or 0) + 1) %}
+                            {% set slot_num = i|string %}
+                            {% set correct_label = (data.slot_answers or {}).get(slot_num, '') %}
+                            {% set is_fixed = data.fixed_blocks and (slot_num in data.fixed_blocks) %}
+                            {% set indent_level = slot_indents.get(slot_num, 0) %}
+                            {% if is_fixed %}
+                                {% set fixed = data.fixed_blocks[slot_num] %}
+                                {% set indent_level = fixed.indent if fixed.indent is defined else 0 %}
+                            {% endif %}
+                            <div class="pslot" data-indent="{{ indent_level }}">
+                                {% if is_fixed %}
+                                <div class="pblock">{{ fixed.content | safe }}</div>
+                                {% elif correct_label %}
+                                <div class="pblock is-answer"><b>{{ correct_label }}</b> {{ data.code_blocks.get(correct_label, '') | safe }}</div>
+                                {% else %}
+                                <span class="muted small">（沒有設定答案）</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if data.explanation %}
+                    <div class="expl"><b>解析：</b>{% if data.explanation|length > 120 %}{{ data.explanation[:120] }}…{% else %}{{ data.explanation }}{% endif %}</div>
                     {% endif %}
                 </div>
+                <div class="acts">
+                    <button type="button" class="btn btn-icon" onclick="editQuestion({{ question.id }})" title="編輯" aria-label="編輯第 {{ loop.index }} 題"><i class="fas fa-pen" aria-hidden="true"></i></button>
+                    <button type="button" class="btn btn-icon" onclick="copyQuestion({{ question.id }})" title="複製" aria-label="複製第 {{ loop.index }} 題"><i class="far fa-copy" aria-hidden="true"></i></button>
+                    <button type="button" class="btn btn-icon" onclick="deleteQuestion({{ question.id }})" title="刪除" aria-label="刪除第 {{ loop.index }} 題"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
+                </div>
+            </article>
+            {% else %}
+            <div class="panel">
+                {% call ui.empty('還沒有題目。一題一題加入，或從 Markdown 追加。', icon='fa-clipboard-list') %}
+                <div class="row qe-center">
+                    <button type="button" class="btn btn-primary" onclick="showAddQuestionModal()"><i class="fas fa-plus" aria-hidden="true"></i> 新增題目</button>
+                    <a class="btn" href="?tab=import" data-tab-link="import"><i class="fab fa-markdown" aria-hidden="true"></i> 從 Markdown 追加</a>
+                </div>
+                {% endcall %}
             </div>
             {% endfor %}
-        {% else %}
-            <div style="text-align: center; padding: 3rem; background: #f8f9fa; border-radius: 10px;">
-                <h3 style="color: #666; margin-bottom: 1rem;">📝 還沒有題目</h3>
-                <p style="color: #888; margin-bottom: 2rem;">開始建立您的第一個題目吧！</p>
-                <button onclick="showAddQuestionModal()" class="btn">➕ 新增題目</button>
+        </div>
+
+        <aside class="side" aria-label="題庫摘要">
+            <div class="panel side-box" id="type-summary">
+                <h3>題型</h3>
+                {% set max_type = (type_counts | map(attribute=2) | max) if type_counts else 1 %}
+                {% for key, name, count in type_counts %}
+                <div class="tbar t-{{ key }}"><span>{{ name }}</span><progress class="track" max="100" value="{{ (count / max_type * 100) | round }}">{{ count }}</progress><span class="c num">{{ count }}</span></div>
+                {% else %}
+                <p class="muted small">還沒有題目。</p>
+                {% endfor %}
             </div>
+            <div class="panel side-box" id="category-summary">
+                <h3>分類</h3>
+                {% set max_cat = (category_stats.values() | max) if category_stats else 1 %}
+                {% for name, count in category_stats | dictsort %}
+                <div class="tbar{{ ' is-none' if name == '未分類' }}"><span>{{ name }}</span><progress class="track" max="100" value="{{ (count / max_cat * 100) | round }}">{{ count }}</progress><span class="c num">{{ count }}</span></div>
+                {% else %}
+                <p class="muted small">還沒有題目。</p>
+                {% endfor %}
+            </div>
+            <div class="panel side-box" id="settings-summary">
+                <h3>目前設定</h3>
+                <dl class="kv">
+                    <dt>模式</dt><dd>{{ mode_name }}</dd>
+                    {% if is_practice %}<dt>每次出題</dt><dd>{{ quiz_bank.session_question_count or 10 }} 題</dd>{% endif %}
+                    <dt>計分</dt><dd>{{ '依題數平均' if scoring_mode == 'average' else '各題分數' }}</dd>
+                    <dt>總分</dt><dd class="num">{{ '%g' | format(scoring_total) }} 分</dd>
+                </dl>
+                <a class="linkish" href="?tab=settings" data-tab-link="settings">修改設定 →</a>
+            </div>
+        </aside>
+    </div>
+</section>
+
+{# ===== 課堂 (ticket 09, #11) ===== #}
+<section id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions"{% if tab != 'sessions' %} hidden{% endif %}>
+    <div class="panel">
+        <div class="panel-h">
+            <div>
+                <h2>課堂</h2>
+                <p class="muted small">學生只能在課堂的開始和結束時間之間作答。每個課堂有自己的連結和成績。</p>
+            </div>
+            <button type="button" class="btn btn-primary" data-open-session="{{ quiz_bank.id }}" data-session-return="?tab=sessions"><i class="fas fa-plus" aria-hidden="true"></i> 開課堂</button>
+        </div>
+        {% if class_session_rows %}
+        <div class="table-wrap">
+            <table class="table cs-table">
+                <thead><tr><th>課堂</th><th>時間</th><th>狀態</th><th>代碼</th><th class="num">作答</th><th><span class="sr-only">動作</span></th></tr></thead>
+                <tbody>
+                {% for row in class_session_rows %}
+                {% set cs = row.session %}
+                <tr data-class-session="{{ cs.id }}">
+                    <td><div class="t-sub">{{ cs.course.name }}</div><div class="t-title">{{ cs.name }}</div></td>
+                    <td class="num">
+                        <div class="nowrap">{{ class_session_window(cs) }}</div>
+                        <div class="t-sub">{% if row.offer.time_limit_minutes %}時限 {{ row.offer.time_limit_minutes }} 分鐘{% else %}不限時{% endif %}</div>
+                    </td>
+                    <td>{{ ui.status_pill(row.status, row.status_label) }}</td>
+                    <td><span class="code">{{ cs.code }}</span></td>
+                    <td class="num">
+                        {{ row.n_subs }} 人
+                        {% if row.n_other_banks %}<div class="t-sub">另有 {{ row.n_other_banks }} 份題庫</div>{% endif %}
+                    </td>
+                    <td class="cs-acts">
+                        {% if row.status != 'done' %}
+                        <button type="button" class="btn btn-icon" data-copy-url="{{ url_for('take_quiz', code=cs.code, _external=True) }}" title="複製連結" aria-label="複製「{{ cs.name }}」的連結"><i class="fas fa-link" aria-hidden="true"></i></button>
+                        {% endif %}
+                        {% if row.status == 'live' %}<button type="button" class="btn" data-cs-action="end" data-id="{{ cs.id }}">立即結束</button>
+                        {% elif row.status == 'soon' %}<button type="button" class="btn" data-cs-action="start-now" data-id="{{ cs.id }}">現在開始</button>
+                        {% elif row.course_open %}<button type="button" class="btn" data-cs-action="reopen" data-id="{{ cs.id }}">重新開放</button>{% endif %}
+                        <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id, class_session=cs.id) }}">成績</a>
+                        <button type="button" class="btn btn-icon" data-cs-edit="{{ cs.id }}" title="編輯課堂" aria-label="編輯「{{ cs.name }}」"><i class="fas fa-pen" aria-hidden="true"></i></button>
+                        <button type="button" class="btn btn-icon" data-cs-delete="{{ cs.id }}" title="刪除課堂" aria-label="刪除「{{ cs.name }}」"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        {% call ui.empty('沒有課堂。開一堂課，學生才能用課堂的連結或 QR code 作答。', icon='fa-chalkboard-teacher') %}
+        <button type="button" class="btn btn-primary" data-open-session="{{ quiz_bank.id }}" data-session-return="?tab=sessions"><i class="fas fa-plus" aria-hidden="true"></i> 開課堂</button>
+        {% endcall %}
         {% endif %}
     </div>
-</div>
+</section>
 
-<!-- 新增/編輯題目的模態框 -->
-<div id="question-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999;">
-    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 10px; width: 90%; max-width: 800px; max-height: 90%; overflow-y: auto;">
-        <div style="padding: 2rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                <h2 id="modal-title">新增題目</h2>
-                <button onclick="hideQuestionModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">✕</button>
+{# ===== 設定 ===== #}
+<section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings"{% if tab != 'settings' %} hidden{% endif %}>
+    <form class="panel set" id="settings-form" novalidate onsubmit="return false">
+        <section class="set-sec">
+            <div><h3>題庫模式</h3><p class="help">決定學生每次拿到哪些題目。</p></div>
+            <div class="stack">
+                <div class="seg" role="radiogroup" aria-label="題庫模式">
+                    <label><input type="radio" name="quiz_mode" value="fixed"{% if not is_practice %} checked{% endif %}><b>固定測驗</b><span>每個人拿到全部題目</span></label>
+                    <label><input type="radio" name="quiz_mode" value="practice"{% if is_practice %} checked{% endif %}><b>隨機練習</b><span>每次依分類比例隨機抽題</span></label>
+                </div>
+                <div class="fld">
+                    <label for="session-question-count">每次出題數</label>
+                    <input class="inp inp-short" type="number" id="session-question-count" min="1" value="{{ quiz_bank.session_question_count or 10 }}">
+                    <span class="help" id="session-question-count-hint">固定測驗會出全部題目，不用設定。</span>
+                </div>
             </div>
-            
-            <form id="question-form">
-                <div class="form-group">
-                    <label for="question-title">題目標題 *</label>
-                    <input type="text" id="question-title" required>
+        </section>
+        <section class="set-sec" id="practice-config-section">
+            <div><h3>分類比例</h3><p class="help">隨機練習時使用。比例加總要等於 100%。</p></div>
+            <div>
+                <datalist id="category-options">
+                    {% for name, count in category_stats | dictsort %}{% if name != '未分類' %}<option value="{{ name }}">{{ name }}（{{ count }} 題）</option>{% endif %}{% endfor %}
+                </datalist>
+                <div id="ratio-rows"></div>
+                <div class="ratio-total">
+                    <button type="button" class="btn" onclick="addRatioRow(); markSettingsChanged()"><i class="fas fa-plus" aria-hidden="true"></i> 新增分類</button>
+                    <span id="ratio-total" aria-live="polite"></span>
                 </div>
-                
-                <div class="form-group">
-                    <label for="question-text">題目內容 * <span style="color: #667eea; font-size: 0.9rem;">(支援 LaTeX 數學公式)</span></label>
-                    <textarea id="question-text" rows="4" required placeholder="例如：計算 $\int_0^1 x^2 dx$ 的值是多少？" style="font-family: Consolas, monospace;"></textarea>
-                    <p style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">
-                        💡 LaTeX 提示：使用 $...$ 表示行內公式，使用 $$...$$ 表示獨立公式。例如：$x^2 + y^2 = r^2$
-                    </p>
+            </div>
+        </section>
+        <section class="set-sec">
+            <div><h3>計分</h3><p class="help">切換不會改掉各題存的分數，只影響之後的交卷。</p></div>
+            <div class="stack">
+                <div class="seg seg-col" role="radiogroup" aria-label="計分方式">
+                    <label><input type="radio" name="scoring_mode" value="explicit"{% if scoring_mode != 'average' %} checked{% endif %}><b>使用各題分數</b><span>總分是各題分數加總</span></label>
+                    <label><input type="radio" name="scoring_mode" value="average"{% if scoring_mode == 'average' %} checked{% endif %}><b>依題數平均</b><span>總分平均分給每一題，例如 100 分 ÷ {{ questions|length or 'N' }} 題</span></label>
                 </div>
-
-                <div class="form-group">
-                    <label for="question-image">題目附圖（選填，最多 1 張）</label>
-                    <input type="file" id="question-image" accept="image/png,image/jpeg,image/gif,image/webp">
-                    <p style="color: #666; font-size: 0.85rem; margin-top: 0.5rem;">
-                        支援 PNG、JPG、GIF、WebP，單檔上限 2MB。圖片會顯示在題目文字下方，協助學生理解題意。
-                    </p>
-                    <div id="question-image-preview" style="margin-top: 0.75rem;"></div>
-                    <button type="button" id="question-image-remove" class="btn btn-secondary" style="margin-top: 0.5rem; display: none;">移除圖片</button>
+                <div class="fld" id="scoring-total-group">
+                    <label for="scoring-total-points">平均模式總分</label>
+                    <input class="inp inp-short" type="number" id="scoring-total-points" min="0.01" step="any" value="{{ quiz_bank.scoring_total_points if quiz_bank.scoring_total_points is not none else 100 }}">
                 </div>
-                
-                <div class="form-group">
-                    <label for="question-type">題目類型 *</label>
-                    <select id="question-type" onchange="handleQuestionTypeChange()" required>
-                        <option value="">請選擇題目類型</option>
-                        <option value="single_choice">單選題</option>
-                        <option value="multiple_choice">多選題</option>
-                        <option value="fill_blank">填空題</option>
-                        <option value="dropdown">下拉選單</option>
-                        <option value="dropdown_fillblank">下拉選單填空題</option>
-                        <option value="parsons">程式碼排序題</option>
-                    </select>
-                </div>
-                
-                <div class="form-group">
-                    <label for="question-points">分數</label>
-                    <input type="number" id="question-points" value="1" min="0" step="any">
-                </div>
-
-                <div class="form-group">
-                    <label for="question-category">分類</label>
-                    <input type="text" id="question-category" placeholder="例如：AI基礎理論">
-                </div>
-
-                <div class="form-group">
-                    <label for="question-explanation">解析（選填）</label>
-                    <textarea id="question-explanation" rows="3" placeholder="作答結果頁會顯示此解析；可不填"></textarea>
-                </div>
-                
-                <!-- 動態內容區域 -->
-                <div id="question-specific-content"></div>
-                
-                <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-                    <button type="submit" class="btn" style="flex: 1;">儲存題目</button>
-                    <button type="button" onclick="hideQuestionModal()" class="btn btn-secondary" style="flex: 1;">取消</button>
-                </div>
-            </form>
+                <p class="help" id="scoring-preview"></p>
+            </div>
+        </section>
+    </form>
+    <div class="savebar" id="savebar" hidden role="region" aria-label="儲存設定">
+        <span id="savebar-text">有變更還沒儲存</span>
+        <div class="row">
+            <button type="button" class="btn btn-ghost" onclick="resetSettings()">取消</button>
+            <button type="button" class="btn btn-primary" id="save-settings-btn" onclick="savePracticeConfig()">儲存設定</button>
         </div>
+    </div>
+</section>
+
+{# ===== 從 Markdown 追加 ===== #}
+<section id="panel-import" role="tabpanel" aria-labelledby="tab-import"{% if tab != 'import' %} hidden{% endif %}>
+    <div class="import-wrap stack-lg">
+        <label class="drop" id="append-drop" for="append-md-file">
+            <input type="file" id="append-md-file" class="sr-only" accept=".md,text/markdown">
+            <span class="drop-empty">
+                <i class="fab fa-markdown" aria-hidden="true"></i>
+                <span><b>拖曳 .md 檔到這裡</b>，或 <span class="linkish">選擇檔案</span></span>
+            </span>
+            <span class="drop-file">
+                <i class="fas fa-file-alt" aria-hidden="true"></i>
+                <span><b class="drop-name"></b><span class="drop-info small"></span></span>
+                <span class="btn">換一個檔案</span>
+            </span>
+        </label>
+        <p class="help">
+            新題目會加在現有 {{ questions|length }} 題後面。檔案可以只有題目，也可以是完整格式（題庫設定會被忽略）。
+            {% if is_practice %}目前是隨機練習，每題都要有 <code>category</code>。{% endif %}
+            <a class="linkish" href="/api/quiz-bank/import-md/questions-template">下載追加範本</a>
+        </p>
+        <div id="append-alert"></div>
+        <div class="panel" id="append-preview" hidden>
+            <div class="panel-h"><h2>預覽</h2><span class="muted small">確認後才會加入題庫</span></div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>#</th><th>題型</th><th>題目</th><th>分類</th><th>分數</th><th>答案</th><th><span class="sr-only">狀態</span></th></tr></thead>
+                    <tbody id="append-preview-body"></tbody>
+                </table>
+            </div>
+            <p class="preview-problems danger-text" id="append-problems" role="alert" hidden><i class="fas fa-exclamation-circle" aria-hidden="true"></i> 第 <span id="append-problem-list"></span> 題要先修正，才能匯入。</p>
+            <div class="panel-h panel-foot">
+                <span class="muted small" id="append-summary"></span>
+                <button type="button" class="btn btn-primary" id="confirm-append-btn" onclick="confirmAppendImport()" disabled>加入題目</button>
+            </div>
+        </div>
+    </div>
+</section>
+
+{# ===== 新增 / 編輯題目 ===== #}
+<div id="question-modal" class="qmodal-back" hidden>
+    <div class="qmodal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="row-between row qmodal-h">
+            <h2 id="modal-title">新增題目</h2>
+            <button type="button" class="btn btn-icon" onclick="hideQuestionModal()" aria-label="關閉"><i class="fas fa-times" aria-hidden="true"></i></button>
+        </div>
+
+        <form id="question-form">
+            <div class="form-group">
+                <label for="question-title">題目標題 *</label>
+                <input type="text" id="question-title" required>
+            </div>
+
+            <div class="form-group">
+                <label for="question-text">題目內容 * <span class="muted small">（可用 LaTeX 數學公式）</span></label>
+                <textarea id="question-text" rows="4" required placeholder="例如：計算 $\int_0^1 x^2 dx$ 的值是多少？" class="mono"></textarea>
+                <p class="help mathjax_ignore tex2jax_ignore">LaTeX：用 $...$ 寫行內公式，用 $$...$$ 寫獨立公式。例如：$x^2 + y^2 = r^2$</p>
+            </div>
+
+            <div class="form-group">
+                <label for="question-image">題目附圖（選填，最多 1 張）</label>
+                <input type="file" id="question-image" accept="image/png,image/jpeg,image/gif,image/webp">
+                <p class="help">PNG、JPG、GIF、WebP，一個檔案最大 2MB。圖片顯示在題目文字下方。</p>
+                <div id="question-image-preview"></div>
+                <button type="button" id="question-image-remove" class="btn btn-secondary" hidden>移除圖片</button>
+            </div>
+
+            <div class="form-group">
+                <label for="question-type">題目類型 *</label>
+                <select id="question-type" onchange="handleQuestionTypeChange()" required>
+                    <option value="">請選擇題目類型</option>
+                    {% for key, name in question_type_names.items() %}
+                    <option value="{{ key }}">{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="question-points">分數</label>
+                <input type="number" id="question-points" value="1" min="0" step="any">
+            </div>
+
+            <div class="form-group">
+                <label for="question-category">分類</label>
+                <input type="text" id="question-category" placeholder="例如：AI基礎理論" list="category-options">
+            </div>
+
+            <div class="form-group">
+                <label for="question-explanation">解析（選填）</label>
+                <textarea id="question-explanation" rows="3" placeholder="作答結果頁會顯示這段解析。可以不填。"></textarea>
+            </div>
+
+            <div id="question-specific-content"></div>
+
+            <div class="form-actions qmodal-actions">
+                <button type="button" onclick="hideQuestionModal()" class="btn">取消</button>
+                <button type="submit" class="btn btn-primary">儲存題目</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -368,7 +391,7 @@ function resetQuestionImageState() {
     const removeButton = document.getElementById('question-image-remove');
     if (fileInput) fileInput.value = '';
     if (preview) preview.innerHTML = '';
-    if (removeButton) removeButton.style.display = 'none';
+    if (removeButton) removeButton.hidden = true;
 }
 
 function renderQuestionImagePreview(imageData) {
@@ -378,12 +401,12 @@ function renderQuestionImagePreview(imageData) {
 
     if (!imageData || !imageData.data_url) {
         preview.innerHTML = '';
-        removeButton.style.display = 'none';
+        removeButton.hidden = true;
         return;
     }
 
     preview.innerHTML = `<img src="${imageData.data_url}" alt="題目附圖預覽" class="question-image">`;
-    removeButton.style.display = 'inline-block';
+    removeButton.hidden = false;
 }
 
 function setPendingQuestionImage(imageData) {
@@ -397,11 +420,11 @@ function showAddQuestionModal() {
     document.getElementById('question-form').reset();
     document.getElementById('question-specific-content').innerHTML = '';
     resetQuestionImageState();
-    document.getElementById('question-modal').style.display = 'block';
+    document.getElementById('question-modal').hidden = false;
 }
 
 function hideQuestionModal() {
-    document.getElementById('question-modal').style.display = 'none';
+    document.getElementById('question-modal').hidden = true;
     resetQuestionImageState();
 }
 
@@ -414,18 +437,18 @@ function handleQuestionTypeChange() {
         case 'multiple_choice':
             container.innerHTML = `
                 <div class="form-group">
-                    <label>選項 * <span style="color: #667eea; font-size: 0.9rem;">(支援 LaTeX 數學公式)</span></label>
+                    <label>選項 * <span class="qe-hint">(支援 LaTeX 數學公式)</span></label>
                     <div id="options-container">
-                        <div class="option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <textarea class="option-input" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)" style="flex: 1; min-height: 60px;"></textarea>
-                            <label style="margin: 0; display: flex; align-items: center;">
-                                <input type="${type === 'single_choice' ? 'radio' : 'checkbox'}" name="correct-option" style="margin-right: 0.5rem;">
+                        <div class="option-row qe-optrow">
+                            <textarea class="option-input qe-opttext" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)"></textarea>
+                            <label class="qe-check">
+                                <input class="qe-mr1" type="${type === 'single_choice' ? 'radio' : 'checkbox'}" name="correct-option">
                                 正確
                             </label>
-                            <button type="button" onclick="removeOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            <button type="button" onclick="removeOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                         </div>
                     </div>
-                    <button type="button" onclick="addOption()" class="btn btn-secondary" style="margin-top: 0.5rem;">新增選項</button>
+                    <button type="button" onclick="addOption()" class="btn btn-secondary qe-mt1">新增選項</button>
                 </div>
             `;
             break;
@@ -444,16 +467,16 @@ function handleQuestionTypeChange() {
                 <div class="form-group">
                     <label>下拉選項 *</label>
                     <div id="dropdown-options-container">
-                        <div class="dropdown-option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <textarea class="dropdown-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
-                            <label style="margin: 0; display: flex; align-items: center;">
-                                <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;">
+                        <div class="dropdown-option-row qe-optrow">
+                            <textarea class="dropdown-option-input qe-opttext" placeholder="選項內容 (支援多行)"></textarea>
+                            <label class="qe-check">
+                                <input class="qe-mr1" type="radio" name="correct-dropdown">
                                 正確
                             </label>
-                            <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                         </div>
                     </div>
-                    <button type="button" onclick="addDropdownOption()" class="btn btn-secondary" style="margin-top: 0.5rem;">新增選項</button>
+                    <button type="button" onclick="addDropdownOption()" class="btn btn-secondary qe-mt1">新增選項</button>
                 </div>
             `;
             break;
@@ -462,15 +485,15 @@ function handleQuestionTypeChange() {
             container.innerHTML = `
                 <div class="form-group">
                     <label>填空題目文字 *</label>
-                    <textarea id="fillblank-text" rows="3" placeholder="請輸入題目文字，使用 {{ '{{}}' }} 標記需要填空的位置。例如：程式設計中，{{ '{{}}' }} 是一種控制結構，用來執行 {{ '{{}}' }} 操作。" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;"></textarea>
-                    <p style="color: #666; font-size: 0.9rem; margin-top: 0.5rem;">使用 {{ '{{}}' }} 標記填空位置，系統會自動為每個 {{ '{{}}' }} 生成對應的下拉選單</p>
+                    <textarea class="qe-field" id="fillblank-text" rows="3" placeholder="請輸入題目文字，使用 {{ '{{}}' }} 標記需要填空的位置。例如：程式設計中，{{ '{{}}' }} 是一種控制結構，用來執行 {{ '{{}}' }} 操作。"></textarea>
+                    <p class="qe-sub qe-mt1">使用 {{ '{{}}' }} 標記填空位置，系統會自動為每個 {{ '{{}}' }} 生成對應的下拉選單</p>
                 </div>
                 
                 <div class="form-group">
                     <label>空格選項設定</label>
-                    <div id="blanks-container" style="background: #f8f9fa; padding: 1rem; border-radius: 8px;">
-                        <p style="color: #666; margin-bottom: 1rem;">請先在上方文字中使用 {{ '{{}}' }} 標記填空位置，然後點擊下方按鈕解析空格</p>
-                        <button type="button" onclick="parseBlanks()" class="btn btn-primary" style="margin-bottom: 1rem;">解析空格</button>
+                    <div class="qe-box" id="blanks-container">
+                        <p class="muted qe-mb2">請先在上方文字中使用 {{ '{{}}' }} 標記填空位置，然後點擊下方按鈕解析空格</p>
+                        <button type="button" onclick="parseBlanks()" class="btn btn-primary qe-mb2">解析空格</button>
                         <div id="blanks-options-container"></div>
                     </div>
                 </div>
@@ -481,32 +504,32 @@ function handleQuestionTypeChange() {
             container.innerHTML = `
                 <div class="form-group">
                     <label>可供選擇的程式碼塊 *</label>
-                    <div id="code-blocks-container" style="background: #e8f5e8; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                        <div class="code-block-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
-                            <span style="min-width: 30px; color: #666;">A</span>
-                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
-                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                    <div class="qe-box qe-box-ok qe-mb2" id="code-blocks-container">
+                        <div class="code-block-row qe-optrow qe-mid">
+                            <span class="qe-blabel qe-blabel-plain">A</span>
+                            <textarea class="code-block-input qe-opttext qe-code" placeholder="程式碼塊內容 (支援多行)" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
+                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                         </div>
                     </div>
-                    <button type="button" onclick="addCodeBlock()" class="btn btn-success" style="margin-bottom: 1.5rem;">新增程式碼塊</button>
+                    <button type="button" onclick="addCodeBlock()" class="btn btn-success qe-mb3">新增程式碼塊</button>
                     
                     <label>答案區空格設定 *</label>
-                    <div style="background: #f0f7ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
-                            <label style="margin: 0;">答案區空格數量：</label>
-                            <input type="number" id="answer-slots-count" min="1" value="3" style="width: 80px;" onchange="updateAnswerSlots(); updateParsonsPreview();">
-                            <span style="color: #666; font-size: 0.9rem;">（自動更新）</span>
-                            <span id="parsons-completion-status" style="margin-left: auto; padding: 0.3rem 0.8rem; border-radius: 4px; font-size: 0.9rem; font-weight: 500;"></span>
+                    <div class="qe-box qe-box-info qe-mb2">
+                        <div class="qe-line qe-gap2 qe-mb2">
+                            <label class="qe-m0">答案區空格數量：</label>
+                            <input class="qe-num" type="number" id="answer-slots-count" min="1" value="3" onchange="updateAnswerSlots(); updateParsonsPreview();">
+                            <span class="qe-sub">（自動更新）</span>
+                            <span class="qe-status" id="parsons-completion-status"></span>
                         </div>
                         <div id="answer-slots-container"></div>
                     </div>
                     
                     <label>即時預覽</label>
-                    <div id="parsons-preview-container" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #ddd; min-height: 200px;">
-                        <p style="color: #999; text-align: center; margin: 2rem 0;">請先設定程式碼塊和答案區空格</p>
+                    <div class="qe-box qe-preview qe-mb2" id="parsons-preview-container">
+                        <p class="qe-empty">請先設定程式碼塊和答案區空格</p>
                     </div>
                     
-                    <p style="color: #666; font-size: 0.9rem; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                    <p class="qe-box qe-sub qe-mt2">
                         <strong>📝 說明：</strong><br>
                         • 先設定所有可供選擇的程式碼塊（標記為A、B、C...）<br>
                         • 設定答案區有多少個空格<br>
@@ -532,14 +555,14 @@ function addOption() {
     const isMultiple = document.getElementById('question-type').value === 'multiple_choice';
     const optionRow = document.createElement('div');
     optionRow.className = 'option-row';
-    optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+    optionRow.classList.add('qe-optrow');
     optionRow.innerHTML = `
-        <textarea class="option-input" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)" style="flex: 1; min-height: 60px;"></textarea>
-        <label style="margin: 0; display: flex; align-items: center;">
-            <input type="${isMultiple ? 'checkbox' : 'radio'}" name="correct-option" style="margin-right: 0.5rem;">
+        <textarea class="option-input qe-opttext" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)"></textarea>
+        <label class="qe-check">
+            <input class="qe-mr1" type="${isMultiple ? 'checkbox' : 'radio'}" name="correct-option">
             正確
         </label>
-        <button type="button" onclick="removeOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+        <button type="button" onclick="removeOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
     `;
     container.appendChild(optionRow);
 }
@@ -552,14 +575,14 @@ function addDropdownOption() {
     const container = document.getElementById('dropdown-options-container');
     const optionRow = document.createElement('div');
     optionRow.className = 'dropdown-option-row';
-    optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+    optionRow.classList.add('qe-optrow');
     optionRow.innerHTML = `
-        <textarea class="dropdown-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
-        <label style="margin: 0; display: flex; align-items: center;">
-            <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;">
+        <textarea class="dropdown-option-input qe-opttext" placeholder="選項內容 (支援多行)"></textarea>
+        <label class="qe-check">
+            <input class="qe-mr1" type="radio" name="correct-dropdown">
             正確
         </label>
-        <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+        <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
     `;
     container.appendChild(optionRow);
 }
@@ -574,11 +597,11 @@ function addCodeBlock() {
     const blockLabel = String.fromCharCode(65 + blockCount); // A, B, C...
     const blockRow = document.createElement('div');
     blockRow.className = 'code-block-row';
-    blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+    blockRow.classList.add('qe-optrow', 'qe-mid');
     blockRow.innerHTML = `
-        <span style="min-width: 30px; color: #667eea; font-weight: bold;">${blockLabel}</span>
-        <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
-        <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+        <span class="qe-blabel">${blockLabel}</span>
+        <textarea class="code-block-input qe-opttext qe-code" placeholder="程式碼塊內容 (支援多行)" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
+        <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger qe-btn-sm">刪除</button>
     `;
     container.appendChild(blockRow);
     updateAnswerSlots();
@@ -616,7 +639,7 @@ function updateAnswerSlots() {
     });
     
     if (codeBlocks.length === 0) {
-        container.innerHTML = '<p style="color: #e74c3c; margin: 0;">請先添加程式碼塊</p>';
+        container.innerHTML = '<p class="danger-text qe-m0">請先添加程式碼塊</p>';
         return;
     }
     
@@ -650,19 +673,19 @@ function updateAnswerSlots() {
         const slotType = currentTypes[slotNum] || 'answer';
         const slotDiv = document.createElement('div');
         slotDiv.className = 'slot-config-item';
-        slotDiv.style.cssText = 'margin-bottom: 1rem; padding: 1rem; background: white; border-radius: 8px; border: 1px solid #ddd;';
+        slotDiv.classList.add('qe-slot');
         
         let slotHTML = `
-            <div style="display: flex; align-items: center; margin-bottom: 0.8rem;">
-            <label style="min-width: 80px; margin: 0; font-weight: bold; color: #333;">空格 ${i}：</label>
-                <div style="display: flex; gap: 1rem; align-items: center;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="radio" name="slot-type-${i}" value="answer" ${slotType === 'answer' ? 'checked' : ''} onchange="toggleSlotType('${i}'); updateParsonsPreview(); checkParsonsCompletion();" style="margin-right: 0.3rem;">
-                        <span style="font-size: 0.9rem;">普通答案</span>
+            <div class="qe-line qe-mb2">
+            <label class="qe-slot-name">空格 ${i}：</label>
+                <div class="qe-line qe-gap2">
+                    <label class="qe-line qe-pick">
+                        <input class="qe-mr0" type="radio" name="slot-type-${i}" value="answer" ${slotType === 'answer' ? 'checked' : ''} onchange="toggleSlotType('${i}'); updateParsonsPreview(); checkParsonsCompletion();">
+                        <span class="qe-fs-sm">普通答案</span>
                     </label>
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="radio" name="slot-type-${i}" value="fixed" ${slotType === 'fixed' ? 'checked' : ''} onchange="toggleSlotType('${i}'); updateParsonsPreview(); checkParsonsCompletion();" style="margin-right: 0.3rem;">
-                        <span style="font-size: 0.9rem; color: #667eea;">固定程式碼塊</span>
+                    <label class="qe-line qe-pick">
+                        <input class="qe-mr0" type="radio" name="slot-type-${i}" value="fixed" ${slotType === 'fixed' ? 'checked' : ''} onchange="toggleSlotType('${i}'); updateParsonsPreview(); checkParsonsCompletion();">
+                        <span class="qe-hint">固定程式碼塊</span>
                     </label>
                 </div>
             </div>
@@ -673,16 +696,16 @@ function updateAnswerSlots() {
             // 固定程式碼塊：顯示程式碼輸入框
             slotHTML += `
                 <div class="slot-fixed-container" data-slot="${i}">
-                    <label style="display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem;">程式碼內容：</label>
-                    <textarea class="slot-fixed-content" data-slot="${i}" rows="3" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;" oninput="updateParsonsPreview();">${currentFixedContents[i] || ''}</textarea>
+                    <label class="qe-flabel">程式碼內容：</label>
+                    <textarea class="slot-fixed-content qe-field qe-code" data-slot="${i}" rows="3" placeholder="輸入固定顯示的程式碼..." oninput="updateParsonsPreview();">${currentFixedContents[i] || ''}</textarea>
                 </div>
             `;
         } else {
             // 普通答案：顯示下拉選擇
             slotHTML += `
                 <div class="slot-answer-container" data-slot="${i}">
-                    <label style="display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem;">選擇程式碼塊：</label>
-                    <select class="slot-answer-select" data-slot="${i}" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-family: Consolas, monospace;">
+                    <label class="qe-flabel">選擇程式碼塊：</label>
+                    <select class="slot-answer-select qe-field qe-code" data-slot="${i}">
                 <option value="">請選擇正確答案...</option>
         `;
         
@@ -696,9 +719,9 @@ function updateAnswerSlots() {
         
         // 縮排設置（兩種類型都有）
         slotHTML += `
-            <div style="display: flex; align-items: center; margin-top: 0.8rem;">
-                <label style="min-width: 60px; margin: 0; color: #666; font-size: 0.9rem;">縮排：</label>
-                <input type="number" class="slot-indent-input" data-slot="${i}" min="0" max="10" value="${currentIndents[i] || '0'}" style="width: 80px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;" title="縮排級別（0-10，每個級別約20px）" onchange="updateParsonsPreview();">
+            <div class="qe-line qe-mt2">
+                <label class="qe-indent-label">縮排：</label>
+                <input type="number" class="slot-indent-input qe-field qe-num" data-slot="${i}" min="0" max="10" value="${currentIndents[i] || '0'}" title="縮排級別（0-10，每個級別約20px）" onchange="updateParsonsPreview();">
             </div>
         `;
         
@@ -740,7 +763,7 @@ function toggleSlotType(slotNum) {
     if (selectedType === 'fixed') {
         // 切換到固定程式碼塊
         if (answerContainer) {
-            answerContainer.style.display = 'none';
+            answerContainer.hidden = true;
         }
         if (!fixedContainer) {
             // 創建固定程式碼塊輸入框
@@ -756,19 +779,19 @@ function toggleSlotType(slotNum) {
             const indentDiv = indentInput.parentElement;
             
             const fixedHTML = `
-                <div class="slot-fixed-container" data-slot="${slotNum}" style="margin-top: 0.8rem;">
-                    <label style="display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem;">程式碼內容：</label>
-                    <textarea class="slot-fixed-content" data-slot="${slotNum}" rows="3" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;" oninput="updateParsonsPreview();"></textarea>
+                <div class="slot-fixed-container qe-mt2" data-slot="${slotNum}">
+                    <label class="qe-flabel">程式碼內容：</label>
+                    <textarea class="slot-fixed-content qe-field qe-code" data-slot="${slotNum}" rows="3" placeholder="輸入固定顯示的程式碼..." oninput="updateParsonsPreview();"></textarea>
         </div>
     `;
             indentDiv.insertAdjacentHTML('beforebegin', fixedHTML);
         } else {
-            fixedContainer.style.display = 'block';
+            fixedContainer.hidden = false;
         }
     } else {
         // 切換到普通答案
         if (fixedContainer) {
-            fixedContainer.style.display = 'none';
+            fixedContainer.hidden = true;
         }
         if (!answerContainer) {
             // 創建下拉選擇框
@@ -784,9 +807,9 @@ function toggleSlotType(slotNum) {
             const indentDiv = indentInput.parentElement;
             
             let selectHTML = `
-                <div class="slot-answer-container" data-slot="${slotNum}" style="margin-top: 0.8rem;">
-                    <label style="display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem;">選擇程式碼塊：</label>
-                    <select class="slot-answer-select" data-slot="${slotNum}" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-family: Consolas, monospace;">
+                <div class="slot-answer-container qe-mt2" data-slot="${slotNum}">
+                    <label class="qe-flabel">選擇程式碼塊：</label>
+                    <select class="slot-answer-select qe-field qe-code" data-slot="${slotNum}">
                         <option value="">請選擇正確答案...</option>
             `;
             
@@ -806,7 +829,7 @@ function toggleSlotType(slotNum) {
                 });
             }
         } else {
-            answerContainer.style.display = 'block';
+            answerContainer.hidden = false;
         }
     }
 }
@@ -833,13 +856,13 @@ function updateParsonsPreview() {
     });
     
     if (Object.keys(codeBlocks).length === 0 || slotConfigItems.length === 0) {
-        previewContainer.innerHTML = '<p style="color: #999; text-align: center; margin: 2rem 0;">請先設定程式碼塊和答案區空格</p>';
+        previewContainer.innerHTML = '<p class="qe-empty">請先設定程式碼塊和答案區空格</p>';
         return;
     }
     
     // 生成預覽HTML
-    let previewHTML = '<div style="display: flex; gap: 1rem; flex-direction: column;">';
-    previewHTML += '<h4 style="margin: 0 0 0.5rem 0; color: #667eea; font-size: 0.9rem;">答題區預覽</h4>';
+    let previewHTML = '<div class="qe-pv">';
+    previewHTML += '<h4 class="qe-pv-h">答題區預覽</h4>';
     
     Array.from(slotConfigItems).forEach((item) => {
         const indentInput = item.querySelector('.slot-indent-input');
@@ -847,34 +870,34 @@ function updateParsonsPreview() {
         if (!slotNum) return;
         
         const indentLevel = indentInput ? (parseInt(indentInput.value) || 0) : 0;
-        const indentPx = indentLevel * 20;
+        const indentStep = Math.max(0, Math.min(10, indentLevel));
         
         // 獲取類型
         const typeRadio = item.querySelector(`input[name="slot-type-${slotNum}"]:checked`);
         const slotType = typeRadio ? typeRadio.value : 'answer';
         
-        previewHTML += '<div style="display: flex; align-items: center; margin-bottom: 0.5rem;">';
-        previewHTML += `<span style="min-width: 60px; color: #666; font-size: 0.85rem;">空格 ${slotNum}：</span>`;
-        previewHTML += `<div style="flex: 1; margin-left: ${indentPx}px; border: 2px dashed #bbb; border-radius: 6px; padding: 0.5rem; background: white; min-height: 40px; display: flex; align-items: center;">`;
+        previewHTML += '<div class="qe-line qe-mb1">';
+        previewHTML += `<span class="qe-pv-name">空格 ${slotNum}：</span>`;
+        previewHTML += `<div class="qe-pv-slot" data-indent="${indentStep}">`;
         
         if (slotType === 'fixed') {
             const fixedContent = item.querySelector('.slot-fixed-content')?.value.trim() || '';
             if (fixedContent) {
                 const preview = fixedContent.substring(0, 50) + (fixedContent.length > 50 ? '...' : '');
-                previewHTML += `<span style="font-family: Consolas, monospace; font-size: 0.85rem; color: #2d3748; background: #f0f0f0; padding: 0.3rem 0.6rem; border-radius: 4px;">${preview}</span>`;
-                previewHTML += '<span style="margin-left: 0.5rem; color: #667eea; font-size: 0.75rem;">[固定]</span>';
+                previewHTML += `<span class="qe-pv-fixed">${preview}</span>`;
+                previewHTML += '<span class="qe-pv-tag">[固定]</span>';
             } else {
-                previewHTML += '<span style="color: #999; font-style: italic; font-size: 0.85rem;">未輸入程式碼</span>';
+                previewHTML += '<span class="qe-pv-empty">未輸入程式碼</span>';
             }
         } else {
             const answerSelect = item.querySelector('.slot-answer-select');
             const selectedAnswer = answerSelect ? answerSelect.value : '';
             if (selectedAnswer && codeBlocks[selectedAnswer]) {
                 const preview = codeBlocks[selectedAnswer].substring(0, 50) + (codeBlocks[selectedAnswer].length > 50 ? '...' : '');
-                previewHTML += `<span style="font-family: Consolas, monospace; font-size: 0.85rem; color: #27ae60;">${preview}</span>`;
-                previewHTML += `<span style="margin-left: 0.5rem; color: #27ae60; font-size: 0.75rem; font-weight: bold;">[${selectedAnswer}]</span>`;
+                previewHTML += `<span class="qe-pv-code">${preview}</span>`;
+                previewHTML += `<span class="qe-pv-tag is-ok">[${selectedAnswer}]</span>`;
             } else {
-                previewHTML += '<span style="color: #999; font-style: italic; font-size: 0.85rem;">未設定</span>';
+                previewHTML += '<span class="qe-pv-empty">未設定</span>';
             }
         }
         
@@ -932,16 +955,16 @@ function checkParsonsCompletion() {
     // 更新狀態顯示
     if (codeBlocksCount < 2) {
         statusElement.textContent = '⚠️ 至少需要2個程式碼塊';
-        statusElement.style.background = '#fff3cd';
-        statusElement.style.color = '#856404';
+        statusElement.classList.remove('is-ok');
+        statusElement.classList.add('is-warn');
     } else if (completedSlots < totalSlots) {
         statusElement.textContent = `⚠️ 還有 ${totalSlots - completedSlots} 個空格未設定（空格：${missingSlots.join(', ')}）`;
-        statusElement.style.background = '#fff3cd';
-        statusElement.style.color = '#856404';
+        statusElement.classList.remove('is-ok');
+        statusElement.classList.add('is-warn');
     } else {
         statusElement.textContent = '✓ 所有空格已設定完成';
-        statusElement.style.background = '#d4edda';
-        statusElement.style.color = '#155724';
+        statusElement.classList.remove('is-warn');
+        statusElement.classList.add('is-ok');
     }
 }
 
@@ -954,7 +977,7 @@ function parseBlanks() {
     const blanks = fillblankText.match(/\{\{[^}]*\}\}/g) || [];
     
     if (blanks.length === 0) {
-        alert('請先在題目文字中使用 {{ '{{}}' }} 標記填空位置');
+        UI.toast('請先在題目文字中使用 {{ '{{}}' }} 標記填空位置', 'warn');
         return;
     }
     
@@ -962,21 +985,21 @@ function parseBlanks() {
     
     blanks.forEach((blank, index) => {
         const blankDiv = document.createElement('div');
-        blankDiv.style.cssText = 'border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; background: white;';
+        blankDiv.classList.add('qe-card');
         
         blankDiv.innerHTML = `
-            <h4 style="margin: 0 0 1rem 0; color: #333;">空格 ${index + 1}: ${blank}</h4>
+            <h4 class="qe-card-h">空格 ${index + 1}: ${blank}</h4>
             <div class="blank-options" data-blank-index="${index}">
-                <div class="blank-option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
-                    <textarea class="blank-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
-                    <label style="margin: 0; display: flex; align-items: center;">
-                        <input type="radio" name="correct-blank-${index}" style="margin-right: 0.5rem;">
+                <div class="blank-option-row qe-optrow qe-mid">
+                    <textarea class="blank-option-input qe-opttext" placeholder="選項內容 (支援多行)"></textarea>
+                    <label class="qe-check">
+                        <input class="qe-mr1" type="radio" name="correct-blank-${index}">
                         正確答案
                     </label>
-                    <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                    <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                 </div>
             </div>
-            <button type="button" onclick="addBlankOption(${index})" class="btn btn-secondary" style="margin-top: 0.5rem;">新增選項</button>
+            <button type="button" onclick="addBlankOption(${index})" class="btn btn-secondary qe-mt1">新增選項</button>
         `;
         
         container.appendChild(blankDiv);
@@ -987,14 +1010,14 @@ function addBlankOption(blankIndex) {
     const container = document.querySelector(`[data-blank-index="${blankIndex}"]`);
     const optionRow = document.createElement('div');
     optionRow.className = 'blank-option-row';
-    optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+    optionRow.classList.add('qe-optrow', 'qe-mid');
     optionRow.innerHTML = `
-        <textarea class="blank-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
-        <label style="margin: 0; display: flex; align-items: center;">
-            <input type="radio" name="correct-blank-${blankIndex}" style="margin-right: 0.5rem;">
+        <textarea class="blank-option-input qe-opttext" placeholder="選項內容 (支援多行)"></textarea>
+        <label class="qe-check">
+            <input class="qe-mr1" type="radio" name="correct-blank-${blankIndex}">
             正確答案
         </label>
-        <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+        <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
     `;
     container.appendChild(optionRow);
 }
@@ -1027,14 +1050,14 @@ document.getElementById('question-form').addEventListener('submit', async functi
         const result = await response.json();
         
         if (response.ok) {
-            alert(result.message);
+            UI.flash(result.message, 'ok');
             hideQuestionModal();
             location.reload();
         } else {
-            alert(result.error || '操作失敗');
+            UI.toast(result.error || '操作失敗', 'error');
         }
     } catch (error) {
-        alert('網路錯誤，請稍後再試');
+        UI.toast('網路錯誤，請稍後再試', 'error');
     }
 });
 
@@ -1204,7 +1227,7 @@ function collectFormData() {
 
 function validateFormData(data) {
     if (!data.title || !data.question_text || !data.question_type) {
-        alert('請填寫所有必填欄位');
+        UI.toast('請填寫所有必填欄位', 'warn');
         return false;
     }
     
@@ -1212,44 +1235,44 @@ function validateFormData(data) {
         case 'single_choice':
         case 'multiple_choice':
             if (!data.question_data.options || data.question_data.options.length < 2) {
-                alert('至少需要2個選項');
+                UI.toast('至少需要2個選項', 'warn');
                 return false;
             }
             if (data.question_type === 'single_choice' && !data.question_data.correct_answer) {
-                alert('請選擇正確答案');
+                UI.toast('請選擇正確答案', 'warn');
                 return false;
             }
             if (data.question_type === 'multiple_choice' && (!data.question_data.correct_answers || data.question_data.correct_answers.length === 0)) {
-                alert('請選擇至少一個正確答案');
+                UI.toast('請選擇至少一個正確答案', 'warn');
                 return false;
             }
             break;
             
         case 'fill_blank':
             if (!data.question_data.correct_answer) {
-                alert('請輸入正確答案');
+                UI.toast('請輸入正確答案', 'warn');
                 return false;
             }
             break;
             
         case 'dropdown':
             if (!data.question_data.options || data.question_data.options.length < 2) {
-                alert('至少需要2個選項');
+                UI.toast('至少需要2個選項', 'warn');
                 return false;
             }
             if (!data.question_data.correct_answer) {
-                alert('請選擇正確答案');
+                UI.toast('請選擇正確答案', 'warn');
                 return false;
             }
             break;
             
         case 'dropdown_fillblank':
             if (!data.question_data.fillblank_text) {
-                alert('請輸入填空題目文字');
+                UI.toast('請輸入填空題目文字', 'warn');
                 return false;
             }
             if (!data.question_data.blanks || data.question_data.blanks.length === 0) {
-                alert('請先解析空格並設定選項');
+                UI.toast('請先解析空格並設定選項', 'warn');
                 return false;
             }
             
@@ -1257,11 +1280,11 @@ function validateFormData(data) {
             for (let i = 0; i < data.question_data.blanks.length; i++) {
                 const blank = data.question_data.blanks[i];
                 if (!blank.options || blank.options.length < 2) {
-                    alert(`空格 ${i + 1} 至少需要2個選項`);
+                    UI.toast(`空格 ${i + 1} 至少需要2個選項`, 'warn');
                     return false;
                 }
                 if (!blank.correct_answer) {
-                    alert(`空格 ${i + 1} 請選擇正確答案`);
+                    UI.toast(`空格 ${i + 1} 請選擇正確答案`, 'warn');
                     return false;
                 }
             }
@@ -1269,7 +1292,7 @@ function validateFormData(data) {
             
         case 'parsons':
             if (!data.question_data.code_blocks || Object.keys(data.question_data.code_blocks).length < 2) {
-                alert('❌ 至少需要2個程式碼塊才能建立程式碼排序題');
+                UI.toast('❌ 至少需要2個程式碼塊才能建立程式碼排序題', 'warn');
                 return false;
             }
             
@@ -1289,7 +1312,7 @@ function validateFormData(data) {
             
             if (missingSlots.length > 0) {
                 const missingList = missingSlots.join('、');
-                alert(`❌ 以下空格尚未設定：空格 ${missingList}\n\n請為每個空格選擇「普通答案」或「固定程式碼塊」。`);
+                UI.toast(`❌ 以下空格尚未設定：空格 ${missingList}\n\n請為每個空格選擇「普通答案」或「固定程式碼塊」。`, 'warn');
                 // 高亮顯示缺少設定的空格
                 setTimeout(() => {
                     missingSlots.forEach(slotNum => {
@@ -1297,12 +1320,10 @@ function validateFormData(data) {
                         if (indentInput) {
                             const slotItem = indentInput.closest('.slot-config-item');
                             if (slotItem) {
-                                slotItem.style.borderColor = '#e74c3c';
-                                slotItem.style.borderWidth = '2px';
+                                slotItem.classList.add('is-error');
                                 slotItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
                                 setTimeout(() => {
-                                    slotItem.style.borderColor = '';
-                                    slotItem.style.borderWidth = '';
+                                    slotItem.classList.remove('is-error');
                                 }, 3000);
                             }
                         }
@@ -1321,7 +1342,7 @@ function validateFormData(data) {
             });
             
             if (emptyFixedBlocks.length > 0) {
-                alert(`❌ 以下固定程式碼塊未輸入內容：空格 ${emptyFixedBlocks.join('、')}\n\n請輸入固定程式碼塊的內容。`);
+                UI.toast(`❌ 以下固定程式碼塊未輸入內容：空格 ${emptyFixedBlocks.join('、')}\n\n請輸入固定程式碼塊的內容。`, 'warn');
                 return false;
             }
             
@@ -1343,7 +1364,7 @@ async function editQuestion(questionId) {
         // 找到要編輯的題目
         const question = questions.find(q => q.id === questionId);
         if (!question) {
-            alert('找不到題目數據');
+            UI.toast('找不到題目數據', 'error');
             return;
         }
         
@@ -1377,20 +1398,20 @@ async function editQuestion(questionId) {
                         data.options.forEach(option => {
                             const optionRow = document.createElement('div');
                             optionRow.className = 'option-row';
-                            optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+                            optionRow.classList.add('qe-optrow');
                             
                             const isCorrect = question.question_type === 'single_choice' 
                                 ? option === data.correct_answer
                                 : (data.correct_answers && data.correct_answers.includes(option));
                             
                             optionRow.innerHTML = `
-                                <textarea class="option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;">${option}</textarea>
-                                <label style="margin: 0; display: flex; align-items: center;">
-                                    <input type="${question.question_type === 'single_choice' ? 'radio' : 'checkbox'}" 
-                                           name="correct-option" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
+                                <textarea class="option-input qe-opttext" placeholder="選項內容 (支援多行)">${option}</textarea>
+                                <label class="qe-check">
+                                    <input class="qe-mr1" type="${question.question_type === 'single_choice' ? 'radio' : 'checkbox'}" 
+                                           name="correct-option" ${isCorrect ? 'checked' : ''}>
                                     正確
                                 </label>
-                                <button type="button" onclick="removeOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                                <button type="button" onclick="removeOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                             `;
                             
                             document.getElementById('options-container').appendChild(optionRow);
@@ -1413,17 +1434,17 @@ async function editQuestion(questionId) {
                         data.options.forEach(option => {
                             const optionRow = document.createElement('div');
                             optionRow.className = 'dropdown-option-row';
-                            optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+                            optionRow.classList.add('qe-optrow');
                             
                             const isCorrect = option === data.correct_answer;
                             
                             optionRow.innerHTML = `
-                                <textarea class="dropdown-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;">${option}</textarea>
-                                <label style="margin: 0; display: flex; align-items: center;">
-                                    <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
+                                <textarea class="dropdown-option-input qe-opttext" placeholder="選項內容 (支援多行)">${option}</textarea>
+                                <label class="qe-check">
+                                    <input class="qe-mr1" type="radio" name="correct-dropdown" ${isCorrect ? 'checked' : ''}>
                                     正確
                                 </label>
-                                <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                                <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                             `;
                             
                             document.getElementById('dropdown-options-container').appendChild(optionRow);
@@ -1455,17 +1476,17 @@ async function editQuestion(questionId) {
                                     blank.options.forEach(option => {
                                         const optionRow = document.createElement('div');
                                         optionRow.className = 'blank-option-row';
-                                        optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+                                        optionRow.classList.add('qe-optrow', 'qe-mid');
                                         
                                         const isCorrect = option === blank.correct_answer;
                                         
                                         optionRow.innerHTML = `
-                                            <textarea class="blank-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;">${option}</textarea>
-                                            <label style="margin: 0; display: flex; align-items: center;">
-                                                <input type="radio" name="correct-blank-${index}" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
+                                            <textarea class="blank-option-input qe-opttext" placeholder="選項內容 (支援多行)">${option}</textarea>
+                                            <label class="qe-check">
+                                                <input class="qe-mr1" type="radio" name="correct-blank-${index}" ${isCorrect ? 'checked' : ''}>
                                                 正確答案
                                             </label>
-                                            <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                                            <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                                         `;
                                         
                                         blankContainer.appendChild(optionRow);
@@ -1492,11 +1513,11 @@ async function editQuestion(questionId) {
                     labels.forEach((label, index) => {
                         const blockRow = document.createElement('div');
                         blockRow.className = 'code-block-row';
-                        blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+                        blockRow.classList.add('qe-optrow', 'qe-mid');
                         blockRow.innerHTML = `
-                            <span style="min-width: 30px; color: #667eea; font-weight: bold;">${label}</span>
-                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;" oninput="updateAnswerSlots(); updateParsonsPreview();">${codeBlocks[label]}</textarea>
-                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            <span class="qe-blabel">${label}</span>
+                            <textarea class="code-block-input qe-opttext qe-code" placeholder="程式碼塊內容 (支援多行)" oninput="updateAnswerSlots(); updateParsonsPreview();">${codeBlocks[label]}</textarea>
+                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                         `;
                         codeBlocksContainer.appendChild(blockRow);
                     });
@@ -1583,16 +1604,31 @@ async function editQuestion(questionId) {
         }
         
         // 顯示模態框
-        document.getElementById('question-modal').style.display = 'block';
+        document.getElementById('question-modal').hidden = false;
         
     } catch (error) {
         console.error('獲取題目數據失敗', error);
-        alert('獲取題目數據失敗，請稍後再試');
+        UI.toast('獲取題目數據失敗，請稍後再試', 'error');
+    }
+}
+
+async function copyQuestion(questionId) {
+    try {
+        const response = await fetch(`/api/question/${questionId}/copy`, { method: 'POST' });
+        const result = await response.json();
+        if (response.ok) {
+            UI.flash(result.message, 'ok');
+            location.reload();
+        } else {
+            UI.toast(result.error || '複製失敗', 'error');
+        }
+    } catch (error) {
+        UI.toast('網路錯誤，請稍後再試', 'error');
     }
 }
 
 async function deleteQuestion(questionId) {
-    if (!confirm('確定要刪除這個題目嗎？')) return;
+    if (!(await UI.ask('確定要刪除這個題目嗎？', { title: '刪除題目', danger: true, okText: '刪除' }))) return;
     
     try {
         const response = await fetch(`/api/question/${questionId}`, {
@@ -1602,50 +1638,103 @@ async function deleteQuestion(questionId) {
         const result = await response.json();
         
         if (response.ok) {
-            alert(result.message);
+            UI.flash(result.message, 'ok');
             location.reload();
         } else {
-            alert(result.error || '刪除失敗');
+            UI.toast(result.error || '刪除失敗', 'error');
         }
     } catch (error) {
-        alert('網路錯誤，請稍後再試');
+        UI.toast('網路錯誤，請稍後再試', 'error');
     }
 }
 
+/* ===== Tabs ===== */
+function showTab(name) {
+    const tab = document.getElementById(`tab-${name}`);
+    if (!tab) return;
+    document.querySelectorAll('.tabs [role="tab"]').forEach(t => {
+        const on = t === tab;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+    const url = new URL(location.href);
+    url.searchParams.set('tab', name);
+    history.replaceState(null, '', url);
+}
+
+document.addEventListener('click', function(event) {
+    const link = event.target.closest('.tabs [role="tab"], [data-tab-link]');
+    if (!link) return;
+    event.preventDefault();
+    showTab(link.dataset.tab || link.dataset.tabLink);
+});
+
+/* ===== 設定 ===== */
+const BANK_QUESTION_COUNT = {{ questions|length }};
+let savedSettings = null;
+
+function checkedValue(name) {
+    const input = document.querySelector(`#settings-form input[name="${name}"]:checked`);
+    return input ? input.value : '';
+}
+
+function setChecked(name, value) {
+    document.querySelectorAll(`#settings-form input[name="${name}"]`).forEach(input => {
+        input.checked = input.value === value;
+    });
+}
+
+// What the form shows now, as raw text. Used to find unsaved changes.
+function readSettingsForm() {
+    return {
+        quiz_mode: checkedValue('quiz_mode'),
+        session_question_count: document.getElementById('session-question-count').value.trim(),
+        category_ratios: Array.from(document.querySelectorAll('.ratio-row')).map(row => [
+            row.querySelector('.ratio-category').value.trim(),
+            row.querySelector('.ratio-value').value.trim(),
+        ]),
+        scoring_mode: checkedValue('scoring_mode'),
+        scoring_total_points: document.getElementById('scoring-total-points').value.trim(),
+    };
+}
+
+function countSettingsChanges() {
+    if (!savedSettings) return 0;
+    const now = readSettingsForm();
+    return Object.keys(now).filter(key => JSON.stringify(now[key]) !== JSON.stringify(savedSettings[key])).length;
+}
+
+function markSettingsChanged() {
+    togglePracticeConfigSection();
+    updateRatioTotal();
+    const changes = countSettingsChanges();
+    document.getElementById('savebar').hidden = changes === 0;
+    document.getElementById('savebar-text').textContent = `有 ${changes} 項變更還沒儲存`;
+}
+
 function togglePracticeConfigSection() {
-    const quizModeSelect = document.getElementById('quiz-mode');
-    if (!quizModeSelect) {
-        return;
-    }
-
-    const isPractice = quizModeSelect.value === 'practice';
-    const practiceConfigSection = document.getElementById('practice-config-section');
-    if (practiceConfigSection) {
-        practiceConfigSection.style.display = isPractice ? 'block' : 'none';
-    }
-
-    const sessionCountInput = document.getElementById('session-question-count');
-    const sessionCountHint = document.getElementById('session-question-count-hint');
-    if (sessionCountInput) {
-        sessionCountInput.disabled = !isPractice;
-    }
-    if (sessionCountHint) {
-        sessionCountHint.style.display = isPractice ? 'none' : 'block';
-    }
+    const isPractice = checkedValue('quiz_mode') === 'practice';
+    document.getElementById('practice-config-section').hidden = !isPractice;
+    document.getElementById('session-question-count').disabled = !isPractice;
+    document.getElementById('session-question-count-hint').hidden = isPractice;
     toggleScoringTotalInput();
 }
 
 function addRatioRow(category = '', ratio = '') {
-    const container = document.getElementById('ratio-rows');
     const row = document.createElement('div');
-    row.className = 'ratio-row';
-    row.style.cssText = 'display:flex; gap:0.5rem; margin-bottom:0.5rem; align-items:center;';
+    row.className = 'ratio ratio-row';
     row.innerHTML = `
-        <input type="text" class="ratio-category" placeholder="分類名稱" value="${category}" style="flex:2;">
-        <input type="number" class="ratio-value" placeholder="比例 %" min="1" max="100" value="${ratio}" style="flex:1;">
-        <button type="button" class="btn btn-danger" style="padding:6px 12px;" onclick="this.parentElement.remove()">刪除</button>
+        <input type="text" class="inp ratio-category" placeholder="分類名稱" list="category-options" aria-label="分類名稱">
+        <span class="ratio-pct"><input type="number" class="inp ratio-value" placeholder="比例" min="1" max="100" aria-label="比例（%）"><span aria-hidden="true">%</span></span>
+        <button type="button" class="btn btn-icon" title="刪除這個分類" aria-label="刪除這個分類"><i class="fas fa-times" aria-hidden="true"></i></button>
     `;
-    container.appendChild(row);
+    row.querySelector('.ratio-category').value = category;
+    row.querySelector('.ratio-value').value = ratio;
+    row.querySelector('button').addEventListener('click', () => {
+        row.remove();
+        markSettingsChanged();
+    });
+    document.getElementById('ratio-rows').appendChild(row);
 }
 
 function collectCategoryRatios() {
@@ -1660,27 +1749,85 @@ function collectCategoryRatios() {
     return ratios;
 }
 
-async function savePracticeConfig() {
-    const rawTimeLimit = document.getElementById('time-limit-minutes').value.trim();
-    let timeLimitMinutes = null;
-    if (rawTimeLimit) {
-        timeLimitMinutes = parseInt(rawTimeLimit, 10);
-        if (!Number.isFinite(timeLimitMinutes) || timeLimitMinutes <= 0) {
-            document.getElementById('practice-config-alert').innerHTML =
-                '<div class="alert alert-error">時限必須是大於 0 的整數分鐘，或留空表示不限時</div>';
-            return;
-        }
+function updateRatioTotal() {
+    const total = Object.values(collectCategoryRatios()).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+    const box = document.getElementById('ratio-total');
+    const rounded = Math.round(total * 100) / 100;
+    if (Math.abs(total - 100) < 0.001) {
+        box.className = 'ok-text';
+        box.innerHTML = '<i class="fas fa-check-circle" aria-hidden="true"></i> 加總 100%';
+    } else {
+        box.className = 'warn-text';
+        box.innerHTML = `<i class="fas fa-exclamation-circle" aria-hidden="true"></i> 加總 ${rounded}%，要等於 100%`;
+    }
+}
+
+function toggleScoringTotalInput() {
+    const totalInput = document.getElementById('scoring-total-points');
+    const preview = document.getElementById('scoring-preview');
+    const scoringMode = checkedValue('scoring_mode');
+    const isPractice = checkedValue('quiz_mode') === 'practice';
+
+    totalInput.disabled = scoringMode !== 'average';
+    document.getElementById('scoring-total-group').hidden = scoringMode !== 'average';
+
+    if (scoringMode !== 'average') {
+        preview.textContent = '學生交卷時，用各題目前的分數加總。';
+        return;
     }
 
+    const total = parseFloat(totalInput.value) || 100;
+
+    if (isPractice) {
+        const rawSessionCount = document.getElementById('session-question-count').value.trim();
+        const sessionCount = parseInt(rawSessionCount, 10);
+        if (!rawSessionCount || !Number.isFinite(sessionCount) || sessionCount < 1) {
+            preview.textContent = '請設定有效的每次出題數。';
+            return;
+        }
+        const per = Math.round((total / sessionCount) * 10000) / 10000;
+        let text = `隨機練習：每題約 ${per} 分（每次 ${sessionCount} 題平分 ${total} 分）`;
+        if (BANK_QUESTION_COUNT < sessionCount) {
+            text += '。題庫的題目不夠時，實際抽出的題數會比較少';
+        }
+        preview.textContent = text;
+        return;
+    }
+
+    if (BANK_QUESTION_COUNT <= 0) {
+        preview.textContent = '題庫還沒有題目。有題目後，總分會依題數平分。';
+        return;
+    }
+
+    const per = Math.round((total / BANK_QUESTION_COUNT) * 10000) / 10000;
+    preview.textContent = `固定測驗：每題約 ${per} 分（${BANK_QUESTION_COUNT} 題平分 ${total} 分）`;
+}
+
+function fillSettingsForm(settings) {
+    setChecked('quiz_mode', settings.quiz_mode);
+    document.getElementById('session-question-count').value = settings.session_question_count;
+    document.getElementById('ratio-rows').innerHTML = '';
+    settings.category_ratios.forEach(([category, ratio]) => addRatioRow(category, ratio));
+    setChecked('scoring_mode', settings.scoring_mode);
+    document.getElementById('scoring-total-points').value = settings.scoring_total_points;
+}
+
+function resetSettings() {
+    fillSettingsForm(savedSettings);
+    markSettingsChanged();
+}
+
+async function savePracticeConfig() {
     const payload = {
-        quiz_mode: document.getElementById('quiz-mode').value,
+        quiz_mode: checkedValue('quiz_mode'),
         session_question_count: parseInt(document.getElementById('session-question-count').value, 10),
         category_ratios: collectCategoryRatios(),
-        scoring_mode: document.getElementById('scoring-mode').value,
+        scoring_mode: checkedValue('scoring_mode'),
         scoring_total_points: parseFloat(document.getElementById('scoring-total-points').value),
-        time_limit_minutes: timeLimitMinutes,
     };
 
+    const button = document.getElementById('save-settings-btn');
+    setButtonLoading(button, true);
     try {
         const response = await fetch('/api/quiz-bank/{{ quiz_bank.id }}/practice-config', {
             method: 'PUT',
@@ -1688,101 +1835,50 @@ async function savePracticeConfig() {
             body: JSON.stringify(payload),
         });
         const result = await response.json();
-        const alertBox = document.getElementById('practice-config-alert');
-
         if (response.ok) {
-            alertBox.innerHTML = '<div class="alert alert-success">模式設定已儲存</div>';
-            setTimeout(() => location.reload(), 800);
-        } else {
-            alertBox.innerHTML = `<div class="alert alert-error">${result.error || '儲存失敗'}</div>`;
-        }
-    } catch (error) {
-        document.getElementById('practice-config-alert').innerHTML =
-            '<div class="alert alert-error">網路錯誤，請稍後再試</div>';
-    }
-}
-
-const BANK_QUESTION_COUNT = {{ questions|length }};
-
-function toggleScoringTotalInput() {
-    const scoringModeSelect = document.getElementById('scoring-mode');
-    const totalInput = document.getElementById('scoring-total-points');
-    const preview = document.getElementById('scoring-preview');
-    const quizModeSelect = document.getElementById('quiz-mode');
-    if (!scoringModeSelect || !totalInput || !preview || !quizModeSelect) {
-        return;
-    }
-
-    const scoringMode = scoringModeSelect.value;
-    const isPractice = quizModeSelect.value === 'practice';
-
-    totalInput.disabled = scoringMode !== 'average';
-
-    if (scoringMode !== 'average') {
-        preview.textContent = '學生端將使用各題目前設定的分數加總。';
-        return;
-    }
-
-    const total = parseFloat(totalInput.value) || 100;
-
-    if (isPractice) {
-        const sessionCountInput = document.getElementById('session-question-count');
-        const rawSessionCount = sessionCountInput ? String(sessionCountInput.value || '').trim() : '';
-        const sessionCount = parseInt(rawSessionCount, 10);
-        if (!rawSessionCount || !Number.isFinite(sessionCount) || sessionCount < 1) {
-            preview.textContent = '請設定有效的每次出題數。';
+            savedSettings = readSettingsForm();
+            markSettingsChanged();
+            UI.flash('設定已儲存', 'ok');
+            location.reload();
             return;
         }
-        const per = Math.round((total / sessionCount) * 10000) / 10000;
-        let text = `隨機練習：每題約 ${per} 分（每次出題數 ${sessionCount} 題均分 ${total} 分）`;
-        if (BANK_QUESTION_COUNT < sessionCount) {
-            text += '。題庫不足時實際抽出可能少於設定值';
-        }
-        preview.textContent = text;
-        return;
+        UI.toast(result.error || '儲存失敗', 'error');
+    } catch (error) {
+        UI.toast('網路錯誤，請稍後再試', 'error');
     }
-
-    if (BANK_QUESTION_COUNT <= 0) {
-        preview.textContent = '題庫尚無題目；儲存後，有題目時會依題數均分總分。';
-        return;
-    }
-
-    const per = Math.round((total / BANK_QUESTION_COUNT) * 10000) / 10000;
-    preview.textContent = `固定測驗：每題約 ${per} 分（${BANK_QUESTION_COUNT} 題均分 ${total} 分）`;
+    setButtonLoading(button, false);
 }
 
-let appendPreviewReady = false;
+window.addEventListener('beforeunload', function(event) {
+    if (countSettingsChanges() > 0) {
+        event.preventDefault();
+        event.returnValue = '';
+    }
+});
 
-function showAppendAlert(message, type) {
-    document.getElementById('append-alert').innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+/* ===== 從 Markdown 追加 ===== */
+let appendPreviewReady = false;
+let appendFile = null;
+
+function showAppendAlert(messageHtml, kind) {
+    const icons = { ok: 'fa-check-circle', danger: 'fa-times-circle', warn: 'fa-exclamation-triangle' };
+    document.getElementById('append-alert').innerHTML =
+        `<div class="note note-${kind}" role="${kind === 'ok' ? 'status' : 'alert'}"><i class="fas ${icons[kind]}" aria-hidden="true"></i><span>${messageHtml}</span></div>`;
 }
 
 function clearAppendAlert() {
     document.getElementById('append-alert').innerHTML = '';
 }
 
-function setAppendLoading(prefix, loading) {
-    document.getElementById(`append-${prefix}-text`).style.display = loading ? 'none' : 'inline';
-    document.getElementById(`append-${prefix}-loading`).style.display = loading ? 'inline-block' : 'none';
-}
-
-function downloadAppendTemplate() {
-    window.location.href = '/api/quiz-bank/import-md/questions-template';
-}
-
-async function previewAppendImport() {
-    const fileInput = document.getElementById('append-md-file');
-    if (!fileInput.files.length) {
-        showAppendAlert('請先選擇 .md 檔案', 'error');
-        return;
-    }
-
+async function previewAppendImport(file) {
+    appendFile = file;
     const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
+    formData.append('file', file);
     clearAppendAlert();
-    setAppendLoading('preview', true);
     appendPreviewReady = false;
-    document.getElementById('confirm-append-btn').disabled = true;
+    const confirmButton = document.getElementById('confirm-append-btn');
+    confirmButton.disabled = true;
+    MdDrop.setInfo('append-drop', '解析中…');
 
     try {
         const response = await fetch('/api/quiz-bank/{{ quiz_bank.id }}/import-md/preview', {
@@ -1790,49 +1886,43 @@ async function previewAppendImport() {
             body: formData
         });
         const data = await response.json();
+        const ok = response.ok && data.success;
+        const rows = data.questions || [];
 
-        if (!response.ok || !data.success) {
-            const errors = (data.errors || [data.error || '預覽失敗']).join('<br>');
-            showAppendAlert(errors, 'error');
-            document.getElementById('append-preview').style.display = 'none';
+        if (!rows.length) {
+            const errors = (data.errors || [data.error || '預覽失敗']).map(UI.escape).join('<br>');
+            showAppendAlert(errors, 'danger');
+            MdDrop.setInfo('append-drop', '這個檔案有問題，請修正後再選一次');
+            document.getElementById('append-preview').hidden = true;
             return;
         }
 
-        let summaryHtml = `<p><strong>將追加題目數：</strong>${data.question_count}</p>`;
-        if (data.warnings && data.warnings.length) {
-            summaryHtml += `<div class="alert alert-error" style="margin-top:0.75rem;">${data.warnings.join('<br>')}</div>`;
+        const fileErrors = data.file_errors || [];
+        if (fileErrors.length) {
+            showAppendAlert(fileErrors.map(UI.escape).join('<br>'), 'danger');
+        } else if (data.warnings && data.warnings.length) {
+            showAppendAlert(data.warnings.map(UI.escape).join('<br>'), 'warn');
         }
-        document.getElementById('append-summary').innerHTML = summaryHtml;
-
-        document.getElementById('append-preview-body').innerHTML = data.questions.map(item => `
-            <tr>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.index}</td>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.title}</td>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.question_type}</td>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee;">${item.category || '-'}</td>
-                <td style="padding: 0.75rem; border-bottom: 1px solid #eee; text-align: center;">${item.points}</td>
-            </tr>
-        `).join('');
-
-        document.getElementById('append-preview').style.display = 'block';
-        document.getElementById('confirm-append-btn').disabled = false;
-        appendPreviewReady = true;
-        showAppendAlert('預覽成功，請確認後追加題目', 'success');
+        const start = BANK_QUESTION_COUNT;
+        const bad = MdPreview.render('append', data, QUESTION_TYPE_NAMES, start);
+        MdDrop.setInfo('append-drop', bad ? `解析到 ${rows.length} 題，${bad} 題有問題` : `解析到 ${rows.length} 題`);
+        document.getElementById('append-summary').textContent = `會加在現有 ${start} 題後面`;
+        confirmButton.textContent = `加入 ${rows.length} 題`;
+        document.getElementById('append-preview').hidden = false;
+        confirmButton.disabled = !ok;
+        appendPreviewReady = ok;
     } catch (error) {
-        showAppendAlert('網路錯誤，請檢查連線', 'error');
-    } finally {
-        setAppendLoading('preview', false);
+        showAppendAlert('網路錯誤，請檢查連線', 'danger');
     }
 }
 
 async function confirmAppendImport() {
-    if (!appendPreviewReady) return;
+    if (!appendPreviewReady || !appendFile) return;
 
-    const fileInput = document.getElementById('append-md-file');
     const formData = new FormData();
-    formData.append('file', fileInput.files[0]);
-
-    setAppendLoading('confirm', true);
+    formData.append('file', appendFile);
+    const button = document.getElementById('confirm-append-btn');
+    setButtonLoading(button, true);
     try {
         const response = await fetch('/api/quiz-bank/{{ quiz_bank.id }}/import-md/confirm', {
             method: 'POST',
@@ -1841,35 +1931,36 @@ async function confirmAppendImport() {
         const data = await response.json();
 
         if (!response.ok || !data.success) {
-            const errors = (data.errors || [data.error || '追加失敗']).join('<br>');
-            showAppendAlert(errors, 'error');
+            const errors = (data.errors || [data.error || '追加失敗']).map(UI.escape).join('<br>');
+            showAppendAlert(errors, 'danger');
+            setButtonLoading(button, false);
             return;
         }
 
-        showAppendAlert(`已追加 ${data.question_count} 題，題庫目前共 ${data.total_questions} 題`, 'success');
-        setTimeout(() => location.reload(), 1000);
+        UI.flash(`已追加 ${data.question_count} 題，題庫現在共 ${data.total_questions} 題`, 'ok');
+        location.href = location.pathname + '?tab=questions';
     } catch (error) {
-        showAppendAlert('網路錯誤，請檢查連線', 'error');
-    } finally {
-        setAppendLoading('confirm', false);
+        showAppendAlert('網路錯誤，請檢查連線', 'danger');
+        setButtonLoading(button, false);
     }
 }
 
-// 重新渲染 MathJax，當頁面載入時
+/* ===== Start ===== */
 document.addEventListener('DOMContentLoaded', function() {
-    const quizModeSelect = document.getElementById('quiz-mode');
-    if (quizModeSelect) {
-        quizModeSelect.addEventListener('change', togglePracticeConfigSection);
+    const ratios = initialCategoryRatios || {};
+    const entries = Object.entries(ratios);
+    if (entries.length) {
+        entries.forEach(([category, ratio]) => addRatioRow(category, ratio));
+    } else {
+        addRatioRow();
     }
-    const sessionCountInput = document.getElementById('session-question-count');
-    if (sessionCountInput) {
-        sessionCountInput.addEventListener('input', toggleScoringTotalInput);
-    }
-    const scoringTotalPointsInput = document.getElementById('scoring-total-points');
-    if (scoringTotalPointsInput) {
-        scoringTotalPointsInput.addEventListener('input', toggleScoringTotalInput);
-    }
-    togglePracticeConfigSection();
+    savedSettings = readSettingsForm();
+    const form = document.getElementById('settings-form');
+    form.addEventListener('input', markSettingsChanged);
+    form.addEventListener('change', markSettingsChanged);
+    markSettingsChanged();
+
+    MdDrop.attach('append-drop', 'append-md-file', previewAppendImport);
 
     const imageInput = document.getElementById('question-image');
     const imageRemoveButton = document.getElementById('question-image-remove');
@@ -1879,12 +1970,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!file) return;
 
             if (!file.type.startsWith('image/')) {
-                alert('請選擇圖片檔案');
+                UI.toast('請選擇圖片檔案', 'warn');
                 imageInput.value = '';
                 return;
             }
             if (file.size > QUESTION_IMAGE_MAX_BYTES) {
-                alert('圖片大小不能超過 2MB');
+                UI.toast('圖片大小不能超過 2MB', 'warn');
                 imageInput.value = '';
                 return;
             }
@@ -1906,19 +1997,29 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    const ratios = initialCategoryRatios || {};
-    const entries = Object.entries(ratios);
-    if (entries.length) {
-        entries.forEach(([category, ratio]) => addRatioRow(category, ratio));
-    } else {
-        addRatioRow();
-    }
-
-    if (typeof MathJax !== 'undefined') {
+    if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
         MathJax.typesetPromise().catch((err) => console.log('MathJax typeset error:', err));
     }
 });
-
 </script>
+{% endblock %}
 
+{% block scripts %}
+<script>const QUESTION_TYPE_NAMES = {{ question_type_names | tojson }};</script>
+<script src="{{ url_for('static', filename='js/md_drop.js') }}"></script>
+<script src="{{ url_for('static', filename='js/md_preview.js') }}"></script>
+{% include "_class_session_dialog.html" %}
+<script src="{{ url_for('static', filename='js/class_session_actions.js') }}"></script>
+<script>
+/* 課堂 tab: copy a Class Session link (button turns green: 已複製). */
+document.addEventListener('click', async function (event) {
+    const button = event.target.closest('[data-copy-url]');
+    if (!button) return;
+    const ok = await copyToClipboard(button.dataset.copyUrl);
+    if (!ok) { UI.toast('無法複製，請手動複製連結', 'error'); return; }
+    button.classList.add('is-ok');
+    UI.toast('已複製連結', 'ok');
+    setTimeout(() => button.classList.remove('is-ok'), 2000);
+});
+</script>
 {% endblock %}

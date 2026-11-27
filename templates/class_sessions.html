@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}課堂 - 智慧題庫{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/class_sessions.css') }}">
+{% endblock %}
+
+{% macro session_row(row, course_open) -%}
+{% set cs = row.session %}
+<tr data-class-session="{{ cs.id }}"{% if row.status == 'live' %} class="is-live"{% endif %}>
+    <td class="cs-name"><div class="t-title">{{ cs.name }}</div><span class="code">{{ cs.code }}</span></td>
+    <td>
+        {% for b in row.banks %}
+        <div class="cs-bank">{{ b.title }} <span class="t-sub">· {% if b.time_limit %}時限 {{ b.time_limit }} 分鐘{% else %}不限時{% endif %} · {{ b.n_subs }} 人</span>{% if b.folder %} <span class="chip fc-{{ b.folder.color }}">{{ ui.folder_dot(b.folder.color) }} {{ b.folder.name }}</span>{% endif %}</div>
+        {% endfor %}
+    </td>
+    <td class="num t-sub nowrap">{{ class_session_window(cs) }}</td>
+    <td>{{ ui.status_pill(row.status, row.status_label) }}</td>
+    <td class="cs-acts">
+        {% if row.status != 'done' %}
+        <button type="button" class="btn btn-icon" data-qr="{{ cs.code }}" data-title="{{ cs.course.name }} · {{ cs.name }}" title="投影 QR" aria-label="投影「{{ cs.name }}」的 QR code"><i class="fas fa-qrcode" aria-hidden="true"></i></button>
+        <button type="button" class="btn btn-icon" data-copy-url="{{ url_for('take_quiz', code=cs.code, _external=True) }}" title="複製連結" aria-label="複製「{{ cs.name }}」的連結"><i class="fas fa-link" aria-hidden="true"></i></button>
+        {% endif %}
+        {% if row.status == 'live' %}
+        <button type="button" class="btn" data-cs-action="end" data-id="{{ cs.id }}">立即結束</button>
+        {% elif row.status == 'soon' %}
+        <button type="button" class="btn" data-cs-action="start-now" data-id="{{ cs.id }}">現在開始</button>
+        {% elif course_open %}
+        <button type="button" class="btn" data-cs-action="reopen" data-id="{{ cs.id }}">重新開放</button>
+        {% endif %}
+        {% if row.status == 'live' %}
+        <button type="button" class="btn" data-cs-action="extend" data-id="{{ cs.id }}" title="結束時間延後 10 分鐘">延長 10 分</button>
+        {% endif %}
+        <a class="btn" href="{{ url_for('class_session_sheet', class_session_id=cs.id) }}">總表</a>
+        <button type="button" class="btn btn-icon" data-cs-edit="{{ cs.id }}" title="編輯課堂" aria-label="編輯「{{ cs.name }}」"><i class="fas fa-pen" aria-hidden="true"></i></button>
+        <button type="button" class="btn btn-icon" data-cs-delete="{{ cs.id }}" title="刪除課堂" aria-label="刪除「{{ cs.name }}」"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
+    </td>
+</tr>
+{%- endmacro %}
+
+{% macro course_block(block) -%}
+{% set c = block.course %}
+<section class="panel crs{% if not block.open %} is-ended{% endif %}" data-course="{{ c.id }}"
+         data-name="{{ c.name }}" data-ends-on="{{ block.ends_on or '' }}"
+         data-active="{{ block.n_active }}" data-sessions="{{ block.n_sessions }}" data-subs="{{ block.n_subs }}">
+    <div class="crs-h">
+        <h2><i class="fas fa-graduation-cap" aria-hidden="true"></i> {{ c.name }}</h2>
+        {{ ui.status_pill('live' if block.open else 'done', '進行中' if block.open else '已結束') }}
+        <span class="crs-meta">{{ course_end_text(c) }} · {{ block.n_sessions }} 個課堂{% if block.n_live %} · <b class="ok-text">{{ block.n_live }} 個進行中</b>{% endif %}</span>
+        <div class="crs-acts">
+            {% if block.open %}<button type="button" class="btn btn-primary" data-open-session="" data-course="{{ c.id }}"><i class="fas fa-plus" aria-hidden="true"></i> 開課堂</button>{% endif %}
+            <a class="btn" href="{{ url_for('course_sheet', course_id=c.id) }}"><i class="fas fa-table" aria-hidden="true"></i> 課程總表</a>
+            {% if block.open %}
+            <button type="button" class="btn" data-course-action="end">結束課程</button>
+            {% else %}
+            <button type="button" class="btn" data-course-action="reopen">重新開啟</button>
+            {% endif %}
+            <button type="button" class="btn btn-icon" data-course-action="edit" title="編輯課程" aria-label="編輯課程「{{ c.name }}」"><i class="fas fa-pen" aria-hidden="true"></i></button>
+            <button type="button" class="btn btn-icon" data-course-action="delete" title="刪除課程" aria-label="刪除課程「{{ c.name }}」"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
+        </div>
+    </div>
+    {% if block.rows %}
+    <div class="table-wrap">
+        <table class="table cs-table">
+            <thead><tr><th>課堂</th><th>題庫 · 時限 · 作答</th><th>時間</th><th>狀態</th><th><span class="sr-only">動作</span></th></tr></thead>
+            <tbody>
+            {% for row in block.rows %}{{ session_row(row, block.open) }}{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="crs-none muted small">{% if block.n_sessions %}這個課程沒有符合的課堂。{% else %}這個課程還沒有課堂。按「開課堂」建立第一堂。{% endif %}</p>
+    {% endif %}
+</section>
+{%- endmacro %}
+
+{% block content %}
+{% call ui.page_head('課堂', sub='每個課程底下的課堂。學生只能在課堂的開始和結束時間之間作答。') %}
+<button type="button" class="btn" data-course-new><i class="fas fa-graduation-cap" aria-hidden="true"></i> 新課程</button>
+<button type="button" class="btn btn-primary" data-open-session=""><i class="fas fa-plus" aria-hidden="true"></i> 開課堂</button>
+{% endcall %}
+
+<div class="cs-bar">
+    <nav class="tabs" aria-label="課堂狀態">
+        {% for key, label in tabs %}
+        <a href="{{ url_for('class_sessions', status=None if key == 'all' else key, q=query or None) }}" data-status="{{ key }}"{% if status_filter == key %} aria-current="page"{% endif %}>{{ label }} <span class="cnt">{{ page.counts[key] }}</span></a>
+        {% endfor %}
+    </nav>
+    <form class="search" role="search" method="get" action="{{ url_for('class_sessions') }}">
+        {% if status_filter != 'all' %}<input type="hidden" name="status" value="{{ status_filter }}">{% endif %}
+        <i class="fas fa-search" aria-hidden="true"></i>
+        <input class="inp" type="search" name="q" value="{{ query }}" placeholder="搜尋課程、課堂、題庫或代碼" aria-label="搜尋課程、課堂、題庫或代碼">
+    </form>
+</div>
+
+{% for block in page.open_courses %}{{ course_block(block) }}{% endfor %}
+
+{% if not page.open_courses %}
+{% if query or status_filter != 'all' %}
+{{ ui.empty('找不到符合的課堂。', icon='fa-search') }}
+{% elif not page.n_courses %}
+{% call ui.empty('還沒有課程。先按右上角「新課程」，再在課程裡開課堂。', icon='fa-graduation-cap') %}
+<button type="button" class="btn btn-primary" data-course-new><i class="fas fa-plus" aria-hidden="true"></i> 新課程</button>
+{% endcall %}
+{% else %}
+{{ ui.empty('沒有進行中的課程。', icon='fa-graduation-cap') }}
+{% endif %}
+{% endif %}
+
+{% if page.ended_courses %}
+<details class="crs-ended" id="ended-courses"{% if query or status_filter == 'done' %} open{% endif %}>
+    <summary>已結束的課程（{{ page.ended_courses|length }}）</summary>
+    {% for block in page.ended_courses %}{{ course_block(block) }}{% endfor %}
+</details>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% include "_qr_stage.html" %}
+<script src="{{ url_for('static', filename='js/class_session_actions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/course_actions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/class_sessions.js') }}"></script>
+{% include "_class_session_dialog.html" %}
+{% endblock %}

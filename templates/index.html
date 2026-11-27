@@ -1,56 +1,79 @@
 {% extends "base.html" %}
 
-{% block title %}首頁 - 線上題庫系統{% endblock %}
+{% block title %}智慧題庫・教師登入{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/sign_in.css') }}">
+{% endblock %}
+
+{% block body_class %}sign-in{% endblock %}
+{% block topbar %}{% endblock %}
+{% block main_class %}lp{% endblock %}
 
 {% block content %}
-<div style="text-align: center; padding: 3rem 0;">
-    <h1 style="font-size: 3rem; margin-bottom: 1rem; color: #333;">🎓 歡迎使用線上題庫系統</h1>
-    <p style="font-size: 1.3rem; color: #666; margin-bottom: 2rem;">為教師和學生提供便利的線上測驗平台</p>
-    
-    <div style="display: flex; justify-content: center; margin-top: 3rem;">
-        <div class="card" style="width: 400px;">
-            <div class="card-header">
-                <h3>👨‍🏫 教師專用平台</h3>
-            </div>
-            <div class="card-body">
-                <p style="margin-bottom: 1.5rem;">建立和管理題庫，設計多種題型，追蹤學生成績</p>
-                <div style="margin-bottom: 2rem;">
-                    {% if login_error %}
-                    <div class="alert alert-error" role="alert" style="margin-bottom: 1rem;">{{ login_error }}</div>
-                    {% endif %}
-                    <a href="{{ url_for('teacher_auth.login') }}" class="btn btn-secondary" style="width: 70%;">用 Google 登入（vcrouter）</a>
-                </div>
-                <div style="background: #f8f9fa; padding: 1rem; border-radius: 5px; border-left: 4px solid #667eea;">
-                    <p style="margin: 0; font-size: 0.9rem; color: #666;">
-                        <strong>📝 學生注意：</strong> 請使用老師提供的題庫連結或代碼直接進入測驗
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div style="margin-top: 4rem; background: #f8f9fa; padding: 2rem; border-radius: 10px;">
-        <h2 style="color: #333; margin-bottom: 1.5rem;">✨ 系統特色</h2>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; text-align: left;">
-            <div>
-                <h4 style="color: #667eea; margin-bottom: 0.5rem;">📝 多種題型</h4>
-                <p>支援單選、多選、填空、下拉選單、程式碼排序題</p>
-            </div>
-            <div>
-                <h4 style="color: #667eea; margin-bottom: 0.5rem;">🔗 簡易分享</h4>
-                <p>透過題庫代碼輕鬆分享給學生</p>
-            </div>
-            <div>
-                <h4 style="color: #667eea; margin-bottom: 0.5rem;">⚡ 即時評分</h4>
-                <p>自動評分，立即查看測驗結果</p>
-            </div>
-            <div>
-                <h4 style="color: #667eea; margin-bottom: 0.5rem;">📊 成績管理</h4>
-                <p>完整的成績記錄和分析功能</p>
-            </div>
-        </div>
-    </div>
+{% if login_error %}
+<div class="note note-danger lp-banner" role="alert">
+    <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
+    <span>{{ login_error }}。{% if login_error_hint %}{{ login_error_hint }}{% endif %}</span>
+    <a href="{{ login_url }}">重新登入 →</a>
 </div>
+{% elif login_required and not current_teacher %}
+<div class="note lp-banner" role="status">
+    <i class="fas fa-info-circle" aria-hidden="true"></i>
+    <span>{{ login_required }}。</span>
+    <a href="{{ login_url }}">登入 →</a>
+</div>
+{% endif %}
 
+<section class="lp-hero">
+    <div class="lp-glow" aria-hidden="true"></div>
+    <div class="lp-in">
+        <div>
+            <div class="lp-brand"><span class="lp-mark" aria-hidden="true"><i class="fas fa-book-open"></i></span>智慧題庫</div>
+            <h1 class="lp-title">出題、發連結，<br>學生掃了就作答</h1>
+            {% if current_teacher %}
+            <a class="lp-btn" href="{{ url_for('teacher_dashboard') }}">進入後台 →</a>
+            <p class="lp-hint">已登入：{{ current_teacher.display_name }}</p>
+            {% else %}
+            <a class="lp-btn" href="{{ login_url }}">用 VansCoding 帳號登入</a>
+            <p class="lp-hint">教師登入會前往 VansCoding 登入頁，以 Google 帳號登入。</p>
+            {% endif %}
+        </div>
 
+        <div class="sc" aria-hidden="true">
+            <div class="sc-card sc-parsons">
+                <div class="sc-kind"><i class="fas fa-sort-amount-down"></i> 程式碼排序</div>
+                <div class="sc-lines">
+                    <div class="sc-ln l1">def greet(name):</div>
+                    <div class="sc-ln l2">    msg = "Hi, " + name</div>
+                    <div class="sc-ln l3">    return msg</div>
+                </div>
+            </div>
+            <div class="sc-card sc-single">
+                <div class="sc-kind"><i class="far fa-dot-circle"></i> 單選題 · 10 分</div>
+                <div class="sc-q">執行後會印出什麼？</div>
+                <pre class="sc-code">print("a" in "cat")</pre>
+                <div class="sc-opt ans"><span class="dot"></span>True<i class="fas fa-check ok"></i></div>
+                <div class="sc-opt"><span class="dot"></span>False</div>
+                <div class="sc-opt"><span class="dot"></span>"cat"</div>
+                <div class="sc-pop">+10 分</div>
+            </div>
+            <div class="sc-card sc-fill">
+                <div class="sc-kind"><i class="fas fa-i-cursor"></i> 填空題</div>
+                <div class="sc-q">Python 用 <span class="sc-blank"><span class="sc-typed">def</span></span> 定義函式。</div>
+            </div>
+            <div class="sc-chip c1"><i class="fas fa-bolt"></i> 自動評分</div>
+            <div class="sc-chip c2"><i class="fas fa-random"></i> 隨機抽題</div>
+            <div class="sc-chip c3"><i class="fas fa-square-root-alt"></i> LaTeX 數學式</div>
+            <div class="sc-card sc-qr">
+                <div class="sc-qr-img"></div>
+                <div class="sc-qr-t">掃描就作答</div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pages/sign_in.js') }}"></script>
 {% endblock %}

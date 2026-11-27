@@ -1,0 +1,40 @@
+{% extends "quiz_base.html" %}
+{#
+  Student page when a Class Session is not open (ticket 09, #11): status 'soon' = 這堂課還沒開始
+  (countdown, opens the quiz by itself), 'done' = 這堂課已經結束 (also when the Course ended).
+  Rendered by render_class_session_gate() in app.py.
+#}
+
+{% block title %}{{ '這堂課還沒開始' if status == 'soon' else '這堂課已經結束' }} - {{ quiz_bank.title }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/quiz.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="qz-gate">
+  <div class="form-card">
+    {% if status == 'soon' %}
+    <div class="qz-gate-ico is-wait" aria-hidden="true"><i class="far fa-clock"></i></div>
+    <h1>這堂課還沒開始</h1>
+    <p class="muted">{{ quiz_bank.title }} · {{ class_session.name }}</p>
+    <div class="qz-gate-cd" id="gate-countdown" data-starts-in="{{ starts_in }}" role="timer" aria-live="polite">--:--</div>
+    <div class="qz-gate-when">開始時間 <b class="num">{{ class_session.starts_at | utc8('%m/%d %H:%M') }}</b></div>
+    <p class="muted small">時間到會自動進入，不用重新整理。</p>
+    {% else %}
+    <div class="qz-gate-ico is-closed" aria-hidden="true"><i class="fas fa-lock"></i></div>
+    <h1>這堂課已經結束</h1>
+    <p class="muted">{{ quiz_bank.title }} · {{ class_session.name }}</p>
+    <div class="qz-gate-when">開放時間 <b class="num">{{ class_session_window(class_session) }}</b></div>
+    {% if not course_open %}<p class="muted small">這個課程已經結束。</p>{% endif %}
+    <p class="muted small">現在不能作答了。如果你已經交卷，可以用交卷時拿到的成績連結查看成績。有問題請聯絡老師。</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if status == 'soon' %}
+<script src="{{ url_for('static', filename='js/pages/class_session_gate.js') }}"></script>
+{% endif %}
+{% endblock %}
