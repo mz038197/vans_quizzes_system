@@ -29,7 +29,7 @@
         {% elif course_open %}
         <button type="button" class="btn" data-cs-action="reopen" data-id="{{ cs.id }}">重新開放</button>
         {% endif %}
-        {% if row.status != 'done' %}
+        {% if row.status == 'live' %}
         <button type="button" class="btn" data-cs-action="extend" data-id="{{ cs.id }}" title="結束時間延後 10 分鐘">延長 10 分</button>
         {% endif %}
         {% if has_session_sheet %}<a class="btn" href="{{ url_for('class_session_sheet', class_session_id=cs.id) }}">總表</a>{% endif %}

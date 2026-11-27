@@ -2489,6 +2489,8 @@ def edit_class_session(class_session, data, now):
             return _field_error('請選好結束時間', 'ends_at')
         if _same_minute(ends_at, class_session.ends_at):
             ends_at = class_session.ends_at
+        elif not class_session_rules.course_is_open(class_session.course, now):
+            return _field_error(COURSE_ENDED_ERROR, 'ends_at')  # as 延長 and 重新開放 refuse it
         elif ends_at <= now:
             return _field_error('結束時間已經過了。要現在結束，請按「立即結束」。', 'ends_at')
     if ends_at <= starts_at:
@@ -2554,7 +2556,7 @@ def edit_class_session(class_session, data, now):
 @teacher_required
 def class_session_action(class_session_id, action):
     """end (a live one, now), start-now (an upcoming one, same length), extend ({minutes}, default 10;
-    live or upcoming), reopen (an ended one, for 30 minutes). An ended Course refuses all but end."""
+    a live one only), reopen (an ended one, for 30 minutes). An ended Course refuses all but end."""
     if action not in ('end', 'start-now', 'extend', 'reopen'):
         return jsonify({'error': '找不到這個動作'}), 404
     class_session, error = owned_or_error(ClassSession, class_session_id)
@@ -2580,6 +2582,8 @@ def class_session_action(class_session_id, action):
     elif action == 'extend':
         if status == class_session_rules.DONE:
             return jsonify({'error': '這堂課已經結束，請用「重新開放」'}), 400
+        if status != class_session_rules.LIVE:
+            return jsonify({'error': '只有進行中的課堂可以延長。要改時間，請編輯課堂。'}), 400
         minutes, error_text = parse_time_limit((request.get_json(silent=True) or {}).get('minutes') or 10)
         if error_text:
             return jsonify({'error': '延長的時間要是大於 0 的整數分鐘'}), 400

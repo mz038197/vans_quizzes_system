@@ -131,6 +131,8 @@ def test_row_shows_code_banks_with_time_limit_count_and_folder_and_fitting_actio
     assert '一年級' in rows['現在']
     assert 'data-cs-action="end"' in rows['現在']
     assert 'data-cs-action="start-now"' in rows['等一下']
+    assert 'data-cs-action="extend"' in rows['現在']
+    assert 'data-cs-action="extend"' not in rows['等一下']  # only a live one can be extended
     assert 'data-cs-action="reopen"' in rows['剛剛']
     assert 'data-cs-action="end"' not in rows['剛剛']
     for row in rows.values():
