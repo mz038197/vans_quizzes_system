@@ -23,12 +23,17 @@ from practice_utils import (
 )
 from time_display import format_wall_clock_utc8
 from page_nav import register_page_nav
+import teacher_stats
 from teacher_auth import (
     DEFAULT_SECRET_KEY,
+    LOGIN_REQUIRED,
+    LOGIN_REQUIRED_NOTICE,
+    NON_TEACHER_HINT,
     LoginError,
     check_environment,
     configure_teacher_auth,
     current_teacher,
+    login_url as teacher_login_url,
     teacher_required,
 )
 
@@ -651,14 +656,76 @@ def grade_question(question, user_answer, points=None):
 # 路由定義
 @app.route('/')
 def index():
-    login_error = LoginError.notice_for(request.args.get('error'))
-    return render_template('index.html', login_error=login_error)
+    error_code = request.args.get('error')
+    return render_template(
+        'index.html',
+        login_error=LoginError.notice_for(error_code),
+        login_error_hint=NON_TEACHER_HINT if error_code == LoginError.LOGIN_FAILED.value else None,
+        login_required=LOGIN_REQUIRED_NOTICE if request.args.get('notice') == LOGIN_REQUIRED else None,
+        login_url=teacher_login_url(request.args.get('next')),
+    )
 
 @app.route('/teacher-dashboard')
 @teacher_required
 def teacher_dashboard():
-    quiz_banks = QuizBank.query.filter_by(teacher_id=current_teacher().user_id).all()
-    return render_template('teacher_dashboard.html', quiz_banks=quiz_banks)
+    teacher_id = current_teacher().user_id
+    banks = teacher_bank_overview(teacher_id)
+    since = datetime.utcnow() - 2 * teacher_stats.WEEK
+    hand_ins = (db.session.query(Submission.student_name, Submission.submitted_at)
+                .join(QuizBank).filter(QuizBank.teacher_id == teacher_id,
+                                       Submission.submitted_at >= since).all())
+    numbers = teacher_stats.week_numbers(hand_ins, datetime.utcnow())
+    numbers['week_delta_text'] = teacher_stats.delta_text(numbers['week_delta'])
+    numbers['banks'] = len(banks)
+    numbers['open_banks'] = sum(1 for b in banks if b['bank'].is_active)
+    numbers['attention'] = sum(1 for b in banks if b['attention'])
+    recent = (db.session.query(Submission, QuizBank.title)
+              .join(QuizBank).filter(QuizBank.teacher_id == teacher_id)
+              .order_by(Submission.submitted_at.desc()).limit(8).all())
+    recent = [{
+        'submission': s, 'bank_title': title,
+        'percent': teacher_stats.submission_percent(s.score, s.total_points),
+    } for s, title in recent]
+    return render_template('teacher_dashboard.html', banks=banks, numbers=numbers, recent=recent)
+
+
+@app.route('/quiz-banks')
+@teacher_required
+def quiz_banks():
+    banks = teacher_bank_overview(current_teacher().user_id)
+    attention_count = sum(1 for b in banks if b['attention'])
+    attention_only = request.args.get('filter') == 'attention'
+    shown = [b for b in banks if b['attention']] if attention_only else banks
+    return render_template('quiz_banks.html', banks=shown, total=len(banks),
+                           attention_count=attention_count, attention_only=attention_only)
+
+
+def teacher_bank_overview(teacher_id):
+    """The Teacher's Quiz Banks, newest first, with question count, Submission count, average and 需要注意."""
+    banks = (QuizBank.query.filter_by(teacher_id=teacher_id)
+             .order_by(QuizBank.created_at.desc(), QuizBank.id.desc()).all())
+    question_counts = dict(
+        db.session.query(Question.quiz_bank_id, db.func.count(Question.id))
+        .join(QuizBank).filter(QuizBank.teacher_id == teacher_id)
+        .group_by(Question.quiz_bank_id).all()
+    )
+    scores = {}
+    for bank_id, score, total in (db.session.query(Submission.quiz_bank_id, Submission.score, Submission.total_points)
+                                  .join(QuizBank).filter(QuizBank.teacher_id == teacher_id).all()):
+        scores.setdefault(bank_id, []).append((score, total))
+    overview = []
+    for bank in banks:
+        average = teacher_stats.average_percent(scores.get(bank.id, []))
+        overview.append({
+            'bank': bank,
+            'mode': '隨機練習' if bank.quiz_mode == 'practice' else '固定測驗',
+            'n_questions': question_counts.get(bank.id, 0),
+            'n_subs': len(scores.get(bank.id, [])),
+            'average': average,
+            'average_text': None if average is None else teacher_stats.percent_text(average),
+            'attention': teacher_stats.attention_reason(average),
+        })
+    return overview
 
 @app.route('/create-quiz-bank', methods=['GET', 'POST'])
 @teacher_required
