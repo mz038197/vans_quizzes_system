@@ -31,6 +31,8 @@
 
 {# ===== 題目 ===== #}
 <section id="panel-questions" role="tabpanel" aria-labelledby="tab-questions"{% if tab != 'questions' %} hidden{% endif %}>
+    {% set n_live = class_session_rows | selectattr('status', 'equalto', 'live') | list | length %}
+    {% if n_live %}{{ ui.note('有 %d 堂課正在進行，改題目會影響正在作答的學生' % n_live, 'warn') }}{% endif %}
     <div class="grid-main-side">
         <div class="ql" id="questions-container">
             {% for question in questions %}
@@ -202,7 +204,12 @@
                         {% if row.status != 'done' %}
                         <button type="button" class="btn btn-icon" data-copy-url="{{ url_for('take_quiz', access_code=cs.code, _external=True) }}" title="複製連結" aria-label="複製「{{ cs.name }}」的連結"><i class="fas fa-link" aria-hidden="true"></i></button>
                         {% endif %}
+                        {% if row.status == 'live' %}<button type="button" class="btn" data-cs-action="end" data-id="{{ cs.id }}">立即結束</button>
+                        {% elif row.status == 'soon' %}<button type="button" class="btn" data-cs-action="start-now" data-id="{{ cs.id }}">現在開始</button>
+                        {% elif row.course_open %}<button type="button" class="btn" data-cs-action="reopen" data-id="{{ cs.id }}">重新開放</button>{% endif %}
                         <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}">成績</a>
+                        <button type="button" class="btn btn-icon" data-cs-edit="{{ cs.id }}" title="編輯課堂" aria-label="編輯「{{ cs.name }}」"><i class="fas fa-pen" aria-hidden="true"></i></button>
+                        <button type="button" class="btn btn-icon" data-cs-delete="{{ cs.id }}" title="刪除課堂" aria-label="刪除「{{ cs.name }}」"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
                     </td>
                 </tr>
                 {% endfor %}
@@ -2037,6 +2044,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <script src="{{ url_for('static', filename='js/md_drop.js') }}"></script>
 <script src="{{ url_for('static', filename='js/md_preview.js') }}"></script>
 {% include "_class_session_dialog.html" %}
+<script src="{{ url_for('static', filename='js/class_session_actions.js') }}"></script>
 <script>
 /* 課堂 tab: copy a Class Session link (button turns green: 已複製). */
 document.addEventListener('click', async function (event) {

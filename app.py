@@ -1870,6 +1870,7 @@ def quiz_bank_class_sessions(quiz_bank, now=None):
             'status_label': class_session_status_label(class_session, status, now),
             'n_subs': counts.get(class_session.id, 0),
             'n_other_banks': len(class_session.offers) - 1,
+            'course_open': class_session_rules.course_is_open(class_session.course, now),
         })
     rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}
 
