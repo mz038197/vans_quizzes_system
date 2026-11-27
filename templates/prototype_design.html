@@ -400,7 +400,18 @@ textarea.inp { height: 96px; padding: 10px 12px; resize: vertical; }
 window.PROTO = (() => {
   const now = Date.now(), M = 60e3, H = 60 * M, D = 24 * H;
   const day = (d, h, m) => { const t = new Date(); t.setDate(t.getDate() + d); t.setHours(h, m, 0, 0); return t.getTime(); };
-  const status = s => Date.now() < s.start ? 'soon' : Date.now() <= s.end ? 'live' : 'done';
+  // A Course holds Class Sessions. An ended Course (ended, or its end passed) makes all its sessions ended (ADR 0011).
+  const courses = [
+    { id: 1, name: '高一 3 班 · 115 上', end: day(60, 23, 59), ended: false },
+    { id: 2, name: '高一 5 班 · 115 上', end: null, ended: false },
+    { id: 3, name: '高一 1 班 · 115 上', end: null, ended: false },
+    { id: 4, name: 'APCS 衝刺班', end: day(20, 23, 59), ended: false },
+    { id: 5, name: '程式社團', end: null, ended: false },
+    { id: 6, name: '高一 2 班 · 114 下', end: day(-120, 23, 59), ended: true },
+  ];
+  const courseOf = s => courses.find(c => c.id === s.courseId);
+  const courseOpen = c => !!c && !c.ended && (!c.end || Date.now() <= c.end);
+  const status = s => !courseOpen(courseOf(s)) ? 'done' : Date.now() < s.start ? 'soon' : Date.now() <= s.end ? 'live' : 'done';
   const p2 = n => String(n).padStart(2, '0');
   const md = t => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}`; };
   const hm = t => { const d = new Date(t); return `${p2(d.getHours())}:${p2(d.getMinutes())}`; };
@@ -411,19 +422,23 @@ window.PROTO = (() => {
     const st = status(s);
     if (st === 'live') return `<span class="sp live">● 進行中 · 剩 ${rel(s.end - Date.now())}</span>`;
     if (st === 'soon') return `<span class="sp soon">即將開始 · ${rel(s.start - Date.now())}後</span>`;
-    return `<span class="sp done">已結束</span>`;
+    return `<span class="sp done">${courseOpen(courseOf(s)) ? '已結束' : '已結束（課程已結束）'}</span>`;
   };
+  const coursePill = c => courseOpen(c) ? '<span class="sp live">進行中</span>' : '<span class="sp done">已結束</span>';
+  const courseEndText = c => c.ended ? `已在 ${md(c.end || Date.now())} 結束` : c.end ? `到 ${md(c.end)} 23:59` : '沒有結束時間';
   const progress = s => Math.min(100, Math.max(0, (Date.now() - s.start) / (s.end - s.start) * 100));
   const code = () => Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('');
   // A Class Session offers one or more Quiz Banks, each with its own optional Time Limit (minutes) and Submission count.
   const raw = [
-    { id: 1, name: '高一 3 班', code: 'K7Q2MX', start: now - 20 * M, end: now + 30 * M, banks: [{ title: 'Python 基礎測驗', limit: 20, subs: 7 }, { title: '迴圈與串列練習', limit: null, subs: 4 }] },
-    { id: 2, name: '高一 5 班', code: 'R4T8NB', start: day(1, 10, 0), end: day(1, 10, 50), banks: [{ title: 'Python 基礎測驗', limit: 20, subs: 0 }] },
-    { id: 6, name: '高一 1 班', code: 'H3J9QW', start: day(-6, 10, 0), end: day(-6, 10, 50), banks: [{ title: 'Python 基礎測驗', limit: 20, subs: 6 }] },
-    { id: 3, name: '高一 整學期練習', code: 'P9W3LC', start: now - 10 * D, end: day(45, 23, 59), banks: [{ title: '迴圈與串列練習', limit: null, subs: 9 }] },
-    { id: 4, name: 'APCS 模擬考', code: 'A2C5ZD', start: day(-3, 14, 0), end: day(-3, 16, 0), banks: [{ title: 'APCS 觀念題模擬', limit: 90, subs: 5 }] },
-    { id: 5, name: '社團', code: 'D6S1VK', start: now + 2 * H, end: now + 3 * H, banks: [{ title: '資料結構入門', limit: 30, subs: 0 }, { title: 'Python 基礎測驗', limit: 15, subs: 0 }] },
-    { id: 7, name: '高一 3 班 期末', code: 'F8E2RT', start: now - 15 * M, end: now + 35 * M, banks: [{ title: '期末複習（剛建立）', limit: 40, subs: 0 }] },
+    { id: 1, courseId: 1, name: '第 12 週 · 小考', code: 'K7Q2MX', start: now - 20 * M, end: now + 30 * M, banks: [{ title: 'Python 基礎測驗', limit: 20, subs: 7 }, { title: '迴圈與串列練習', limit: null, subs: 4 }] },
+    { id: 2, courseId: 2, name: '第 12 週 · 小考', code: 'R4T8NB', start: day(1, 10, 0), end: day(1, 10, 50), banks: [{ title: 'Python 基礎測驗', limit: 20, subs: 0 }] },
+    { id: 6, courseId: 3, name: '第 11 週 · 小考', code: 'H3J9QW', start: day(-6, 10, 0), end: day(-6, 10, 50), banks: [{ title: 'Python 基礎測驗', limit: 20, subs: 6 }] },
+    { id: 3, courseId: 1, name: '整學期練習', code: 'P9W3LC', start: now - 10 * D, end: day(45, 23, 59), banks: [{ title: '迴圈與串列練習', limit: null, subs: 9 }] },
+    { id: 4, courseId: 4, name: '模擬考 #3', code: 'A2C5ZD', start: day(-3, 14, 0), end: day(-3, 16, 0), banks: [{ title: 'APCS 觀念題模擬', limit: 90, subs: 5 }] },
+    { id: 5, courseId: 5, name: '本週社課', code: 'D6S1VK', start: now + 2 * H, end: now + 3 * H, banks: [{ title: '資料結構入門', limit: 30, subs: 0 }, { title: 'Python 基礎測驗', limit: 15, subs: 0 }] },
+    { id: 7, courseId: 1, name: '期末複習', code: 'F8E2RT', start: now - 15 * M, end: now + 35 * M, banks: [{ title: '期末複習（剛建立）', limit: 40, subs: 0 }] },
+    { id: 8, courseId: 6, name: '期末考', code: 'M5N7PZ', start: day(-125, 10, 0), end: day(-125, 10, 50), banks: [{ title: 'Python 基礎測驗', limit: 40, subs: 31 }] },
+    { id: 9, courseId: 6, name: '第 18 週 · 小考', code: 'W2X4QA', start: day(-132, 10, 0), end: day(-132, 10, 50), banks: [{ title: '迴圈與串列練習', limit: 20, subs: 29 }] },
   ];
   // `bank` (titles joined) and `subs` (total) are read-only views so older code keeps working.
   const mk = s => Object.defineProperties(s, {
@@ -456,7 +471,16 @@ window.PROTO = (() => {
       onOk: () => { sessions.splice(sessions.indexOf(s), 1); done && done(); },
     });
   }
-  return { sessions, status, range, rel, pill, progress, md, hm, code, M, H, D, day, has, mk, lastLimit, limitText, confirmDelete, deleteSession };
+  function deleteCourse(c, done) {
+    const ss = sessions.filter(x => x.courseId === c.id), n = ss.reduce((a, x) => a + x.subs, 0);
+    confirmDelete({
+      title: `刪除課程「${c.name}」？`,
+      body: ss.length ? `會<b>永久刪除</b>這個課程的 <b>${ss.length} 個課堂</b>和 <b>${n} 份作答紀錄</b>，學生的成績單連結也會打不開。這個動作無法復原。` : '這個課程還沒有課堂。',
+      name: c.name, needType: ss.length > 0, okText: '刪除課程',
+      onOk: () => { ss.forEach(x => sessions.splice(sessions.indexOf(x), 1)); courses.splice(courses.indexOf(c), 1); done && done(); },
+    });
+  }
+  return { courses, courseOf, courseOpen, coursePill, courseEndText, deleteCourse, sessions, status, range, rel, pill, progress, md, hm, code, M, H, D, day, has, mk, lastLimit, limitText, confirmDelete, deleteSession };
 
 })();
 </script>
@@ -505,8 +529,8 @@ window.PROTO = (() => {
 </style>
 {% if screen != 'login' %}<header class="a-top"><div class="a-top-in">
   <div class="a-logo"><i class="fas fa-book-open"></i> 智慧題庫</div>
-  {% if screen in ['teacher', 'banks', 'sessions', 'manage', 'subs', 'create', 'sheet'] %}
-  <nav class="a-nav"><a class="{{ 'on' if screen == 'teacher' }}" href="?variant=A&screen=teacher">儀表板</a><a class="{{ 'on' if screen in ['banks', 'manage', 'subs', 'create'] }}" href="?variant=A&screen=banks">題庫</a><a class="{{ 'on' if screen in ['sessions', 'sheet'] }}" href="?variant=A&screen=sessions">課堂</a></nav>
+  {% if screen in ['teacher', 'banks', 'sessions', 'manage', 'subs', 'create', 'sheet', 'csheet'] %}
+  <nav class="a-nav"><a class="{{ 'on' if screen == 'teacher' }}" href="?variant=A&screen=teacher">儀表板</a><a class="{{ 'on' if screen in ['banks', 'manage', 'subs', 'create'] }}" href="?variant=A&screen=banks">題庫</a><a class="{{ 'on' if screen in ['sessions', 'sheet', 'csheet'] }}" href="?variant=A&screen=sessions">課堂</a></nav>
   <div class="a-user"><span>開發老師</span><button class="btn">登出</button></div>
   {% elif screen in ['student', 'result', 'hub'] %}
   <div class="a-user"><span>王小明</span></div>
@@ -523,11 +547,23 @@ window.PROTO = (() => {
   <div class="a-kpis" id="fd-kpis"></div>
   <section id="fd-sp" hidden>
     <div class="sp-bar"><div class="seg-tabs" id="sp-tabs"></div><div class="search"><i class="fas fa-search"></i><input class="inp" id="sp-q" placeholder="搜尋課堂、題庫或代碼"></div></div>
-    <div class="panel">
-      <table><thead><tr><th>課堂</th><th>題庫 · 時限 · 作答</th><th>時間</th><th>狀態</th><th></th></tr></thead><tbody id="sp-rows"></tbody></table>
-      <div class="empty" id="sp-empty" hidden></div>
-    </div>
+    <div id="sp-courses"></div>
+    <div class="empty panel" id="sp-empty" hidden></div>
+    <button class="btn" id="sp-ended-toggle" style="margin-top:8px"></button>
+    <div id="sp-ended" style="margin-top:12px"></div>
   </section>
+  <style>
+  .crs { margin-bottom: var(--s3); }
+  .crs-h { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .crs-h h2 { font-size: 17px; font-family: var(--display); font-weight: 600; display: flex; gap: 8px; align-items: center; }
+  .crs-h h2 i { color: var(--primary); }
+  .crs-h .meta { color: var(--muted); font-size: 13px; }
+  .crs-h .acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; } .crs-h .acts .btn { min-height: 32px; }
+  .crs.ended .crs-h h2 i { color: var(--muted); }
+  .crs.ended table { opacity: .75; }
+  .crs .none { padding: 16px; color: var(--muted); font-size: 13px; }
+  .crs td:first-child { white-space: nowrap; } .crs td:first-child .code { font-size: 12px; display: inline-block; margin-top: 4px; }
+  </style>
   <section id="fd-sess-wrap">
     <div class="sec-h"><h2>進行中・即將開始的課堂</h2><span class="t-sub" id="fd-sess-sub"></span></div>
     <div id="fd-sess"></div>
@@ -786,8 +822,8 @@ window.PROTO = (() => {
       } else if (MODE === 'sessions') {
         $('fd-crumbs').innerHTML = '';
         $('fd-title').textContent = '課堂';
-        $('fd-sub').textContent = '所有題庫的課堂。學生只能在課堂的開始和結束時間之間作答。';
-        $('fd-head-actions').innerHTML = btnSession;
+        $('fd-sub').textContent = '先開課程，再在課程裡開課堂。學生只能在課堂的時間內、而且課程沒有結束時作答。';
+        $('fd-head-actions').innerHTML = '<button class="btn" data-act="course"><i class="fas fa-graduation-cap"></i> 新課程</button>' + btnSession;
       } else {
         $('fd-crumbs').innerHTML = f ? `<a href="#" data-go="root" data-drop="root">題庫</a> / <span style="${fc(f)}"><i class="fas fa-folder" style="color:var(--fc)"></i> ${esc(f.name)}</span>` : '';
         $('fd-title').innerHTML = f ? `<span class="fi" style="${fc(f)}"><i class="fas fa-folder"></i></span>${esc(f.name)}` : '題庫';
@@ -811,7 +847,7 @@ window.PROTO = (() => {
         $('fd-sess').className = ss.length ? 'sgrid' : '';
         $('fd-sess').innerHTML = ss.length ? ss.map(x => `<div class="scard ${P.status(x)}">
             <div>${P.pill(x)}</div>
-            <div><div class="nm">${esc(x.name)}</div><div class="bk">${x.banks.map(bb => `<div><i class="far fa-file-alt"></i> ${esc(bb.title)} <span class="t-sub">· ${P.limitText(bb.limit)}</span></div>`).join('')}</div></div>
+            <div><div class="t-sub" style="font-size:12px"><i class="fas fa-graduation-cap"></i> ${esc(P.courseOf(x).name)}</div><div class="nm">${esc(x.name)}</div><div class="bk">${x.banks.map(bb => `<div><i class="far fa-file-alt"></i> ${esc(bb.title)} <span class="t-sub">· ${P.limitText(bb.limit)}</span></div>`).join('')}</div></div>
             <div class="tm"><span>${P.range(x)}</span><span>${x.subs} 人作答</span></div>
             ${P.status(x) === 'live' ? `<div class="pg"><div style="width:${P.progress(x)}%"></div></div>` : ''}
             <div class="acts"><button class="btn btn-primary" data-qr="${x.code}"><i class="fas fa-qrcode"></i> 投影 QR</button><a class="btn" href="?variant=A&screen=sheet">總表</a></div>
@@ -854,47 +890,105 @@ window.PROTO = (() => {
 
       // QR select: sessions, not banks
       const sel = $('qr-bank'), keep = sel.value;
-      const opt = x => { const what = x.banks.length > 1 ? `${x.banks.length} 份題庫` : x.bank; return `<option value="${x.code}" data-title="${esc(x.name)} · ${esc(what)}">${esc(x.name)} · ${esc(what)}</option>`; };
+      const opt = x => { const what = x.banks.length > 1 ? `${x.banks.length} 份題庫` : x.bank; const nm = `${P.courseOf(x).name} · ${x.name}`; return `<option value="${x.code}" data-title="${esc(nm)} · ${esc(what)}">${esc(nm)} · ${esc(what)}</option>`; };
       const lv = ss.filter(x => P.status(x) === 'live'), sn = ss.filter(x => P.status(x) === 'soon');
       sel.innerHTML = (lv.length ? `<optgroup label="進行中">${lv.map(opt).join('')}</optgroup>` : '') + (sn.length ? `<optgroup label="即將開始">${sn.map(opt).join('')}</optgroup>` : '');
       if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
       sel.dispatchEvent(new Event('change'));
     }
 
-    // ---------- 課堂 page ----------
-    let spTab = 'all', spQ = '';
+    // ---------- 課堂 page: Class Sessions grouped by Course (ADR 0011) ----------
+    let spTab = 'all', spQ = '', spShowEnded = false;
+    function sessRow(x) {
+      const st = P.status(x), open = P.courseOpen(P.courseOf(x));
+      const bankCell = x.banks.map(bb => { const b = BANKS.find(z => z.title === bb.title), fo = b ? folderOf(where[b.id]) : null;
+        return `<div class="sb-line">${esc(bb.title)} <span class="t-sub">· ${P.limitText(bb.limit)} · ${bb.subs} 人</span>${fo ? ` <span class="fname" style="${fc(fo)}"><i class="fas fa-folder"></i>${esc(fo.name)}</span>` : ''}</div>`; }).join('');
+      return `<tr class="${st === 'live' ? 'sp-live' : ''}">
+        <td><div class="t-title">${esc(x.name)}</div><span class="code">${x.code}</span></td>
+        <td>${bankCell}</td>
+        <td class="num t-sub" style="white-space:nowrap">${P.range(x)}</td>
+        <td>${P.pill(x)}</td>
+        <td style="white-space:nowrap;text-align:right">
+          ${st !== 'done' ? `<button class="btn btn-icon" title="投影 QR" data-qr="${x.code}"><i class="fas fa-qrcode"></i></button>` : ''}
+          ${st === 'live' ? `<button class="btn" style="min-height:32px" data-sa="end" data-sid="${x.id}">立即結束</button>` : ''}
+          ${st === 'soon' ? `<button class="btn" style="min-height:32px" data-sa="start" data-sid="${x.id}">現在開始</button>` : ''}
+          ${st === 'done' && open ? `<button class="btn" style="min-height:32px" data-sa="reopen" data-sid="${x.id}">重新開放</button>` : ''}
+          <a class="btn" style="min-height:32px" href="?variant=A&screen=sheet">總表</a>
+          <button class="btn btn-icon" title="編輯課堂" data-sedit="${x.id}"><i class="fas fa-pen"></i></button>
+          <button class="btn btn-icon" title="刪除課堂" data-sdel="${x.id}"><i class="far fa-trash-alt"></i></button>
+        </td></tr>`;
+    }
+    function courseBlock(c, list) {
+      const open = P.courseOpen(c), all = P.sessions.filter(x => x.courseId === c.id);
+      const live = all.filter(x => P.status(x) === 'live').length;
+      return `<div class="panel crs ${open ? '' : 'ended'}">
+        <div class="crs-h">
+          <h2><i class="fas fa-graduation-cap"></i>${esc(c.name)}</h2>${P.coursePill(c)}
+          <span class="meta">${P.courseEndText(c)} · ${all.length} 個課堂${live ? ` · <b style="color:var(--success)">${live} 個進行中</b>` : ''}</span>
+          <div class="acts">
+            ${open ? `<button class="btn btn-primary" data-act="session" data-course="${c.id}"><i class="fas fa-plus"></i> 開課堂</button>` : ''}
+            <a class="btn" href="?variant=A&screen=csheet"><i class="fas fa-table"></i> 課程總表</a>
+            ${open ? `<button class="btn" data-ca="end" data-cid="${c.id}">結束課程</button>` : `<button class="btn" data-ca="reopen" data-cid="${c.id}">重新開啟</button>`}
+            <button class="btn btn-icon" title="編輯課程" data-ca="edit" data-cid="${c.id}"><i class="fas fa-pen"></i></button>
+            <button class="btn btn-icon" title="刪除課程" data-ca="del" data-cid="${c.id}"><i class="far fa-trash-alt"></i></button>
+          </div>
+        </div>
+        ${list.length ? `<table><thead><tr><th>課堂</th><th>題庫 · 時限 · 作答</th><th>時間</th><th>狀態</th><th></th></tr></thead><tbody>${list.map(sessRow).join('')}</tbody></table>`
+          : `<div class="none">${all.length ? '這個課程沒有符合的課堂。' : '這個課程還沒有課堂。按「開課堂」建立第一堂。'}</div>`}
+      </div>`;
+    }
     function renderSessionsPage() {
       const st = P.status, rank = { live: 0, soon: 1, done: 2 };
-      const all = P.sessions.slice().sort((a, c) => rank[st(a)] - rank[st(c)] || (st(a) === 'done' ? c.end - a.end : a.start - c.start));
-      const counts = { all: all.length, live: 0, soon: 0, done: 0 }; all.forEach(x => counts[st(x)]++);
+      const sorted = P.sessions.slice().sort((a, c) => rank[st(a)] - rank[st(c)] || (st(a) === 'done' ? c.end - a.end : a.start - c.start));
+      const openCourses = P.courses.filter(P.courseOpen), endedCourses = P.courses.filter(c => !P.courseOpen(c));
+      const inOpen = sorted.filter(x => P.courseOpen(P.courseOf(x)));
+      const counts = { all: inOpen.length, live: 0, soon: 0, done: 0 }; inOpen.forEach(x => counts[st(x)]++);
       const labels = { all: '全部', live: '進行中', soon: '即將開始', done: '已結束' };
       $('sp-tabs').innerHTML = Object.keys(labels).map(k => `<button class="${spTab === k ? 'on' : ''}" data-sptab="${k}">${labels[k]} <span>${counts[k]}</span></button>`).join('');
       const q = spQ.toLowerCase();
-      const list = all.filter(x => (spTab === 'all' || st(x) === spTab) && (!q || (x.name + x.bank + x.code).toLowerCase().includes(q)));
-      $('sp-rows').innerHTML = list.map(x => {
-        const s = st(x);
-        const bankCell = x.banks.map(bb => { const b = BANKS.find(z => z.title === bb.title), fo = b ? folderOf(where[b.id]) : null;
-          return `<div class="sb-line">${esc(bb.title)} <span class="t-sub">· ${P.limitText(bb.limit)} · ${bb.subs} 人</span>${fo ? ` <span class="fname" style="${fc(fo)}"><i class="fas fa-folder"></i>${esc(fo.name)}</span>` : ''}</div>`; }).join('');
-        return `<tr class="${s === 'live' ? 'sp-live' : ''}">
-          <td><div class="t-title">${esc(x.name)}</div><span class="code">${x.code}</span></td>
-          <td>${bankCell}</td>
-          <td class="num t-sub" style="white-space:nowrap">${P.range(x)}</td>
-          <td>${P.pill(x)}</td>
-          <td style="white-space:nowrap;text-align:right">
-            ${s !== 'done' ? `<button class="btn btn-icon" title="投影 QR" data-qr="${x.code}"><i class="fas fa-qrcode"></i></button>` : ''}
-            ${s === 'live' ? `<button class="btn" style="min-height:32px" data-sa="end" data-sid="${x.id}">立即結束</button>` : ''}
-            ${s === 'soon' ? `<button class="btn" style="min-height:32px" data-sa="start" data-sid="${x.id}">現在開始</button>` : ''}
-            ${s === 'done' ? `<button class="btn" style="min-height:32px" data-sa="reopen" data-sid="${x.id}">重新開放</button>` : ''}
-            <a class="btn" style="min-height:32px" href="?variant=A&screen=sheet">總表</a>
-            <button class="btn btn-icon" title="編輯課堂" data-sedit="${x.id}"><i class="fas fa-pen"></i></button>
-            <button class="btn btn-icon" title="刪除課堂" data-sdel="${x.id}"><i class="far fa-trash-alt"></i></button>
-          </td></tr>`;
-      }).join('');
-      $('sp-empty').hidden = !!list.length;
-      $('sp-empty').textContent = q ? '找不到符合的課堂。' : '這裡沒有課堂。';
+      const match = x => (spTab === 'all' || st(x) === spTab) && (!q || (P.courseOf(x).name + x.name + x.bank + x.code).toLowerCase().includes(q));
+      // a Course shows when any of its sessions match; with no filter, also an empty Course
+      const blocks = cs => cs.map(c => { const list = sorted.filter(x => x.courseId === c.id && match(x));
+        return (list.length || (spTab === 'all' && (!q || c.name.toLowerCase().includes(q)))) ? courseBlock(c, list) : ''; }).join('');
+      const html = blocks(openCourses);
+      $('sp-courses').innerHTML = html;
+      $('sp-empty').hidden = !!html;
+      $('sp-empty').textContent = q || spTab !== 'all' ? '找不到符合的課堂。' : '還沒有課程。先按右上角「新課程」。';
+      $('sp-ended-toggle').hidden = !endedCourses.length;
+      $('sp-ended-toggle').innerHTML = `<i class="fas fa-chevron-${spShowEnded ? 'up' : 'down'}"></i> 已結束的課程（${endedCourses.length}）`;
+      $('sp-ended').innerHTML = spShowEnded ? endedCourses.map(c => courseBlock(c, sorted.filter(x => x.courseId === c.id && (!q || (c.name + x.name + x.bank).toLowerCase().includes(q))))).join('') : '';
+    }
+    function dlgCourse(c) {
+      const toDate = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+      openDlg(c ? '編輯課程' : '新課程', `
+        <div class="fld"><label for="cr-name">課程名稱</label><input class="inp" id="cr-name" maxlength="40" value="${c ? esc(c.name) : ''}" placeholder="例如：高一 3 班 · 115 上"></div>
+        <div class="fld"><label for="cr-end">結束日期 <span class="t-sub" style="font-weight:400">· 可以不填</span></label><input class="inp" id="cr-end" type="date" value="${c && c.end && !c.ended ? toDate(c.end) : ''}">
+          <span class="t-sub" style="font-size:12px">這天 23:59 以後，課程自動結束，底下所有課堂一起結束。不填的話，課程會一直開著，直到你按「結束課程」。</span></div>
+        <div class="lo" id="cr-err" style="font-size:13px"></div>`, c ? '儲存' : '建立課程', () => {
+          const name = $('cr-name').value.trim(), v = $('cr-end').value;
+          if (!name) return $('cr-err').textContent = '請輸入課程名稱。';
+          const end = v ? new Date(v + 'T23:59').getTime() : null;
+          if (end && end < Date.now()) return $('cr-err').textContent = '結束日期已經過了。要結束課程，請按「結束課程」。';
+          if (c) { c.name = name; if (!c.ended) c.end = end; closeDlg(); toast(`已更新課程「${name}」`); return render(); }
+          const nc = { id: Date.now(), name, end, ended: false }; P.courses.push(nc); closeDlg(); toast(`已建立課程「${name}」`); render();
+        });
     }
     document.addEventListener('click', e => {
       const t = e.target.closest('[data-sptab]'); if (t) { spTab = t.dataset.sptab; return render(); }
+      if (e.target.closest('#sp-ended-toggle')) { spShowEnded = !spShowEnded; return render(); }
+      if (e.target.closest('[data-act="course"]')) return dlgCourse();
+      const ca = e.target.closest('[data-ca]');
+      if (ca) {
+        const c = P.courses.find(y => y.id === +ca.dataset.cid), k = ca.dataset.ca;
+        const n = P.sessions.filter(x => x.courseId === c.id && P.status(x) !== 'done').length;
+        if (k === 'edit') return dlgCourse(c);
+        if (k === 'del') return P.deleteCourse(c, () => { toast(`已刪除課程「${c.name}」`); render(); });
+        if (k === 'end') return P.confirmDelete({ title: `結束課程「${c.name}」？`,
+          body: n ? `底下 <b>${n} 個進行中或還沒開始的課堂</b>會一起結束。學生不能再作答，還在寫的會自動交卷。成績都會留著，之後可以「重新開啟」。` : '底下的課堂都已經結束了。成績都會留著，之後可以「重新開啟」。',
+          name: c.name, needType: false, okText: '結束課程', onOk: () => { c.ended = true; c.end = Date.now(); toast(`課程「${c.name}」已結束`); render(); } });
+        if (k === 'reopen') { c.ended = false; c.end = null; const back = P.sessions.filter(x => x.courseId === c.id && P.status(x) !== 'done').length;
+          toast(back ? `已重新開啟「${c.name}」，${back} 個課堂的時間還沒過，學生可以繼續作答` : `已重新開啟「${c.name}」。底下課堂的時間都過了，要的話再開新課堂`); return render(); }
+      }
       const a = e.target.closest('[data-sa]');
       if (a) {
         const x = P.sessions.find(y => y.id === +a.dataset.sid);
@@ -1014,7 +1108,10 @@ window.PROTO = (() => {
     qs.className = 'dlg-back'; qs.id = 'qs-dlg'; qs.hidden = true;
     qs.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="qs-title" style="width:min(640px,94vw);max-height:92vh;overflow:auto">
       <h2 id="qs-title">開課堂</h2>
-      <div class="fld"><label for="qs-name">課堂名稱</label><input class="inp" id="qs-name" placeholder="例如：高一 3 班、第 5 週"></div>
+      <div class="fld"><label for="qs-course">課程</label><select class="inp" id="qs-course"></select>
+        <input class="inp" id="qs-newcourse" placeholder="新課程名稱，例如：高一 3 班 · 115 上" hidden style="margin-top:6px">
+        <span class="t-sub" id="qs-course-note" style="font-size:12px"></span></div>
+      <div class="fld"><label for="qs-name">課堂名稱</label><input class="inp" id="qs-name" placeholder="例如：第 12 週 · 小考"></div>
       <div class="fld"><label>開放時間</label>
         <div class="presets" id="qs-presets">
           <button class="btn" data-qp="now50">現在開始・一節課 50 分鐘</button><button class="btn" data-qp="today">現在到今天 23:59</button>
@@ -1086,8 +1183,21 @@ window.PROTO = (() => {
         + (a <= Date.now() && b > Date.now() && !editing ? ' 建立後<b>馬上開始</b>。' : '')
         + (longest && longest * P.M > b - a ? `<br><span class="mid">注意：有題庫的時限 ${longest} 分鐘比開放時間長，課堂結束時會自動交卷。</span>` : '');
     }
+    function qsCourses(sel) {
+      const open = P.courses.filter(P.courseOpen);
+      $('qs-course').innerHTML = open.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('') + '<option value="new">＋ 新課程…</option>';
+      if (editing) { const c = P.courseOf(editing); if (!P.courseOpen(c)) $('qs-course').insertAdjacentHTML('afterbegin', `<option value="${c.id}">${esc(c.name)}（已結束）</option>`); }
+      $('qs-course').value = open.some(c => c.id === sel) || editing ? String(sel) : (open[0] ? String(open[0].id) : 'new');
+      $('qs-course').disabled = !!editing;
+      $('qs-course-note').textContent = editing ? '課堂建立後不能換課程。' : '';
+      qsCourseChanged();
+    }
+    function qsCourseChanged() { const isNew = $('qs-course').value === 'new'; $('qs-newcourse').hidden = !isNew; if (isNew) $('qs-newcourse').focus(); }
+    $('qs-course').addEventListener('change', qsCourseChanged);
     function qsOpen(opts = {}) {
       editing = opts.session || null;
+      $('qs-newcourse').value = '';
+      qsCourses(editing ? editing.courseId : (opts.course || +localStorage.getItem('proto-last-course') || 0));
       $('qs-title').textContent = editing ? `編輯課堂「${editing.name}」` : '開課堂';
       $('qs-ok').textContent = editing ? '儲存' : '開課堂';
       $('qs-find').value = '';
@@ -1123,14 +1233,20 @@ window.PROTO = (() => {
     $('qs-ok').onclick = () => {
       const name = $('qs-name').value.trim(), a = fromLocal($('qs-start').value), b = fromLocal($('qs-end').value);
       if (!name) return $('qs-err').textContent = '請輸入課堂名稱。';
+      let courseId = +$('qs-course').value;
+      if (!editing && $('qs-course').value === 'new') {
+        const cn = $('qs-newcourse').value.trim();
+        if (!cn) return $('qs-err').textContent = '請輸入新課程的名稱。';
+        courseId = Date.now() + 1; P.courses.push({ id: courseId, name: cn, end: null, ended: false });
+      }
       if (!chosen.length) return $('qs-err').textContent = '至少要選一份題庫。';
       if (isNaN(a) || isNaN(b) || b <= a) return qsSummary();
       if (editing) { Object.assign(editing, { name, start: a, end: b }); editing.banks = chosen; toast(`已更新「${name}」`); }
-      else { const s = P.mk({ id: Date.now(), name, code: P.code(), start: a, end: b, banks: chosen }); P.sessions.push(s); toast(`已開課堂「${name}」（${chosen.length} 份題庫），代碼 ${s.code}`); }
+      else { const s = P.mk({ id: Date.now(), courseId, name, code: P.code(), start: a, end: b, banks: chosen }); P.sessions.push(s); localStorage.setItem('proto-last-course', courseId); toast(`已在「${P.courseOf(s).name}」開課堂「${name}」（${chosen.length} 份題庫），代碼 ${s.code}`); }
       qs.hidden = true; render();
     };
     document.addEventListener('click', e => {
-      if (e.target.closest('[data-act="session"]')) qsOpen();
+      const so = e.target.closest('[data-act="session"]'); if (so) qsOpen({ course: +so.dataset.course || 0 });
       const ed = e.target.closest('[data-sedit]'); if (ed) qsOpen({ session: P.sessions.find(x => x.id === +ed.dataset.sedit) });
       const del = e.target.closest('[data-sdel]'); if (del) P.deleteSession(P.sessions.find(x => x.id === +del.dataset.sdel), () => { toast('已刪除課堂'); render(); });
       const ms = e.target.closest('#fd-menu [data-m="session"]');
@@ -1310,7 +1426,7 @@ window.PROTO = (() => {
     const toast = m => { const t = $('ss-toast'); t.textContent = m; t.hidden = false; clearTimeout(t._t); t._t = setTimeout(() => t.hidden = true, 3000); };
     function render() {
       $('ss-rows').innerHTML = mine().map(s => `<tr>
-        <td class="t-title">${s.name}</td>
+        <td><div class="t-sub" style="font-size:12px">${P.courseOf(s).name}</div><div class="t-title">${s.name}</div></td>
         <td class="num t-sub" style="white-space:nowrap">${P.range(s)}<div style="font-size:11px">時限 ${P.limitText(s.banks.find(b => b.title === BANK).limit)}</div></td>
         <td>${P.pill(s)}</td>
         <td><span class="code">${s.code}</span></td>
@@ -1331,7 +1447,7 @@ window.PROTO = (() => {
       if (!menu.hidden && !menu.contains(e.target) && !more) menu.hidden = true;
       if (more) {
         const s = P.sessions.find(x => x.id === +more.dataset.more), st = P.status(s);
-        menu.innerHTML = (st !== 'done' ? `<button data-a="ext"><i class="fas fa-plus-circle"></i>結束時間延後 10 分鐘</button>` : `<button data-a="reopen"><i class="fas fa-redo"></i>重新開放 30 分鐘</button>`)
+        menu.innerHTML = (st !== 'done' ? `<button data-a="ext"><i class="fas fa-plus-circle"></i>結束時間延後 10 分鐘</button>` : P.courseOpen(P.courseOf(s)) ? `<button data-a="reopen"><i class="fas fa-redo"></i>重新開放 30 分鐘</button>` : `<button disabled><i class="fas fa-lock"></i>課程已結束</button>`)
           + (st === 'live' ? `<button data-a="end"><i class="fas fa-stop-circle"></i>立即結束</button>` : '')
           + (st === 'soon' ? `<button data-a="startnow"><i class="fas fa-play-circle"></i>現在開始</button>` : '')
           + `<button data-a="edit"><i class="fas fa-pen"></i>編輯名稱和時間</button><hr>`
@@ -1388,7 +1504,7 @@ window.PROTO = (() => {
       if (!name) return $('ss-err').textContent = '請輸入課堂名稱。';
       if (isNaN(a) || isNaN(b) || b <= a) return summary();
       if (editing) { Object.assign(editing, { name, start: a, end: b }); toast(`已更新「${name}」`); }
-      else { const s = P.mk({ id: Date.now(), name, code: P.code(), start: a, end: b, banks: [{ title: BANK, limit: null, subs: 0 }] }); P.sessions.push(s); toast(`已開課堂「${name}」，代碼 ${s.code}`); }
+      else { const s = P.mk({ id: Date.now(), courseId: +localStorage.getItem('proto-last-course') || 1, name, code: P.code(), start: a, end: b, banks: [{ title: BANK, limit: null, subs: 0 }] }); P.sessions.push(s); toast(`已開課堂「${name}」，代碼 ${s.code}`); }
       dlg.hidden = true; render();
     };
     render(); setInterval(render, 30e3);
@@ -1572,9 +1688,9 @@ a.hub-item:hover { border-color: var(--primary); }
   ('黃柏翰', 68, 1, 60, 1), ('吳欣怡', 61, 1, none, 0), ('張家豪', 55, 1, 40, 1), ('劉承恩', none, 0, none, 0),
 ] %}
 <main class="a-main">
-  <div class="crumb"><a href="?variant=A&screen=sessions">課堂</a> / 高一 3 班</div>
+  <div class="crumb"><a href="?variant=A&screen=sessions">課堂</a> / <a href="?variant=A&screen=csheet">高一 3 班 · 115 上</a> / 第 12 週 · 小考</div>
   <div class="a-head">
-    <div><h1>高一 3 班 <span class="sp live">● 進行中</span></h1><p>全班總表 · 每一列是一位學生，每一欄是一份題庫</p></div>
+    <div><h1>第 12 週 · 小考 <span class="sp live">● 進行中</span></h1><p>課堂總表 · 每一列是一位學生，每一欄是一份題庫 · <a class="linkish" href="?variant=A&screen=csheet">看整個課程的總表 →</a></p></div>
     <div class="row-gap"><button class="btn"><i class="fas fa-file-csv"></i> 匯出 CSV</button><button class="btn" data-x="edit"><i class="fas fa-pen"></i> 編輯課堂</button></div>
   </div>
   <div class="panel">
@@ -1606,6 +1722,54 @@ a.hub-item:hover { border-color: var(--primary); }
 .times { font-size: 11px; font-weight: 600; color: var(--primary); background: var(--primary-soft); border-radius: 999px; padding: 1px 6px; margin-left: 4px; }
 </style>
 
+{% elif screen == 'csheet' %}
+{% set cols = [('第 10 週 · 小考', 'Python 基礎測驗'), ('第 11 週 · 小考', '迴圈與串列練習'), ('第 12 週 · 小考', 'Python 基礎測驗'), ('第 12 週 · 小考', '迴圈與串列練習'), ('整學期練習', '迴圈與串列練習')] %}
+{% set csheet = [
+  ('陳怡君', [(95, 1), (88, 1), (98, 1), (90, 1), (92, 3)]), ('林冠宇', [(80, 1), (72, 2), (92, 1), (70, 2), (85, 1)]),
+  ('王小明', [(70, 1), (none, 0), (81, 1), (none, 0), (60, 2)]), ('李佳穎', [(66, 1), (74, 1), (76, 2), (85, 1), (none, 0)]),
+  ('黃柏翰', [(58, 1), (61, 1), (68, 1), (60, 1), (55, 1)]), ('吳欣怡', [(none, 0), (52, 1), (61, 1), (none, 0), (none, 0)]),
+  ('張家豪', [(45, 2), (50, 1), (55, 1), (40, 1), (48, 4)]), ('劉承恩', [(none, 0), (none, 0), (none, 0), (none, 0), (none, 0)]),
+] %}
+<main class="a-main">
+  <div class="crumb"><a href="?variant=A&screen=sessions">課堂</a> / 高一 3 班 · 115 上</div>
+  <div class="a-head">
+    <div><h1><i class="fas fa-graduation-cap" style="color:var(--primary)"></i> 高一 3 班 · 115 上 <span class="sp live">進行中</span></h1><p>課程總表 · 每一列是一位學生，每一欄是一個課堂裡的一份題庫 · 到 1/20 23:59</p></div>
+    <div class="row-gap"><button class="btn"><i class="fas fa-file-csv"></i> 匯出 CSV</button><button class="btn">結束課程</button></div>
+  </div>
+  <div class="panel" style="overflow-x:auto">
+    <table class="sheet">
+      <thead>
+        <tr><th rowspan="2">學生</th>{% for c in ['第 10 週 · 小考', '第 11 週 · 小考', '第 12 週 · 小考', '整學期練習'] %}<th colspan="{{ 2 if c == '第 12 週 · 小考' else 1 }}" class="grp-h"><a href="?variant=A&screen=sheet">{{ c }}</a></th>{% endfor %}<th rowspan="2">平均</th><th rowspan="2">寫了</th></tr>
+        <tr>{% for c, b in cols %}<th><span class="t-sub" style="font-weight:500">{{ b }}</span></th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+      {% for name, cells in csheet %}
+        {% set done = cells | selectattr(1) | list %}
+        <tr>
+          <td class="t-title">{{ name }}</td>
+          {% for v, n in cells %}
+          <td>{% if v is none %}<span class="t-sub">未作答</span>{% else %}
+            <a class="cell {{ 'hi' if v >= 80 else ('mid' if v >= 60 else 'lo') }}" href="?variant=A&screen=result">{{ v }}%</a>
+            {% if n > 1 %}<span class="times" title="寫了 {{ n }} 次，顯示最後一次">×{{ n }}</span>{% endif %}
+          {% endif %}</td>
+          {% endfor %}
+          {% if done %}{% set avg = ((done | map(attribute=0) | sum) / (done | length)) | round | int %}
+          <td><b class="{{ 'hi' if avg >= 80 else ('mid' if avg >= 60 else 'lo') }}">{{ avg }}%</b></td>{% else %}<td><span class="t-sub">—</span></td>{% endif %}
+          <td class="t-sub">{{ done | length }} / {{ cells | length }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="t-sub" style="margin-top:12px;font-size:13px">依姓名把同一位學生排在同一列（會先去掉頭尾空白），跨這個課程所有的課堂。每格顯示<b>最後一次</b>的分數；「平均」只算有作答的格子，「寫了」是有作答的格子數。點課堂名稱看那個課堂的總表。</p>
+</main>
+<style>
+.sheet th { vertical-align: bottom; } .sheet th .t-sub { font-weight: 400; margin-top: 2px; }
+.sheet .grp-h { text-align: center; border-bottom: 1px solid var(--border); } .sheet .grp-h a { color: var(--text); }
+.sheet .cell { font-weight: 600; font-variant-numeric: tabular-nums; }
+.sheet .cell:hover { text-decoration: underline; }
+.times { font-size: 11px; font-weight: 600; color: var(--primary); background: var(--primary-soft); border-radius: 999px; padding: 1px 6px; margin-left: 4px; }
+</style>
 {% elif screen == 'wait' %}
 <main class="gate">
   <div class="form-card">
@@ -2230,7 +2394,7 @@ a.hub-item:hover { border-color: var(--primary); }
   <a id="proto-next" href="?variant={{ order[(i + 1) % 3] }}&screen={{ screen }}">→</a>
   <span class="sep"></span>
   <select class="proto-sel" aria-label="畫面" onchange="location.href='?variant={{ order[i] }}&screen=' + this.value">
-    {% for k, label in [('login', '登入頁'), ('teacher', '老師・儀表板'), ('banks', '老師・題庫'), ('sessions', '老師・課堂'), ('sheet', '老師・課堂總表'), ('manage', '老師・題庫管理'), ('subs', '老師・成績'), ('create', '老師・建立題庫'), ('wait', '學生・還沒開始'), ('hub', '學生・課堂清單'), ('entry', '學生・開始'), ('student', '學生・作答'), ('result', '學生・成績單'), ('closed', '學生・已結束')] %}
+    {% for k, label in [('login', '登入頁'), ('teacher', '老師・儀表板'), ('banks', '老師・題庫'), ('sessions', '老師・課堂'), ('sheet', '老師・課堂總表'), ('csheet', '老師・課程總表'), ('manage', '老師・題庫管理'), ('subs', '老師・成績'), ('create', '老師・建立題庫'), ('wait', '學生・還沒開始'), ('hub', '學生・課堂清單'), ('entry', '學生・開始'), ('student', '學生・作答'), ('result', '學生・成績單'), ('closed', '學生・已結束')] %}
     <option value="{{ k }}" {{ 'selected' if screen == k }}>{{ label }}</option>
     {% endfor %}
   </select>
