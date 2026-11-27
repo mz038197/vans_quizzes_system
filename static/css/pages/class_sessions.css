@@ -4,11 +4,11 @@
 .cs-bar .search { width: min(320px, 100%); }
 
 .crs { margin-bottom: var(--s3); }
-.crs-h { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px var(--s2); border-bottom: 1px solid var(--border); }
+.crs-h { display: flex; align-items: center; gap: var(--s1-5); flex-wrap: wrap; padding: var(--s1-5) var(--s2); border-bottom: 1px solid var(--border); }
 .crs-h h2 { font-family: var(--display); font-size: var(--fs-md); font-weight: 600; display: flex; gap: var(--s1); align-items: center; margin: 0; }
 .crs-h h2 i { color: var(--primary); }
 .crs-meta { color: var(--muted); font-size: var(--fs-sm); }
-.crs-acts { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.crs-acts { margin-left: auto; display: flex; gap: var(--s1); flex-wrap: wrap; }
 .crs.is-ended .crs-h h2 i { color: var(--muted); }
 .crs.is-ended .table-wrap { opacity: .8; }
 .crs-none { padding: var(--s2); margin: 0; }

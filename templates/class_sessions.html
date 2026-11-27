@@ -20,6 +20,7 @@
     <td>{{ ui.status_pill(row.status, row.status_label) }}</td>
     <td class="cs-acts">
         {% if row.status != 'done' %}
+        <button type="button" class="btn btn-icon" data-qr="{{ cs.code }}" data-title="{{ cs.course.name }} · {{ cs.name }}" title="投影 QR" aria-label="投影「{{ cs.name }}」的 QR code"><i class="fas fa-qrcode" aria-hidden="true"></i></button>
         <button type="button" class="btn btn-icon" data-copy-url="{{ url_for('take_quiz', code=cs.code, _external=True) }}" title="複製連結" aria-label="複製「{{ cs.name }}」的連結"><i class="fas fa-link" aria-hidden="true"></i></button>
         {% endif %}
         {% if row.status == 'live' %}
@@ -29,10 +30,10 @@
         {% elif course_open %}
         <button type="button" class="btn" data-cs-action="reopen" data-id="{{ cs.id }}">重新開放</button>
         {% endif %}
-        {% if row.status != 'done' %}
+        {% if row.status == 'live' %}
         <button type="button" class="btn" data-cs-action="extend" data-id="{{ cs.id }}" title="結束時間延後 10 分鐘">延長 10 分</button>
         {% endif %}
-        {% if has_session_sheet %}<a class="btn" href="{{ url_for('class_session_sheet', class_session_id=cs.id) }}">總表</a>{% endif %}
+        <a class="btn" href="{{ url_for('class_session_sheet', class_session_id=cs.id) }}">總表</a>
         <button type="button" class="btn btn-icon" data-cs-edit="{{ cs.id }}" title="編輯課堂" aria-label="編輯「{{ cs.name }}」"><i class="fas fa-pen" aria-hidden="true"></i></button>
         <button type="button" class="btn btn-icon" data-cs-delete="{{ cs.id }}" title="刪除課堂" aria-label="刪除「{{ cs.name }}」"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
     </td>
@@ -50,7 +51,7 @@
         <span class="crs-meta">{{ course_end_text(c) }} · {{ block.n_sessions }} 個課堂{% if block.n_live %} · <b class="ok-text">{{ block.n_live }} 個進行中</b>{% endif %}</span>
         <div class="crs-acts">
             {% if block.open %}<button type="button" class="btn btn-primary" data-open-session="" data-course="{{ c.id }}"><i class="fas fa-plus" aria-hidden="true"></i> 開課堂</button>{% endif %}
-            {% if has_course_sheet %}<a class="btn" href="{{ url_for('course_sheet', course_id=c.id) }}"><i class="fas fa-table" aria-hidden="true"></i> 課程總表</a>{% endif %}
+            <a class="btn" href="{{ url_for('course_sheet', course_id=c.id) }}"><i class="fas fa-table" aria-hidden="true"></i> 課程總表</a>
             {% if block.open %}
             <button type="button" class="btn" data-course-action="end">結束課程</button>
             {% else %}
@@ -117,7 +118,9 @@
 {% endblock %}
 
 {% block scripts %}
+{% include "_qr_stage.html" %}
 <script src="{{ url_for('static', filename='js/class_session_actions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/course_actions.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pages/class_sessions.js') }}"></script>
 {% include "_class_session_dialog.html" %}
 {% endblock %}

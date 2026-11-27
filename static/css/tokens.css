@@ -51,6 +51,7 @@
   /* ---- 8-point spacing ---- */
   --s0: 4px;
   --s1: 8px;
+  --s1-5: 12px;  /* half step: row gaps and table cells */
   --s2: 16px;
   --s3: 24px;
   --s4: 32px;
@@ -67,7 +68,7 @@
   --quiz-max: 720px;   /* student page width */
   --top-h: 64px;       /* top bar height */
 
-  /* ---- type (12/14/16/20/24/32) ---- */
+  /* ---- type (12/14/16/20/24/32; display 40/52) ---- */
   --font: 'Roboto', 'Noto Sans TC', system-ui, sans-serif;
   --display: 'Poppins', 'Noto Sans TC', sans-serif;
   --mono: 'Inconsolata', 'JetBrains Mono', Consolas, monospace;
@@ -77,6 +78,8 @@
   --fs-lg: 20px;
   --fs-xl: 24px;
   --fs-2xl: 32px;
+  --fs-3xl: 40px;   /* display: projector title, countdown, score ring */
+  --fs-hero: 52px;  /* display: sign-in title at its largest */
 
   /* ---- motion ---- */
   --ease: 150ms ease;

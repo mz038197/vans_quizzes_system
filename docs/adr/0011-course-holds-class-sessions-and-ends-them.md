@@ -14,4 +14,4 @@ Every Class Session belongs to one Course. A Course has a name, an optional end,
 
 - An ended Course takes no new Class Session. A Class Session end later than the Course end can be saved, but it stops at the Course end.
 - Deleting a Course deletes its Class Sessions and their Submissions, after a confirmation that names how many will go and asks for the Course name.
-- The migration puts old Submissions into an ended Course 「改版前」 with one ended Class Session 「改版前的作答」.
+- The migration makes one ended Course 「改版前」 for each Teacher with old Submissions. In it, each Quiz Bank with Submissions gets one ended Class Session 「改版前的作答」, and that Quiz Bank's old Submissions go there.

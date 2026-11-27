@@ -1,6 +1,6 @@
 /* 課堂總表 and 課程總表 (ticket 16, #18). Tokens only. */
 .sheet th { vertical-align: bottom; }
-.sheet th .t-sub { font-weight: 400; margin-top: 2px; color: var(--muted); font-size: var(--fs-xs); }
+.sheet th .t-sub { font-weight: 400; margin-top: var(--s0); color: var(--muted); font-size: var(--fs-xs); }
 .sheet .grp-h { text-align: center; border-bottom: 1px solid var(--border); }
 .sheet .grp-h a { color: var(--text); }
 .sheet td { white-space: nowrap; }

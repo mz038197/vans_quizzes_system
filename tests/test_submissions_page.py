@@ -21,7 +21,7 @@ def _submit(client, name='學生甲', email='', answer='A'):
     ids = client._ids
     response = client.post(
         f'/api/quiz/{live_code(client)}/submit',
-        json={'student_name': name, 'student_email': email, 'answers': {str(ids['question_id']): answer}},
+        json={'student_name': name, 'student_email': email, 'quiz_bank_id': ids['quiz_bank_id'], 'answers': {str(ids['question_id']): answer}},
     )
     assert response.status_code == 200
     return response.get_json()
@@ -142,3 +142,12 @@ def test_rows_mark_repeat_takes_and_time_up(auth_client):
     script = _page(auth_client).rsplit('<script', 1)[1]
     assert '第 ${s.take} 次' in script
     assert '時間到' in script
+
+
+def test_grade_thresholds_come_from_grade_stats(auth_client):
+    """Review fix 13: one PASS_PERCENT / HIGH_PERCENT, not 80/60 written in the page."""
+    import grade_stats
+    html = auth_client.get(f"/quiz-bank/{auth_client._ids['quiz_bank_id']}/submissions").get_data(as_text=True)
+    assert f'const PASS_PERCENT = {grade_stats.PASS_PERCENT};' in html
+    assert f'const HIGH_PERCENT = {grade_stats.HIGH_PERCENT};' in html
+    assert 'pct >= 80' not in html and 'pct >= 60' not in html

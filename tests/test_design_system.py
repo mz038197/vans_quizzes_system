@@ -39,7 +39,7 @@ def _submission_token(client):
     ids = client._ids
     response = client.post(
         f'/api/quiz/{live_code(client)}/submit',
-        json={'student_name': '學生甲', 'student_email': '', 'answers': {str(ids['question_id']): 'A'}},
+        json={'student_name': '學生甲', 'student_email': '', 'quiz_bank_id': ids['quiz_bank_id'], 'answers': {str(ids['question_id']): 'A'}},
     )
     assert response.status_code == 200
     return response.get_json()['result_url'].rsplit('/', 1)[-1]
@@ -97,7 +97,7 @@ def test_student_pages_use_the_shared_layout_without_teacher_nav(client):
         assert '登出' not in html, path
 
 
-@pytest.mark.parametrize('path', ['/static/css/app.css', '/static/css/legacy.css',
+@pytest.mark.parametrize('path', ['/static/css/app.css', '/static/css/qr_stage.css',
                                   '/static/css/pages/dashboard.css', '/static/css/pages/quiz_banks.css',
                                   '/static/css/class_session_dialog.css', '/static/css/pages/quiz.css'])
 def test_shared_stylesheets_take_every_colour_from_the_tokens(client, path):
@@ -151,3 +151,53 @@ def test_ui_script_offers_dialog_and_toast(client):
     js = _text(client.get('/static/js/ui.js'))
     for name in ['toast', 'dialog', 'ask', 'tell', 'askText', 'setStudentName']:
         assert re.search(r'window\.UI = \{[^}]*\b' + name + r'\b', js), name
+
+
+def test_one_js_escape_helper(client):
+    """Review fix 16: UI.escape in static/js/ui.js is the only HTML escape function."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    files = [p for p in list((root / 'templates').glob('*.html')) + list((root / 'static' / 'js').rglob('*.js'))
+             if 'vendor' not in p.parts]
+    defining = [p.name for p in files if "'&amp;'" in p.read_text(encoding='utf-8')]
+    assert defining == ['ui.js']
+    for name in ('class_session_dialog.js', 'md_preview.js'):
+        assert 'UI.escape(' in (root / 'static' / 'js' / name).read_text(encoding='utf-8')
+    for name in ('create_quiz_bank.html', 'manage_quiz_bank.html', 'submissions.html'):
+        assert 'UI.escape' in (root / 'templates' / name).read_text(encoding='utf-8')
+
+
+# Raw px sizes for font-size, gap, padding and margin are not allowed in the site's stylesheets
+# (review fix 9): use --fs-*, --s0..--s5 (and --s1-5). Allowed: 0, 1px (borders, hairline offsets),
+# and the documented exceptions below.
+SIZE_PROP = re.compile(r'(?<![\w-])(font-size|gap|row-gap|column-gap|padding(?:-[a-z]+)*|margin(?:-[a-z]+)*)\s*:\s*([^;}]+)')
+SIZE_EXCEPTIONS = (
+    'calc(var(--indent, 0) * 20px)',  # quiz_bank.css: one Parsons indent level is 20px, as on the take page
+)
+
+
+def _raw_sizes(css):
+    css = re.sub(r'/\*.*?\*/', '', css, flags=re.S)
+    found = []
+    for prop, value in SIZE_PROP.findall(css):
+        for exception in SIZE_EXCEPTIONS:
+            value = value.replace(exception, '')
+        found += [f'{prop}: {v}' for v in re.findall(r'(?<![\w.])-?\d*\.?\d+(?:px|rem|em)\b', value)
+                  if v.lstrip('-') not in ('0px', '1px')]
+    return found
+
+
+def _site_stylesheets():
+    import pathlib
+    css_dir = pathlib.Path(__file__).resolve().parent.parent / 'static' / 'css'
+    return [p for p in sorted(css_dir.rglob('*.css')) if p.name != 'tokens.css']
+
+
+@pytest.mark.parametrize('path', _site_stylesheets(), ids=lambda p: p.name)
+def test_stylesheets_take_sizes_from_the_tokens(path):
+    assert _raw_sizes(path.read_text(encoding='utf-8')) == []
+
+
+def test_raw_size_check_catches_px_and_allows_borders():
+    assert _raw_sizes('.a { font-size: 13px; padding: 0 1px 12px; margin: -1px; }') == ['font-size: 13px', 'padding: 12px']
+    assert _raw_sizes('.a { gap: var(--s1); border: 2px solid; margin-left: calc(var(--indent, 0) * 20px); }') == []

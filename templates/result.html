@@ -20,7 +20,8 @@
 
 <div class="qz-res">
     <section class="qz-res-top">
-        <div class="qz-ring{% if pct < 60 %} low{% elif pct < 80 %} mid{% endif %}" style="--p: {{ pct | round | int }}"
+        {% set band = grade_band(pct) %}
+        <div class="qz-ring{% if band == 'lo' %} low{% elif band == 'mid' %} mid{% endif %}" style="--p: {{ pct | round | int }}"
              role="img" aria-label="得分 {{ pct | round | int }}%">
             <div><div><b>{{ pct | round | int }}<small>%</small></b><span>{{ num(submission.score) }} / {{ num(submission.total_points) }} 分</span></div></div>
         </div>

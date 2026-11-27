@@ -17,7 +17,7 @@
 {% endblock %}
 
 {% block content %}
-{% set mode_label = '隨機練習' if quiz_bank.quiz_mode == 'practice' else '固定測驗' %}
+{% set mode_label = quiz_mode_label(quiz_bank.quiz_mode) %}
 {% call ui.page_head('成績', sub=quiz_bank.title ~ ' · ' ~ mode_label) %}
 <button type="button" id="export-csv" class="btn"><i class="fas fa-file-csv" aria-hidden="true"></i> 匯出 CSV</button>
 {% endcall %}
@@ -128,12 +128,6 @@ const CSV_URL = {{ url_for('export_submissions_csv', quiz_bank_id=quiz_bank.id) 
 const TYPE_NAMES = {{ question_type_names | tojson }};
 let grades = null;
 
-function esc(value) {
-    return String(value == null ? '' : value)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
 function formatElapsedSeconds(elapsedSeconds) {
     if (elapsedSeconds == null) {
         return '—';
@@ -147,9 +141,13 @@ function pctText(value) {
     return value == null ? '—' : (Math.round(value * 10) / 10).toString();
 }
 
+// Grade thresholds from grade_stats (PASS_PERCENT, HIGH_PERCENT), as grade_sheets.band uses them.
+const PASS_PERCENT = {{ pass_percent }};
+const HIGH_PERCENT = {{ high_percent }};
+
 function tierOf(pct) {
-    if (pct >= 80) return 'hi';
-    if (pct >= 60) return 'mid';
+    if (pct >= HIGH_PERCENT) return 'hi';
+    if (pct >= PASS_PERCENT) return 'mid';
     return 'lo';
 }
 
@@ -204,7 +202,7 @@ function displayStatistics() {
     document.getElementById('kpi-min').textContent = pctText(s.lowest);
     document.getElementById('kpi-max-d').textContent = s.highest == null ? '' : `差距 ${pctText(s.highest - s.lowest)} 分`;
     document.getElementById('kpi-pass').textContent = pctText(s.pass_rate);
-    document.getElementById('kpi-pass-d').textContent = `60 分以上：${s.passed} / ${s.count}`;
+    document.getElementById('kpi-pass-d').textContent = `${PASS_PERCENT} 分以上：${s.passed} / ${s.count}`;
 }
 
 function displayBands() {
@@ -215,7 +213,7 @@ function displayBands() {
     grades.bands.forEach((band, i) => {
         const row = document.createElement('div');
         row.className = 'dist-row';
-        row.innerHTML = `<span>${esc(band.label)}</span><div class="track"><div class="fill bg-${tiers[i]}"></div></div><span class="c num">${band.count}</span>`;
+        row.innerHTML = `<span>${UI.escape(band.label)}</span><div class="track"><div class="fill bg-${tiers[i]}"></div></div><span class="c num">${band.count}</span>`;
         row.querySelector('.fill').style.width = (band.count / most * 100) + '%';
         box.appendChild(row);
     });
@@ -227,7 +225,7 @@ function displayMostMissed() {
     for (const m of grades.most_missed) {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td><span class="tb t-${esc(m.question_type)}">${esc(TYPE_NAMES[m.question_type] || m.type_name)}</span> 第 ${m.number} 題<div class="t-sub">${esc(m.title)}</div></td>
+            <td><span class="tb t-${UI.escape(m.question_type)}">${UI.escape(TYPE_NAMES[m.question_type] || m.type_name)}</span> 第 ${m.number} 題<div class="t-sub">${UI.escape(m.title)}</div></td>
             <td class="num r ${tierOf(100 - m.wrong_rate)} nowrap">${Math.round(m.wrong_rate)}% 答錯<div class="t-sub">${m.wrong} / ${m.seen}</div></td>
         `;
         tbody.appendChild(row);
@@ -249,21 +247,21 @@ function displaySubmissionsTable() {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td><span class="rank${s.rank <= 3 ? ' top' : ''}">${s.rank}</span></td>
-            <td><div class="t-title">${esc(s.student_name)}${s.takes > 1 ? ` <span class="times">第 ${s.take} 次</span>` : ''}${s.is_practice ? ' <span class="badge badge-info">練習</span>' : ''}</div></td>
-            <td class="t-sub">${s.student_email ? esc(s.student_email) : '—'}</td>
-            <td class="t-sub nowrap">${s.class_session ? esc(s.class_session) : '—'}</td>
+            <td><div class="t-title">${UI.escape(s.student_name)}${s.takes > 1 ? ` <span class="times">第 ${s.take} 次</span>` : ''}${s.is_practice ? ' <span class="badge badge-info">練習</span>' : ''}</div></td>
+            <td class="t-sub">${s.student_email ? UI.escape(s.student_email) : '—'}</td>
+            <td class="t-sub nowrap">${s.class_session ? UI.escape(s.class_session) : '—'}</td>
             <td class="r">
                 <div class="pct">
                     <b class="num ${tier}">${s.percentage.toFixed(1)}%</b>
                     <div class="track"><div class="fill bg-${tier}"></div></div>
-                    <span class="pts num">${esc(s.score)} / ${esc(s.total_points)}</span>
+                    <span class="pts num">${UI.escape(s.score)} / ${UI.escape(s.total_points)}</span>
                 </div>
             </td>
             <td class="num t-sub nowrap">${formatElapsedSeconds(s.elapsed_seconds)}${s.time_up ? ' <span class="badge badge-warn">時間到</span>' : ''}</td>
-            <td class="num t-sub nowrap">${esc(s.submitted_at)}</td>
+            <td class="num t-sub nowrap">${UI.escape(s.submitted_at)}</td>
             <td class="t-actions">
                 <a class="btn" href="${SUBMISSIONS_URL}/${s.id}" target="_blank" rel="noopener">看答卷</a>
-                <button type="button" class="btn btn-icon btn-ghost" data-delete="${s.id}" title="刪除" aria-label="刪除 ${esc(s.student_name)} 的作答"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
+                <button type="button" class="btn btn-icon btn-ghost" data-delete="${s.id}" title="刪除" aria-label="刪除 ${UI.escape(s.student_name)} 的作答"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
             </td>
         `;
         row.querySelector('.fill').style.width = Math.max(0, Math.min(100, s.percentage)) + '%';

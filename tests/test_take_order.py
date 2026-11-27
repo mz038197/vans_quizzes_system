@@ -97,6 +97,7 @@ def test_submit_persists_take_order_and_review_flags(client):
         f'/api/quiz/{access_code}/submit',
         json={
             'student_name': 'Carol',
+            'quiz_bank_id': ids['quiz_bank_id'],
             'answers': {str(q1): 'A', str(q2_id): 'B'},
             'review_flag_question_ids': [q1, 999, str(q2_id)],
         },
@@ -143,6 +144,7 @@ def test_submit_without_take_session_uses_bank_order_not_new_permutation(client)
         f'/api/quiz/{access_code}/submit',
         json={
             'student_name': 'Dana',
+            'quiz_bank_id': ids['quiz_bank_id'],
             'answers': {str(q1): 'A', str(q2_id): 'A'},
         },
     )

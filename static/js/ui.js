@@ -223,5 +223,11 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showFlash);
     else showFlash();
 
-    window.UI = { toast, dialog, ask, tell, askText, flash, setStudentName };
+    /* Text → safe HTML text (for template strings that build innerHTML). The site's one escape helper. */
+    function escape(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
+    window.UI = { toast, dialog, ask, tell, askText, flash, setStudentName, escape };
 })();

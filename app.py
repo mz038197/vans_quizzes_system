@@ -10,6 +10,7 @@ import logging
 import re
 import secrets
 from datetime import datetime, timedelta
+from werkzeug.exceptions import NotFound
 from urllib.parse import quote
 import os
 import sys
@@ -109,6 +110,12 @@ QUESTION_TYPE_NAMES = {
 app.jinja_env.globals['question_type_names'] = QUESTION_TYPE_NAMES
 
 @app.template_global()
+def quiz_mode_label(quiz_mode):
+    """隨機練習 for a practice Quiz Bank, else 固定測驗."""
+    return '隨機練習' if quiz_mode == 'practice' else '固定測驗'
+
+
+@app.template_global()
 def get_question_type_name(question_type):
     return QUESTION_TYPE_NAMES.get(question_type, question_type)
 
@@ -202,9 +209,49 @@ class ClassSessionBank(db.Model):
 
     quiz_bank = db.relationship('QuizBank', backref=db.backref('offers', lazy=True, cascade='all, delete-orphan'))
 
-def is_own_quiz_bank(quiz_bank):
-    """A Teacher manages only the Quiz Banks they own; an admin is no exception (ADR 0007)."""
-    return quiz_bank.teacher_id == current_teacher().user_id
+NOT_FOUND_TEXT = '找不到資料'
+
+
+def is_own(record):
+    """The one ownership rule: a Teacher manages only what they own; an admin is no exception (ADR 0007).
+
+    `record` is a Quiz Bank, Folder, Course or Class Session (its teacher_id), or a Question or
+    Submission (its Quiz Bank's teacher_id). None is nobody's.
+    """
+    if record is None:
+        return False
+    owner = record.teacher_id if hasattr(record, 'teacher_id') else record.quiz_bank.teacher_id
+    return owner == current_teacher().user_id
+
+
+def owned_or_404(model, record_id, message=NOT_FOUND_TEXT):
+    """The record of this Teacher, else 404, for pages and APIs alike: "not yours" looks like
+    "not there" (no 403, no redirect). API paths get JSON {error} (see json_not_found)."""
+    try:
+        record = db.session.get(model, int(record_id))
+    except (TypeError, ValueError):
+        record = None
+    if not is_own(record):
+        abort(404, description=message)
+    return record
+
+
+def owned_or_none(model, record_id):
+    """Like owned_or_404 for an id inside a request body: the record, or None when it is missing or not yours."""
+    try:
+        record = db.session.get(model, int(record_id))
+    except (TypeError, ValueError):
+        return None
+    return record if is_own(record) else None
+
+
+@app.errorhandler(404)
+def json_not_found(error):
+    """API callers get JSON; pages keep the normal 404 page."""
+    if request.path.startswith('/api/'):
+        description = error.description if error.description != NotFound.description else NOT_FOUND_TEXT
+        return jsonify({'error': description}), 404
+    return error
 
 LATE_HAND_IN_ERROR = '課堂已結束，這份作答沒有被收下'
 
@@ -212,10 +259,6 @@ LATE_HAND_IN_ERROR = '課堂已結束，這份作答沒有被收下'
 def class_session_window(class_session):
     """The window as shown (UTC+8), e.g. '11/27 10:00–10:50'."""
     return class_session_rules.window_text(class_session.starts_at, class_session.ends_at)
-
-def is_own(record):
-    """Ownership check for a Course or Class Session (same rule as is_own_quiz_bank)."""
-    return record is not None and record.teacher_id == current_teacher().user_id
 
 def new_class_session_code(avoid=()):
     """An unguessable 6-character Class Session code that no Class Session uses (nor any code in `avoid`)."""
@@ -886,8 +929,7 @@ def teacher_dashboard():
         'percent': teacher_stats.submission_percent(s.score, s.total_points),
     } for s, title in recent]
     return render_template('teacher_dashboard.html', banks=banks, numbers=numbers, recent=recent,
-                           sessions=shown, cs_dialog=class_session_dialog_data(teacher_id),
-                           has_session_sheet='class_session_sheet' in app.view_functions)
+                           sessions=shown, cs_dialog=class_session_dialog_data(teacher_id))
 
 
 @app.route('/quiz-banks')
@@ -901,7 +943,7 @@ def quiz_banks():
     folder = None
     if request.args.get('folder'):
         folder = Folder.query.get_or_404(request.args.get('folder', type=int) or 0)
-        if not is_own_folder(folder):
+        if not is_own(folder):
             return redirect(url_for('quiz_banks'))
     attention_count = sum(1 for b in banks if b['attention'])
     attention_only = request.args.get('filter') == 'attention'
@@ -937,7 +979,7 @@ def bank_matches(bank, query):
 def teacher_class_session_overview(teacher_id, now=None):
     """Every Class Session of the Teacher with its status, Submission count and distinct trimmed names.
 
-    Sorted live first, then upcoming, then ended; soonest start first in each group.
+    Sorted by class_session_rules.list_order (live, upcoming by start, ended by latest end).
     An ended Course makes its Class Sessions DONE (class_session_rules.status).
     """
     now = now or datetime.utcnow()
@@ -961,8 +1003,7 @@ def teacher_class_session_overview(teacher_id, now=None):
         elif status == class_session_rules.SOON:
             row['when_text'] = f'{teacher_stats.duration_text(class_session.starts_at - now)}後'
         rows.append(row)
-    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}
-    return sorted(rows, key=lambda r: (rank[r['status']], r['session'].starts_at))
+    return sorted(rows, key=lambda r: class_session_rules.list_order(r['session'], r['status']))
 
 
 def teacher_bank_overview(teacher_id, now=None, sessions=None):
@@ -1000,7 +1041,7 @@ def teacher_bank_overview(teacher_id, now=None, sessions=None):
             average, [(r['session'].name, r['status'], r['session'].starts_at, r['n_subs']) for r in own], now)
         overview.append({
             'bank': bank,
-            'mode': '隨機練習' if bank.quiz_mode == 'practice' else '固定測驗',
+            'mode': quiz_mode_label(bank.quiz_mode),
             'n_questions': question_counts.get(bank.id, 0),
             'n_subs': len(scores.get(bank.id, [])),
             'average': average,
@@ -1026,10 +1067,6 @@ class Folder(db.Model):
     name = db.Column(db.String(100), nullable=False)
     color = db.Column(db.String(20), nullable=False, default='blue')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-
-def is_own_folder(folder):
-    return folder.teacher_id == current_teacher().user_id
 
 
 def teacher_folders(teacher_id):
@@ -1060,14 +1097,9 @@ def owned_folder_or_error(folder_id):
     """(folder, None) for a Folder of this Teacher; (None, error response) if not. No id means 未分類."""
     if folder_id is None or folder_id == '':
         return None, None
-    try:
-        folder = db.session.get(Folder, int(folder_id))
-    except (TypeError, ValueError):
-        folder = None
+    folder = owned_or_none(Folder, folder_id)
     if folder is None:
         return None, (jsonify({'error': '找不到資料夾'}), 404)
-    if not is_own_folder(folder):
-        return None, (jsonify({'error': '無權限操作'}), 403)
     return folder, None
 
 
@@ -1087,9 +1119,7 @@ def create_folder():
 @app.route('/api/folders/<int:folder_id>', methods=['PUT', 'DELETE'])
 @teacher_required
 def manage_folder(folder_id):
-    folder = Folder.query.get_or_404(folder_id)
-    if not is_own_folder(folder):
-        return jsonify({'error': '無權限操作'}), 403
+    folder = owned_or_404(Folder, folder_id, '找不到資料夾')
     if request.method == 'DELETE':
         QuizBank.query.filter_by(folder_id=folder.id).update({'folder_id': None})
         db.session.delete(folder)
@@ -1115,10 +1145,8 @@ def move_quiz_banks():
     if refused:
         return refused
     banks = QuizBank.query.filter(QuizBank.id.in_(set(ids))).all()
-    if len(banks) != len(set(ids)):
+    if len(banks) != len(set(ids)) or not all(is_own(b) for b in banks):
         return jsonify({'error': '找不到題庫'}), 404
-    if not all(is_own_quiz_bank(b) for b in banks):
-        return jsonify({'error': '無權限操作'}), 403
     previous = [{'id': bank.id, 'folder_id': bank.folder_id} for bank in banks]
     for bank in banks:
         bank.folder_id = folder.id if folder else None
@@ -1156,16 +1184,14 @@ def create_quiz_bank():
     if tab not in ('manual', 'import'):
         tab = 'manual'
     folder = db.session.get(Folder, request.args.get('folder', type=int) or 0)
-    if folder is not None and not is_own_folder(folder):
+    if folder is not None and not is_own(folder):
         folder = None
     return render_template('create_quiz_bank.html', tab=tab, folder=folder)
 
 @app.route('/quiz-bank/<int:quiz_bank_id>')
 @teacher_required
 def manage_quiz_bank(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return redirect(url_for('teacher_dashboard'))
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
 
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
     category_stats = {}
@@ -1363,13 +1389,30 @@ def play_quiz(code):
     questions_data = build_questions_data(questions, points_map)
     return render_template('take_quiz.html', questions=questions_data, is_practice=False, **entry.page_context())
 
+
+@app.route('/api/quiz/<code>/status')
+def take_status(code):
+    """The Class Session end as the take page needs it (spec #2 C5, story 90).
+
+    The take page polls this, so 結束課程, 立即結束, 延長 and 重新開放 made during a Take reach its clock.
+    `ends_in` counts seconds from the server's now, so a wrong device clock does not matter.
+    """
+    entry = find_student_entry(code, request.args.get('bank'))
+    now = datetime.utcnow()
+    status = entry.status(now)
+    ended = status == class_session_rules.DONE
+    return jsonify({
+        'status': status,
+        'ended': ended,
+        'ends_in': 0 if ended else entry.ends_in_seconds(now),
+        'ends_hm': format_wall_clock_utc8(entry.ends_at, '%H:%M'),
+    })
+
 # API 路由
 @app.route('/api/quiz-bank/<int:quiz_bank_id>', methods=['DELETE'])
 @teacher_required
 def delete_quiz_bank(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'error': '無權限操作'}), 403
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
 
     submission_count = Submission.query.filter_by(quiz_bank_id=quiz_bank_id).count()
     payload = request.get_json(silent=True) or {}
@@ -1399,9 +1442,7 @@ def delete_quiz_bank(quiz_bank_id):
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/questions', methods=['GET', 'POST'])
 @teacher_required
 def manage_questions(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'error': '無權限操作'}), 403
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
     
     if request.method == 'GET':
         questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
@@ -1453,11 +1494,8 @@ def manage_questions(quiz_bank_id):
 @app.route('/api/question/<int:question_id>', methods=['PUT', 'DELETE'])
 @teacher_required
 def manage_question(question_id):
-    question = Question.query.get_or_404(question_id)
+    question = owned_or_404(Question, question_id)
     quiz_bank = question.quiz_bank
-    
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'error': '無權限操作'}), 403
     
     if request.method == 'PUT':
         data = request.get_json() or {}
@@ -1488,9 +1526,7 @@ def manage_question(question_id):
 @teacher_required
 def copy_question(question_id):
     """Add a new Question with the same content right after the source."""
-    source = Question.query.get_or_404(question_id)
-    if not is_own_quiz_bank(source.quiz_bank):
-        return jsonify({'error': '無權限操作'}), 403
+    source = owned_or_404(Question, question_id)
 
     position = source.order_index or 0
     Question.query.filter(
@@ -1515,9 +1551,7 @@ def copy_question(question_id):
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/practice-config', methods=['PUT'])
 @teacher_required
 def update_practice_config(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'error': '無權限操作'}), 403
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
 
     data = request.get_json() or {}
     quiz_mode = data.get('quiz_mode', quiz_bank.quiz_mode or 'fixed')
@@ -1663,9 +1697,7 @@ def download_append_questions_template():
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/import-md/preview', methods=['POST'])
 @teacher_required
 def preview_append_quiz_md(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'success': False, 'errors': ['無權限操作']}), 403
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
 
     try:
         uploaded = request.files.get('file')
@@ -1702,9 +1734,7 @@ def preview_append_quiz_md(quiz_bank_id):
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/import-md/confirm', methods=['POST'])
 @teacher_required
 def confirm_append_quiz_md(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'success': False, 'errors': ['無權限操作']}), 403
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
 
     uploaded = request.files.get('file')
     if not uploaded or not uploaded.filename:
@@ -1742,6 +1772,10 @@ def confirm_append_quiz_md(quiz_bank_id):
 @app.route('/api/quiz/<code>/submit', methods=['POST'])
 def submit_quiz(code):
     data = request.get_json(silent=True) or {}
+    # A hand-in names its Quiz Bank; there is no fallback to the first offered one.
+    ClassSession.query.filter_by(code=code).first_or_404()
+    if data.get('quiz_bank_id') in (None, ''):
+        return jsonify({'error': '缺少題庫，請重新開啟測驗'}), 400
     entry = find_student_entry(code, data.get('quiz_bank_id'))
     now = datetime.utcnow()
     if now < entry.class_session.starts_at:
@@ -1843,9 +1877,7 @@ def view_result(result_token):
 @app.route('/quiz-bank/<int:quiz_bank_id>/submissions/<int:submission_id>')
 @teacher_required
 def view_submission_as_teacher(quiz_bank_id, submission_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return redirect(url_for('teacher_dashboard'))
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
     submission = Submission.query.filter_by(id=submission_id, quiz_bank_id=quiz_bank.id).first_or_404()
     return render_submission_result(submission, teacher_view=True)
 
@@ -1885,20 +1917,17 @@ def render_submission_result(submission, teacher_view=False):
 @app.route('/quiz-bank/<int:quiz_bank_id>/submissions')
 @teacher_required
 def view_submissions_page(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return redirect(url_for('teacher_dashboard'))
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
     
     return render_template('submissions.html', quiz_bank=quiz_bank,
+                           pass_percent=grade_stats.PASS_PERCENT, high_percent=grade_stats.HIGH_PERCENT,
                            class_session_options=grade_class_session_options(quiz_bank),
                            selected_class_session=request.args.get('class_session', ''))
 
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/submissions')
 @teacher_required
 def view_submissions(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'error': '無權限查看'}), 403
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
     
     submissions = Submission.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Submission.submitted_at.desc()).all()
     submissions_data = []
@@ -1921,11 +1950,8 @@ def view_submissions(quiz_bank_id):
 @app.route('/api/submission/<int:submission_id>', methods=['DELETE'])
 @teacher_required
 def delete_submission(submission_id):
-    submission = Submission.query.get_or_404(submission_id)
+    submission = owned_or_404(Submission, submission_id)
     quiz_bank = submission.quiz_bank
-    
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'error': '無權限操作'}), 403
     
     try:
         db.session.delete(submission)
@@ -2030,9 +2056,7 @@ def quiz_bank_grades(quiz_bank, class_session=None, query=''):
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/grades')
 @teacher_required
 def quiz_bank_grades_api(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'error': '無權限查看'}), 403
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
     data = quiz_bank_grades(quiz_bank, grade_filter_session(quiz_bank), request.args.get('q', ''))
     data['class_sessions'] = grade_class_session_options(quiz_bank)
     return jsonify(data)
@@ -2042,9 +2066,7 @@ def quiz_bank_grades_api(quiz_bank_id):
 @teacher_required
 def export_submissions_csv(quiz_bank_id):
     """The filtered Submissions (Class Session and name search) as CSV, in the table's order."""
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        abort(403)
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
     data = quiz_bank_grades(quiz_bank, grade_filter_session(quiz_bank), request.args.get('q', ''))
     out = io.StringIO()
     writer = csv.writer(out)
@@ -2082,13 +2104,6 @@ def grade_sheet(class_sessions):
     return sheet
 
 
-def owned_or_404(model, record_id):
-    record = db.session.get(model, record_id)
-    if not is_own(record):
-        abort(404)
-    return record
-
-
 def course_sessions_in_start_order(course):
     return sorted(course.class_sessions, key=lambda cs: (cs.starts_at, cs.id))
 
@@ -2112,11 +2127,14 @@ def sheet_csv(filename, header, sheet, with_summary):
 @teacher_required
 def class_session_sheet(class_session_id):
     class_session = owned_or_404(ClassSession, class_session_id)
-    status = class_session_rules.status(class_session, datetime.utcnow())
+    now = datetime.utcnow()
+    status = class_session_rules.status(class_session, now)
     return render_template('grade_sheet.html', kind='session', class_session=class_session,
                            course=class_session.course, status=status,
                            status_label=class_session_status_label(class_session, status),
-                           sheet=grade_sheet([class_session]))
+                           course_open=class_session_rules.course_is_open(class_session.course, now),
+                           sheet=grade_sheet([class_session]),
+                           cs_dialog=class_session_dialog_data(current_teacher().user_id))
 
 
 @app.route('/class-sessions/<int:class_session_id>/sheet.csv')
@@ -2132,11 +2150,15 @@ def class_session_sheet_csv(class_session_id):
 @teacher_required
 def course_sheet(course_id):
     course = owned_or_404(Course, course_id)
+    now = datetime.utcnow()
     sessions = course_sessions_in_start_order(course)
     groups = [{'session': cs, 'span': len(cs.offers)} for cs in sessions if cs.offers]
+    n_active, n_sessions, n_subs = course_numbers(course, now)
+    course_info = {'ends_on': course_json(course, now)['ends_on'],  # what the Course actions need
+                   'n_active': n_active, 'n_sessions': n_sessions, 'n_subs': n_subs}
     return render_template('grade_sheet.html', kind='course', course=course, groups=groups,
-                           course_open=class_session_rules.course_is_open(course, datetime.utcnow()),
-                           sheet=grade_sheet(sessions))
+                           course_open=class_session_rules.course_is_open(course, now),
+                           course_info=course_info, sheet=grade_sheet(sessions))
 
 
 @app.route('/courses/<int:course_id>/sheet.csv')
@@ -2219,7 +2241,7 @@ def class_session_dialog_data(teacher_id, current_folder_id=None):
         'current_folder_id': current_folder_id if any(f.id == current_folder_id for f in folders) else None,
         'banks': [{
             'id': b.id, 'title': b.title,
-            'mode': '隨機練習' if b.quiz_mode == 'practice' else '固定測驗',
+            'mode': quiz_mode_label(b.quiz_mode),
             'n_questions': question_counts.get(b.id, 0),
             'last_time_limit': limits.get(b.id),
             'folder_id': b.folder_id,
@@ -2267,15 +2289,7 @@ def quiz_bank_class_sessions(quiz_bank, now=None):
             'n_other_banks': len(class_session.offers) - 1,
             'course_open': class_session_rules.course_is_open(class_session.course, now),
         })
-    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}
-
-    def order(row):
-        class_session = row['session']
-        if row['status'] == class_session_rules.DONE:
-            return (rank[row['status']], -class_session_rules.effective_end(class_session).timestamp())
-        return (rank[row['status']], class_session.starts_at.timestamp())
-
-    return sorted(rows, key=order)
+    return sorted(rows, key=lambda r: class_session_rules.list_order(r['session'], r['status']))
 
 
 def class_session_status_label(class_session, status, now=None):
@@ -2298,7 +2312,7 @@ def create_course():
     name = (data.get('name') or '').strip()
     if not name:
         return _field_error('請輸入課程名稱', 'name')
-    ends_at, error = parse_course_end(data.get('ends_on'))
+    ends_at, error = class_session_rules.parse_course_end(data.get('ends_on'), datetime.utcnow())
     if error:
         return _field_error(error, 'ends_on')
     course = Course(teacher_id=current_teacher().user_id, name=name, ends_at=ends_at)
@@ -2323,14 +2337,9 @@ def create_class_session():
     course = None
     new_course_name = (data.get('new_course_name') or '').strip()
     if data.get('course_id') not in (None, '', 'new'):
-        try:
-            course = db.session.get(Course, int(data['course_id']))
-        except (TypeError, ValueError):
-            course = None
+        course = owned_or_none(Course, data['course_id'])
         if course is None:
             return _field_error('找不到這個課程', 'course', 404)
-        if not is_own(course):
-            return jsonify({'error': '無權限操作'}), 403
         if not class_session_rules.course_is_open(course, now):
             return _field_error('這個課程已經結束，不能再開課堂。請先重新開啟課程。', 'course')
     elif not new_course_name:
@@ -2359,11 +2368,9 @@ def create_class_session():
             return _field_error('找不到這份題庫', 'banks', 404)
         if bank_id in seen:
             continue
-        quiz_bank = db.session.get(QuizBank, bank_id)
+        quiz_bank = owned_or_none(QuizBank, bank_id)
         if quiz_bank is None:
             return _field_error('找不到這份題庫', 'banks', 404)
-        if not is_own_quiz_bank(quiz_bank):
-            return jsonify({'error': '無權限操作'}), 403
         minutes, error = parse_time_limit(item.get('time_limit_minutes'))
         if error:
             return _field_error(error, 'banks')
@@ -2395,16 +2402,6 @@ REOPEN_FOR = timedelta(minutes=30)
 COURSE_ENDED_ERROR = '這個課程已經結束。請先重新開啟課程。'
 
 
-def owned_or_error(model, record_id):
-    """(record, None) for a Course or Class Session of this Teacher; (None, error response) if not."""
-    record = db.session.get(model, record_id)
-    if record is None:
-        return None, (jsonify({'error': '找不到資料'}), 404)
-    if not is_own(record):
-        return None, (jsonify({'error': '無權限操作'}), 403)
-    return record, None
-
-
 def submission_counts_by_bank(class_session):
     """{quiz_bank_id: Submissions of that Quiz Bank in this Class Session}."""
     return dict(
@@ -2419,7 +2416,7 @@ def class_session_edit_json(class_session, now=None):
     counts = submission_counts_by_bank(class_session)
     data = class_session_json(class_session)
     data.update({
-        'started': now >= class_session.starts_at,
+        'started': class_session_rules.has_started(class_session, now),
         'course_open': class_session_rules.course_is_open(class_session.course, now),
         'status': class_session_rules.status(class_session, now),
         'n_subs': sum(counts.values()),
@@ -2440,9 +2437,7 @@ def _same_minute(a, b):
 def manage_class_session(class_session_id):
     """GET: edit data. PUT: edit (spec #2: start and Time Limits only before the start).
     DELETE: delete with its Submissions (needs {confirm: true} when it has Submissions)."""
-    class_session, error = owned_or_error(ClassSession, class_session_id)
-    if error:
-        return error
+    class_session = owned_or_404(ClassSession, class_session_id)
     now = datetime.utcnow()
     if request.method == 'GET':
         return jsonify(class_session_edit_json(class_session, now))
@@ -2461,7 +2456,7 @@ def manage_class_session(class_session_id):
 
 
 def edit_class_session(class_session, data, now):
-    started = now >= class_session.starts_at
+    started = class_session_rules.has_started(class_session, now)
     if data.get('course_id') not in (None, '') and str(data.get('course_id')) != str(class_session.course_id):
         return _field_error('課堂建立後不能換課程', 'course')
 
@@ -2485,6 +2480,8 @@ def edit_class_session(class_session, data, now):
             return _field_error('請選好結束時間', 'ends_at')
         if _same_minute(ends_at, class_session.ends_at):
             ends_at = class_session.ends_at
+        elif not class_session_rules.course_is_open(class_session.course, now):
+            return _field_error(COURSE_ENDED_ERROR, 'ends_at')  # as 延長 and 重新開放 refuse it
         elif ends_at <= now:
             return _field_error('結束時間已經過了。要現在結束，請按「立即結束」。', 'ends_at')
     if ends_at <= starts_at:
@@ -2501,11 +2498,8 @@ def edit_class_session(class_session, data, now):
         if any(bank_id == b for b, _ in wanted):
             continue
         if bank_id not in current:
-            quiz_bank = db.session.get(QuizBank, bank_id)
-            if quiz_bank is None:
+            if owned_or_none(QuizBank, bank_id) is None:
                 return _field_error('找不到這份題庫', 'banks', 404)
-            if not is_own_quiz_bank(quiz_bank):
-                return jsonify({'error': '無權限操作'}), 403
         minutes, error = parse_time_limit(item.get('time_limit_minutes'))
         if error:
             return _field_error(error, 'banks')
@@ -2550,12 +2544,10 @@ def edit_class_session(class_session, data, now):
 @teacher_required
 def class_session_action(class_session_id, action):
     """end (a live one, now), start-now (an upcoming one, same length), extend ({minutes}, default 10;
-    live or upcoming), reopen (an ended one, for 30 minutes). An ended Course refuses all but end."""
+    a live one only), reopen (an ended one, for 30 minutes). An ended Course refuses all but end."""
     if action not in ('end', 'start-now', 'extend', 'reopen'):
         return jsonify({'error': '找不到這個動作'}), 404
-    class_session, error = owned_or_error(ClassSession, class_session_id)
-    if error:
-        return error
+    class_session = owned_or_404(ClassSession, class_session_id)
     now = datetime.utcnow().replace(microsecond=0)
     status = class_session_rules.status(class_session, now)
     if action != 'end' and not class_session_rules.course_is_open(class_session.course, now):
@@ -2576,6 +2568,8 @@ def class_session_action(class_session_id, action):
     elif action == 'extend':
         if status == class_session_rules.DONE:
             return jsonify({'error': '這堂課已經結束，請用「重新開放」'}), 400
+        if status != class_session_rules.LIVE:
+            return jsonify({'error': '只有進行中的課堂可以延長。要改時間，請編輯課堂。'}), 400
         minutes, error_text = parse_time_limit((request.get_json(silent=True) or {}).get('minutes') or 10)
         if error_text:
             return jsonify({'error': '延長的時間要是大於 0 的整數分鐘'}), 400
@@ -2585,26 +2579,11 @@ def class_session_action(class_session_id, action):
         if status != class_session_rules.DONE:
             return jsonify({'error': '只有已結束的課堂可以重新開放'}), 400
         class_session.ends_at = now + REOPEN_FOR
-        message = f'「{class_session.name}」重新開放 30 分鐘'
+        message = f'「{class_session.name}」重新開放 {int(REOPEN_FOR.total_seconds() // 60)} 分鐘'
     db.session.commit()
     data = class_session_edit_json(class_session, now)
     data['message'] = message
     return jsonify(data)
-
-
-def parse_course_end(value, now=None):
-    """A Course end date ('YYYY-MM-DD', a UTC+8 day) → naive UTC of 23:59 that day.
-    Returns (ends_at or None, error or None). A day already past is refused (spec #2)."""
-    if value is None or not str(value).strip():
-        return None, None
-    try:
-        day = datetime.strptime(str(value).strip()[:10], '%Y-%m-%d')
-    except ValueError:
-        return None, '結束日期的格式不對'
-    ends_at = class_session_rules.parse_wall_clock(day.replace(hour=23, minute=59).isoformat())
-    if ends_at < (now or datetime.utcnow()):
-        return None, '結束日期已經過了。要結束課程，請按「結束課程」。'
-    return ends_at, None
 
 
 def course_json(course, now=None):
@@ -2631,9 +2610,7 @@ def course_numbers(course, now):
 def manage_course(course_id):
     """PUT: rename and set or clear the end date (ends_on). DELETE: delete with its Class Sessions
     and Submissions (needs {confirm: true} when there are Submissions)."""
-    course, error = owned_or_error(Course, course_id)
-    if error:
-        return error
+    course = owned_or_404(Course, course_id)
     data = request.get_json(silent=True) or {}
     now = datetime.utcnow()
     if request.method == 'DELETE':
@@ -2653,7 +2630,7 @@ def manage_course(course_id):
     if 'ends_on' in data:
         same_day = course.ends_at is not None and str(data.get('ends_on') or '')[:10] == course_json(course)['ends_on']
         if not same_day:
-            ends_at, error_text = parse_course_end(data.get('ends_on'), now)
+            ends_at, error_text = class_session_rules.parse_course_end(data.get('ends_on'), now)
             if error_text:
                 return _field_error(error_text, 'ends_on')
             course.ends_at = ends_at
@@ -2668,9 +2645,7 @@ def course_action(course_id, action):
     """end: 結束課程 (sets ended_at; Class Session times stay). reopen: clears ended_at and a passed end date."""
     if action not in ('end', 'reopen'):
         return jsonify({'error': '找不到這個動作'}), 404
-    course, error = owned_or_error(Course, course_id)
-    if error:
-        return error
+    course = owned_or_404(Course, course_id)
     now = datetime.utcnow()
     is_open = class_session_rules.course_is_open(course, now)
     if action == 'end':
@@ -2697,15 +2672,6 @@ def course_action(course_id, action):
 
 
 SESSION_TABS = (('all', '全部'), ('live', '進行中'), ('soon', '即將開始'), ('done', '已結束'))
-
-
-def class_session_order(row):
-    """Live first, then upcoming (soonest first), then ended (latest end first)."""
-    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}[row['status']]
-    class_session = row['session']
-    if row['status'] == class_session_rules.DONE:
-        return (rank, -class_session_rules.effective_end(class_session).timestamp())
-    return (rank, class_session.starts_at.timestamp())
 
 
 def class_sessions_page_data(teacher_id, status_filter='all', query='', now=None):
@@ -2737,7 +2703,7 @@ def class_sessions_page_data(teacher_id, status_filter='all', query='', now=None
             if is_open:
                 tab_counts['all'] += 1
                 tab_counts[status] += 1
-        rows.sort(key=class_session_order)
+        rows.sort(key=lambda r: class_session_rules.list_order(r['session'], r['status']))
         text = lambda row: ' '.join([course.name, row['session'].name, row['session'].code]
                                     + [b['title'] for b in row['banks']]).casefold()
         shown = [r for r in rows if (status_filter == 'all' or r['status'] == status_filter)
@@ -2759,17 +2725,7 @@ def class_sessions_page_data(teacher_id, status_filter='all', query='', now=None
 @app.template_global()
 def course_end_text(course):
     """到 12/31 23:59 / 已在 11/27 結束 / 沒有結束日期 (UTC+8)."""
-    def md(utc):
-        local = utc + timedelta(hours=8)
-        return f'{local.month}/{local.day}'
-
-    if course.ended_at is not None:
-        return f'已在 {md(course.ended_at)} 結束'
-    if course.ends_at is not None:
-        if course.ends_at < datetime.utcnow():
-            return f'已在 {md(course.ends_at)} 結束'
-        return f'到 {md(course.ends_at)} 23:59'
-    return '沒有結束日期'
+    return class_session_rules.course_end_text(course, datetime.utcnow())
 
 
 @app.route('/class-sessions')
@@ -2785,8 +2741,6 @@ def class_sessions():
         page=class_sessions_page_data(teacher_id, status_filter, query),
         tabs=SESSION_TABS, status_filter=status_filter, query=query,
         cs_dialog=class_session_dialog_data(teacher_id),
-        has_session_sheet='class_session_sheet' in app.view_functions,
-        has_course_sheet='course_sheet' in app.view_functions,
     )
 
 
@@ -2802,9 +2756,7 @@ def get_environment():
 @app.route('/quiz-bank/<int:quiz_bank_id>/export-pdf')
 @teacher_required
 def export_quiz_bank_pdf(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return redirect(url_for('teacher_dashboard'))
+    quiz_bank = owned_or_404(QuizBank, quiz_bank_id)
     
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
     

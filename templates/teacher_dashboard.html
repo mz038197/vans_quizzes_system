@@ -42,11 +42,7 @@
             {% if row.status == 'live' %}<progress class="pg" max="100" value="{{ row.progress }}" aria-label="課堂時間已過 {{ row.progress }}%">{{ row.progress }}%</progress>{% endif %}
             <div class="acts">
                 <button type="button" class="btn btn-primary" data-qr="{{ cs.code }}" data-title="{{ cs.course.name }} · {{ cs.name }}"><i class="fas fa-qrcode" aria-hidden="true"></i> 投影 QR</button>
-                {% if has_session_sheet %}
                 <a class="btn" href="{{ url_for('class_session_sheet', class_session_id=cs.id) }}"><i class="fas fa-table" aria-hidden="true"></i> 總表</a>
-                {% elif cs.offers %}
-                <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=cs.offers[0].quiz_bank_id) }}"><i class="fas fa-table" aria-hidden="true"></i> 總表</a>
-                {% endif %}
             </div>
         </article>
         {% endfor %}
@@ -137,17 +133,10 @@
     </section>
 </div>
 
-<div class="qr-stage" id="qr-stage" role="dialog" aria-modal="true" aria-labelledby="qr-stage-title" hidden>
-    <button type="button" class="btn qr-close" id="qr-close"><i class="fas fa-times" aria-hidden="true"></i> 關閉（Esc）</button>
-    <h1 id="qr-stage-title"></h1>
-    <div class="qr-stage-img" id="qr-stage-img"></div>
-    <div class="qr-stage-url mono" id="qr-stage-url"></div>
-    <p class="qr-stage-hint">用手機相機掃描，輸入姓名就能開始作答，不用登入。</p>
-</div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/vendor/qrcode.js') }}"></script>
+{% include "_qr_stage.html" %}
 <script src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
 {% include "_class_session_dialog.html" %}
 {% endblock %}

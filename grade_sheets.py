@@ -7,7 +7,7 @@ Each cell is the latest Take (highest Take number, grade_stats.take_numbers) and
 
 import math
 
-from grade_stats import take_numbers, trimmed_name
+from grade_stats import HIGH_PERCENT, PASS_PERCENT, take_numbers, trimmed_name
 
 NOT_ANSWERED = '未作答'
 
@@ -18,10 +18,10 @@ def whole_percent(value):
 
 
 def band(value):
-    """Colour band of a percent: hi (80+), mid (60-79), lo (below 60)."""
-    if value >= 80:
+    """Colour band of a percent: hi (HIGH_PERCENT and up), mid (PASS_PERCENT and up), lo (below)."""
+    if value >= HIGH_PERCENT:
         return 'hi'
-    return 'mid' if value >= 60 else 'lo'
+    return 'mid' if value >= PASS_PERCENT else 'lo'
 
 
 def _mean(values):

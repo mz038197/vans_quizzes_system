@@ -91,7 +91,7 @@ def test_copy_needs_the_owner(client):
 
     response = client.post(f'/api/question/{question_id}/copy')
 
-    assert response.status_code == 403
+    assert response.status_code == 404
     with app_module.app.app_context():
         assert app_module.Question.query.count() == 1
 

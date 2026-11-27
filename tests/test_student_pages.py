@@ -138,6 +138,7 @@ def _submit_two(client, **extra):
     client.get(f'/quiz/{live_code(client)}')  # fixes the Take Order
     payload = {
         'student_name': '學生甲',
+        'quiz_bank_id': ids['quiz_bank_id'],
         'answers': {str(ids['question_id']): 'A', str(second): 'A'},
         'review_flag_question_ids': [second],
     }
@@ -220,7 +221,7 @@ def test_every_question_type_shows_on_the_take_page_and_the_result_page(client):
         assert f'tb t-{question_type}' in take, question_type
 
     response = client.post(f'/api/quiz/{live_code(client)}/submit', json={
-        'student_name': '學生甲', 'answers': {str(ids['question_id']): 'A'},
+        'student_name': '學生甲', 'quiz_bank_id': ids['quiz_bank_id'], 'answers': {str(ids['question_id']): 'A'},
     })
     result = _html(client.get(response.get_json()['result_url']))
     assert len(re.findall(r'<article class="qz-rv ', result)) == 6

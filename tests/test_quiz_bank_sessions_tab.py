@@ -52,7 +52,8 @@ def test_sessions_tab_shows_code_and_submission_count_in_that_class_session(auth
     ids = auth_client._ids
     code = make_class_session(ids, name='現在小考')
     auth_client.post(f'/api/quiz/{code}/submit', json={
-        'student_name': 'Student A', 'answers': {str(ids['question_id']): 'A'}, 'elapsed_seconds': 10})
+        'student_name': 'Student A', 'quiz_bank_id': ids['quiz_bank_id'],
+        'answers': {str(ids['question_id']): 'A'}, 'elapsed_seconds': 10})
     panel = _sessions_panel(_page(auth_client))
     assert f'<span class="code">{code}</span>' in panel
     assert re.search(r'class="num"[^>]*>\s*1 人', panel)

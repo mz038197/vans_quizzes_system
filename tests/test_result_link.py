@@ -9,7 +9,7 @@ def _submit(client):
     ids = client._ids
     response = client.post(
         f"/api/quiz/{live_code(client)}/submit",
-        json={'student_name': 'Alice', 'answers': {str(ids['question_id']): 'A'}},
+        json={'student_name': 'Alice', 'quiz_bank_id': ids['quiz_bank_id'], 'answers': {str(ids['question_id']): 'A'}},
     )
     assert response.status_code == 200
     return response.get_json()
@@ -49,9 +49,8 @@ def test_teacher_view_needs_sign_in_and_ownership(client):
     url = f"/quiz-bank/{client._ids['quiz_bank_id']}/submissions/{body['submission_id']}"
     assert client.get(url).status_code == 302
     sign_in(client, TEACHER_ROUTER_ID + 1)
-    response = client.get(url)
-    assert response.status_code == 302
-    assert response.headers['Location'].endswith('/teacher-dashboard')
+    # not yours looks like not there (review fix 15): no redirect
+    assert client.get(url).status_code == 404
 
 
 def test_teacher_view_refuses_a_submission_of_another_bank(auth_client):

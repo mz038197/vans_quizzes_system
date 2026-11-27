@@ -21,7 +21,8 @@
 <div class="qz-take" id="quiz-take" hidden
      data-time-limit="{{ time_limit_minutes or '' }}"
      data-session-ends-in="{{ session_ends_in if session_ends_in is not none else '' }}"
-     data-session-end-hm="{{ session_ends_at | utc8('%H:%M') if session_ends_at else '' }}">
+     data-session-end-hm="{{ session_ends_at | utc8('%H:%M') if session_ends_at else '' }}"
+     data-status-url="{{ url_for('take_status', code=student_code, bank=quiz_bank.id) }}">
     <aside class="qz-side">
         <div class="qz-timer" id="qz-timer" role="timer" aria-live="off">
             <div class="k" id="qz-timer-label">
@@ -207,10 +208,13 @@ const takeKey = {{ take_key | tojson }};
 // The Time Limit this Class Session set for this Quiz Bank (null = no Time Limit).
 const timeLimitMinutes = {{ time_limit_minutes if time_limit_minutes is not none else 'null' }};
 // The Class Session end (earlier of its end and the Course end), counted from the server's seconds left
-// so that a wrong device clock does not move it.
+// so that a wrong device clock does not move it. pollSessionStatus() moves it when the Teacher changes it.
 const takeData = document.getElementById('quiz-take').dataset;
-const sessionEndMs = takeData.sessionEndsIn === '' ? null : Date.now() + parseInt(takeData.sessionEndsIn, 10) * 1000;
-const sessionEndHm = takeData.sessionEndHm;
+let sessionEndMs = takeData.sessionEndsIn === '' ? null : Date.now() + parseInt(takeData.sessionEndsIn, 10) * 1000;
+let sessionEndHm = takeData.sessionEndHm;
+// How often the page asks the server for the Class Session end. Shorter than the 60 s hand-in grace.
+const STATUS_POLL_MS = 20000;
+let statusPollId = null;
 // The two reasons for a Time-up Hand-in (CONTEXT.md).
 const TIME_UP = 'time_limit';
 const SESSION_ENDED = 'session_end';
@@ -449,10 +453,15 @@ function formatCountdown(totalSeconds) {
     return String(minutes).padStart(2, '0') + ':' + String(remain).padStart(2, '0');
 }
 
+// Stops the clock and the status poll; startCountdown() starts both again.
 function stopCountdown() {
     if (countdownTimerId) {
         clearInterval(countdownTimerId);
         countdownTimerId = null;
+    }
+    if (statusPollId !== null) {
+        clearInterval(statusPollId);
+        statusPollId = null;
     }
 }
 
@@ -504,7 +513,50 @@ function startCountdown() {
     updateCountdownDisplay();
     stopCountdown();
     countdownTimerId = setInterval(updateCountdownDisplay, 1000);
+    startStatusPoll();
 }
+
+// ---- Class Session status: 結束課程, 立即結束, 延長 and 重新開放 during a Take ----
+
+async function pollSessionStatus() {
+    if (!quizStarted || quizSubmitted || !takeData.statusUrl) {
+        return;
+    }
+    let status;
+    try {
+        const response = await fetch(takeData.statusUrl, { cache: 'no-store' });
+        if (!response.ok) {
+            return;
+        }
+        status = await response.json();
+    } catch (error) {
+        return;  // offline: the local clock goes on; the next poll tries again
+    }
+    if (quizSubmitted) {
+        return;
+    }
+    if (status.ended) {
+        stopCountdown();
+        submitQuiz({ skipConfirm: true, timeUpReason: SESSION_ENDED });
+        return;
+    }
+    // The end moved (延長, 重新開放, a new Course end): count from the server's seconds left again.
+    sessionEndMs = Date.now() + status.ends_in * 1000;
+    sessionEndHm = status.ends_hm;
+    updateCountdownDisplay();
+}
+
+function startStatusPoll() {
+    if (statusPollId === null && takeData.statusUrl) {
+        statusPollId = setInterval(pollSessionStatus, STATUS_POLL_MS);
+    }
+}
+
+document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+        pollSessionStatus();
+    }
+});
 
 function startQuiz() {
     const nameInput = document.getElementById('student-name');

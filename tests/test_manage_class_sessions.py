@@ -277,8 +277,37 @@ def test_another_teachers_class_session_cannot_be_changed(auth_client):
     code = make_class_session(auth_client._ids, teacher_id=TEACHER_ROUTER_ID + 1)
     session_id, body = _edit_body(code)
     sign_in(auth_client, TEACHER_ROUTER_ID)
-    assert auth_client.put(f'/api/class-sessions/{session_id}', json=body).status_code == 403
-    assert auth_client.get(f'/api/class-sessions/{session_id}').status_code == 403
+    assert auth_client.put(f'/api/class-sessions/{session_id}', json=body).status_code == 404
+    assert auth_client.get(f'/api/class-sessions/{session_id}').status_code == 404
     for action in ('end', 'start-now', 'extend', 'reopen'):
-        assert auth_client.post(f'/api/class-sessions/{session_id}/{action}', json={}).status_code == 403
-    assert auth_client.delete(f'/api/class-sessions/{session_id}', json={'confirm': True}).status_code == 403
+        assert auth_client.post(f'/api/class-sessions/{session_id}/{action}', json={}).status_code == 404
+    assert auth_client.delete(f'/api/class-sessions/{session_id}', json={'confirm': True}).status_code == 404
+
+
+# ---- review fix 7 ----
+
+def test_extend_is_refused_for_an_upcoming_class_session(auth_client):
+    code = make_class_session(auth_client._ids, starts_in=3600, ends_in=7200)
+    before = _session(code)['ends_at']
+    response = _act(auth_client, code, 'extend', minutes=10)
+    assert response.status_code == 400
+    assert '進行中' in response.get_json()['error']
+    assert _session(code)['ends_at'] == before
+
+
+def test_an_ended_course_refuses_a_changed_end_in_the_edit(auth_client):
+    code = make_class_session(auth_client._ids, starts_in=-600, ends_in=600, course_ended=True)
+    before = _session(code)['ends_at']
+    session_id, body = _edit_body(code, ends_at=utc8_local(before + timedelta(minutes=20)))
+    response = auth_client.put(f'/api/class-sessions/{session_id}', json=body)
+    assert response.status_code == 400
+    assert response.get_json()['error'] == app_module.COURSE_ENDED_ERROR
+    assert _session(code)['ends_at'] == before
+
+
+def test_an_ended_course_still_lets_the_name_change_when_the_end_is_kept(auth_client):
+    code = make_class_session(auth_client._ids, starts_in=-600, ends_in=600, course_ended=True)
+    session_id, body = _edit_body(code, name='新的名稱')
+    response = auth_client.put(f'/api/class-sessions/{session_id}', json=body)
+    assert response.status_code == 200, response.get_json()
+    assert _session(code)['name'] == '新的名稱'
