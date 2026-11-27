@@ -2300,6 +2300,100 @@ def course_action(course_id, action):
     return jsonify(data)
 
 
+SESSION_TABS = (('all', '全部'), ('live', '進行中'), ('soon', '即將開始'), ('done', '已結束'))
+
+
+def class_session_order(row):
+    """Live first, then upcoming (soonest first), then ended (latest end first)."""
+    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}[row['status']]
+    class_session = row['session']
+    if row['status'] == class_session_rules.DONE:
+        return (rank, -class_session_rules.effective_end(class_session).timestamp())
+    return (rank, class_session.starts_at.timestamp())
+
+
+def class_sessions_page_data(teacher_id, status_filter='all', query='', now=None):
+    """The 課堂 page: open and ended Courses, each with its matching Class Session rows, and tab counts."""
+    now = now or datetime.utcnow()
+    needle = query.casefold()
+    courses = Course.query.filter_by(teacher_id=teacher_id).order_by(Course.created_at.desc(), Course.id.desc()).all()
+    folders = {f.id: f for f in teacher_folders(teacher_id)}
+    counts = {}  # (class_session_id, quiz_bank_id) -> Submissions
+    for session_id, bank_id, n in (db.session.query(Submission.class_session_id, Submission.quiz_bank_id,
+                                                    db.func.count(Submission.id))
+                                   .join(ClassSession).filter(ClassSession.teacher_id == teacher_id)
+                                   .group_by(Submission.class_session_id, Submission.quiz_bank_id).all()):
+        counts[(session_id, bank_id)] = n
+    tab_counts = {key: 0 for key, _ in SESSION_TABS}
+    open_blocks, ended_blocks = [], []
+    for course in courses:
+        is_open = class_session_rules.course_is_open(course, now)
+        rows = []
+        for class_session in course.class_sessions:
+            status = class_session_rules.status(class_session, now)
+            banks = [{
+                'title': o.quiz_bank.title, 'time_limit': o.time_limit_minutes,
+                'n_subs': counts.get((class_session.id, o.quiz_bank_id), 0),
+                'folder': folders.get(o.quiz_bank.folder_id),
+            } for o in class_session.offers]
+            rows.append({'session': class_session, 'status': status, 'banks': banks,
+                         'status_label': class_session_status_label(class_session, status, now)})
+            if is_open:
+                tab_counts['all'] += 1
+                tab_counts[status] += 1
+        rows.sort(key=class_session_order)
+        text = lambda row: ' '.join([course.name, row['session'].name, row['session'].code]
+                                    + [b['title'] for b in row['banks']]).casefold()
+        shown = [r for r in rows if (status_filter == 'all' or r['status'] == status_filter)
+                 and (not needle or needle in text(r))]
+        if not shown and not (status_filter == 'all' and (not needle or needle in course.name.casefold())):
+            continue
+        block = {
+            'course': course, 'open': is_open, 'rows': shown, 'n_sessions': len(rows),
+            'ends_on': course_json(course, now)['ends_on'],
+            'n_live': sum(1 for r in rows if r['status'] == class_session_rules.LIVE),
+            'n_active': sum(1 for r in rows if r['status'] != class_session_rules.DONE),
+            'n_subs': sum(sum(b['n_subs'] for b in r['banks']) for r in rows),
+        }
+        (open_blocks if is_open else ended_blocks).append(block)
+    return {'open_courses': open_blocks, 'ended_courses': ended_blocks, 'counts': tab_counts,
+            'n_courses': len(courses)}
+
+
+@app.template_global()
+def course_end_text(course):
+    """到 12/31 23:59 / 已在 11/27 結束 / 沒有結束日期 (UTC+8)."""
+    def md(utc):
+        local = utc + timedelta(hours=8)
+        return f'{local.month}/{local.day}'
+
+    if course.ended_at is not None:
+        return f'已在 {md(course.ended_at)} 結束'
+    if course.ends_at is not None:
+        if course.ends_at < datetime.utcnow():
+            return f'已在 {md(course.ends_at)} 結束'
+        return f'到 {md(course.ends_at)} 23:59'
+    return '沒有結束日期'
+
+
+@app.route('/class-sessions')
+@teacher_required
+def class_sessions():
+    teacher_id = current_teacher().user_id
+    status_filter = request.args.get('status') or 'all'
+    if status_filter not in dict(SESSION_TABS):
+        status_filter = 'all'
+    query = (request.args.get('q') or '').strip()
+    return render_template(
+        'class_sessions.html',
+        page=class_sessions_page_data(teacher_id, status_filter, query),
+        tabs=SESSION_TABS, status_filter=status_filter, query=query,
+        cs_dialog=class_session_dialog_data(teacher_id),
+        has_session_sheet='class_session_sheet' in app.view_functions,
+        has_course_sheet='course_sheet' in app.view_functions,
+    )
+
+
 # 獲取當前環境
 @app.route('/api/environment')
 def get_environment():

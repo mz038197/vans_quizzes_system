@@ -116,6 +116,8 @@
         });
 
         function onKey(event) {
+            const backs = document.querySelectorAll('.dlg-back');
+            if (backs[backs.length - 1] !== back) return; // only the top dialog takes keys
             if (event.key === 'Escape' && options.dismissible !== false) {
                 event.preventDefault();
                 close(cancelValue);
