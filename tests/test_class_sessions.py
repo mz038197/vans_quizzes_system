@@ -104,11 +104,11 @@ def test_a_teacher_opens_class_sessions_only_with_own_quiz_banks_and_courses(cli
     sign_in(client, TEACHER_ROUTER_ID + 1)
     client.environ_base['HTTP_ORIGIN'] = OWN_ORIGIN
     # The fixture Quiz Bank belongs to TEACHER_ROUTER_ID, not to this Teacher.
-    assert _open(client).status_code == 403
+    assert _open(client).status_code == 404
 
     sign_in(client, TEACHER_ROUTER_ID)
     response = _open(client, new_course_name=None, course_id=other_course_id)
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_open_class_session_needs_a_signed_in_teacher_from_this_site(client):

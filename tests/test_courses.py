@@ -167,10 +167,10 @@ def test_delete_a_course_with_submissions_needs_the_confirm_flag(auth_client):
 def test_another_teachers_course_cannot_be_changed(auth_client):
     code = make_class_session(auth_client._ids, teacher_id=TEACHER_ROUTER_ID + 1)
     course_id = _course_of(code)
-    assert auth_client.put(f'/api/courses/{course_id}', json={'name': 'x'}).status_code == 403
-    assert auth_client.post(f'/api/courses/{course_id}/end').status_code == 403
-    assert auth_client.post(f'/api/courses/{course_id}/reopen').status_code == 403
-    assert auth_client.delete(f'/api/courses/{course_id}', json={'confirm': True}).status_code == 403
+    assert auth_client.put(f'/api/courses/{course_id}', json={'name': 'x'}).status_code == 404
+    assert auth_client.post(f'/api/courses/{course_id}/end').status_code == 404
+    assert auth_client.post(f'/api/courses/{course_id}/reopen').status_code == 404
+    assert auth_client.delete(f'/api/courses/{course_id}', json={'confirm': True}).status_code == 404
     assert _course(course_id).name == '測試課堂 的課程'
 
 

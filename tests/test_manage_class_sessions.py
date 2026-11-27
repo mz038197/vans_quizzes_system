@@ -277,11 +277,11 @@ def test_another_teachers_class_session_cannot_be_changed(auth_client):
     code = make_class_session(auth_client._ids, teacher_id=TEACHER_ROUTER_ID + 1)
     session_id, body = _edit_body(code)
     sign_in(auth_client, TEACHER_ROUTER_ID)
-    assert auth_client.put(f'/api/class-sessions/{session_id}', json=body).status_code == 403
-    assert auth_client.get(f'/api/class-sessions/{session_id}').status_code == 403
+    assert auth_client.put(f'/api/class-sessions/{session_id}', json=body).status_code == 404
+    assert auth_client.get(f'/api/class-sessions/{session_id}').status_code == 404
     for action in ('end', 'start-now', 'extend', 'reopen'):
-        assert auth_client.post(f'/api/class-sessions/{session_id}/{action}', json={}).status_code == 403
-    assert auth_client.delete(f'/api/class-sessions/{session_id}', json={'confirm': True}).status_code == 403
+        assert auth_client.post(f'/api/class-sessions/{session_id}/{action}', json={}).status_code == 404
+    assert auth_client.delete(f'/api/class-sessions/{session_id}', json={'confirm': True}).status_code == 404
 
 
 # ---- review fix 7 ----

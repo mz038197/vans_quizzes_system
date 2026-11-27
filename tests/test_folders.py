@@ -176,7 +176,7 @@ def test_move_is_all_or_nothing_when_one_quiz_bank_is_not_yours(auth_client):
 
     response = _move(auth_client, [mine, theirs], folder_id)
 
-    assert response.status_code == 403
+    assert response.status_code == 404
     assert _bank_folder(mine) is None and _bank_folder(theirs) is None
 
 
@@ -186,7 +186,7 @@ def test_move_into_another_teachers_folder_is_refused(auth_client):
     their_folder = _folder_id(auth_client, '別人的')
     sign_in(auth_client, TEACHER_ROUTER_ID)
 
-    assert _move(auth_client, [bank_id], their_folder).status_code == 403
+    assert _move(auth_client, [bank_id], their_folder).status_code == 404
     assert _bank_folder(bank_id) is None
 
 
@@ -194,8 +194,8 @@ def test_another_teacher_cannot_rename_or_delete_my_folder(auth_client):
     folder_id = _folder_id(auth_client, '我的')
     _other_teacher(auth_client)
 
-    assert auth_client.put(f'/api/folders/{folder_id}', json={'name': 'x', 'color': 'blue'}).status_code == 403
-    assert auth_client.delete(f'/api/folders/{folder_id}').status_code == 403
+    assert auth_client.put(f'/api/folders/{folder_id}', json={'name': 'x', 'color': 'blue'}).status_code == 404
+    assert auth_client.delete(f'/api/folders/{folder_id}').status_code == 404
     assert auth_client.get(f'/quiz-banks?folder={folder_id}').status_code in (302, 404)
     with app_module.app.app_context():
         assert app_module.db.session.get(app_module.Folder, folder_id).name == '我的'
@@ -266,7 +266,7 @@ def test_quiz_bank_cannot_be_created_in_another_teachers_folder(auth_client):
 
     response = auth_client.post('/create-quiz-bank', json={'title': '新題庫', 'folder_id': their_folder})
 
-    assert response.status_code == 403
+    assert response.status_code == 404
     with app_module.app.app_context():
         assert app_module.QuizBank.query.filter_by(title='新題庫').count() == 0
 

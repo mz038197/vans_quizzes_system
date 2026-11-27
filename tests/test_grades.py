@@ -249,5 +249,5 @@ def test_csv_and_api_need_the_owner(bank):
     qb = bank._ids['quiz_bank_id']
     from conftest import sign_in
     sign_in(bank, 7)
-    assert bank.get(f'/api/quiz-bank/{qb}/grades').status_code == 403
-    assert bank.get(f'/quiz-bank/{qb}/submissions.csv').status_code in (302, 403)
+    assert bank.get(f'/api/quiz-bank/{qb}/grades').status_code == 404
+    assert bank.get(f'/quiz-bank/{qb}/submissions.csv').status_code == 404

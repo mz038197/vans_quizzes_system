@@ -46,8 +46,8 @@ def test_other_teacher_cannot_touch_the_bank(client):
     sign_in(client, TEACHER_ROUTER_ID + 1)
     client.environ_base['HTTP_ORIGIN'] = OWN_ORIGIN
     quiz_bank_id = client._ids['quiz_bank_id']
-    assert client.get(f'/api/quiz-bank/{quiz_bank_id}/submissions').status_code == 403
-    assert client.delete(f'/api/quiz-bank/{quiz_bank_id}').status_code == 403
+    assert client.get(f'/api/quiz-bank/{quiz_bank_id}/submissions').status_code == 404
+    assert client.delete(f'/api/quiz-bank/{quiz_bank_id}').status_code == 404
     assert 'Timed Bank' not in client.get('/teacher-dashboard').get_data(as_text=True)
 
 
@@ -376,3 +376,18 @@ def test_token_answer_without_id_token_is_a_failed_login(signing_key):
     with pytest.raises(teacher_auth.LoginRefused) as refused:
         gateway.complete_login(code='c', code_verifier='v', redirect_uri='r', nonce='n1')
     assert refused.value.error is teacher_auth.LoginError.LOGIN_FAILED
+
+
+def test_not_yours_is_404_on_pages_and_json_404_on_apis(client):
+    """Review fix 15: one rule, no redirect and no 403 for another Teacher's data."""
+    quiz_bank_id = client._ids['quiz_bank_id']
+    sign_in(client, TEACHER_ROUTER_ID + 1)
+    client.environ_base['HTTP_ORIGIN'] = OWN_ORIGIN
+    for page in (f'/quiz-bank/{quiz_bank_id}', f'/quiz-bank/{quiz_bank_id}/submissions',
+                 f'/quiz-bank/{quiz_bank_id}/export-pdf', f'/quiz-bank/{quiz_bank_id}/submissions.csv'):
+        assert client.get(page).status_code == 404, page
+    response = client.put(f'/api/quiz-bank/{quiz_bank_id}/practice-config', json={})
+    assert response.status_code == 404
+    assert response.get_json() == {'error': '找不到資料'}
+    # a missing one looks the same
+    assert client.delete('/api/quiz-bank/999999').get_json() == {'error': '找不到資料'}
