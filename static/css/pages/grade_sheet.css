@@ -1,0 +1,12 @@
+/* 課堂總表 and 課程總表 (ticket 16, #18). Tokens only. */
+.sheet th { vertical-align: bottom; }
+.sheet th .t-sub { font-weight: 400; margin-top: 2px; color: var(--muted); font-size: var(--fs-xs); }
+.sheet .grp-h { text-align: center; border-bottom: 1px solid var(--border); }
+.sheet .grp-h a { color: var(--text); }
+.sheet td { white-space: nowrap; }
+.sheet .cell { font-weight: 600; font-variant-numeric: tabular-nums; text-decoration: none; }
+.sheet .cell:hover, .sheet .cell:focus-visible { text-decoration: underline; }
+.sheet .hi { color: var(--success); }
+.sheet .mid { color: var(--warning); }
+.sheet .lo { color: var(--danger); }
+.sheet-help { margin-top: var(--s2); }
