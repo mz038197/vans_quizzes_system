@@ -312,6 +312,14 @@
     return button;
   }
 
+  // 開課堂 with this Quiz Bank picked (shared dialog: static/js/class_session_dialog.js).
+  async function openSession(bankId) {
+    const created = await ClassSessionDialog.open({ bankIds: [Number(bankId)] });
+    if (!created) return;
+    UI.flash(`已在「${created.course_name}」開課堂「${created.name}」，代碼 ${created.code}`, 'ok');
+    location.reload();
+  }
+
   function openMenu(button) {
     const bank = button.dataset;
     const active = bank.active === 'true';
@@ -321,6 +329,7 @@
     menu.className = 'menu';
     menu.setAttribute('role', 'menu');
     menu.append(
+      item('fa-chalkboard-teacher', '開課堂…', () => openSession(bank.id)),
       item('fa-folder-open', '移動到…', () => moveDialog(moveWhat([button.closest('tr[data-bank]')]))),
       item('fa-link', '複製連結', () => copyLink(bank.code)),
       item(active ? 'fa-lock' : 'fa-lock-open', active ? '停用題庫' : '啟用題庫', () => toggleBank(bank.id, active)),

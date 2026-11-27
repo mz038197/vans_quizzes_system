@@ -8,18 +8,55 @@
 {% endblock %}
 
 {% block content %}
-{% call ui.page_head('教學儀表板', sub='上課時看這裡：需要注意的題庫、最新的作答，還有發給學生的連結。') %}
-<a class="btn btn-primary" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
+{% call ui.page_head('教學儀表板', sub='上課時看這裡：進行中的課堂、需要注意的題庫、最新的作答，還有發給學生的連結。') %}
+<a class="btn" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
+<button type="button" class="btn btn-primary" data-open-session=""><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i> 開課堂</button>
 {% endcall %}
 
 <div class="kpis">
-    {{ ui.kpi('開放中的題庫', numbers.open_banks ~ ' / ' ~ numbers.banks, delta='學生現在可以作答的題庫／全部') }}
+    {{ ui.kpi('進行中的課堂', numbers.live_sessions, delta='另有 ' ~ numbers.soon_sessions ~ ' 堂即將開始') }}
     {{ ui.kpi('本週作答', numbers.week_subs, delta=numbers.week_delta_text) }}
     {{ ui.kpi('本週學生', numbers.week_students, delta='依姓名計算，同一人只算一次') }}
     {{ ui.kpi('需要注意', numbers.attention,
-              delta=('平均低於 60% 的題庫' if numbers.attention else '目前都沒問題'),
+              delta=('點這裡到題庫頁看 →' if numbers.attention else '目前都沒問題'),
               href=url_for('quiz_banks', filter='attention')) }}
 </div>
+
+<section class="dash-sessions" id="live-sessions" aria-labelledby="sess-h">
+    <h2 class="section-title" id="sess-h">進行中・即將開始的課堂</h2>
+    {% if sessions %}
+    <div class="sgrid">
+        {% for row in sessions %}{% set cs = row.session %}
+        <article class="scard {{ row.status }}" data-class-session="{{ cs.id }}">
+            <div>{{ ui.status_pill(row.status, ('進行中 · ' if row.status == 'live' else '即將開始 · ') ~ row.when_text) }}</div>
+            <div>
+                <div class="t-sub"><i class="fas fa-graduation-cap" aria-hidden="true"></i> {{ cs.course.name }}</div>
+                <h3 class="nm">{{ cs.name }}</h3>
+                <ul class="bk">
+                    {% for offer in cs.offers %}
+                    <li><i class="far fa-file-alt" aria-hidden="true"></i> {{ offer.quiz_bank.title }} <span class="t-sub">· {{ '時限 %d 分鐘' % offer.time_limit_minutes if offer.time_limit_minutes else '不限時' }}</span></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <div class="tm"><span>{{ class_session_window(cs) }}</span><span>{{ row.n_students }} 人交卷</span></div>
+            {% if row.status == 'live' %}<progress class="pg" max="100" value="{{ row.progress }}" aria-label="課堂時間已過 {{ row.progress }}%">{{ row.progress }}%</progress>{% endif %}
+            <div class="acts">
+                <button type="button" class="btn btn-primary" data-qr="{{ cs.code }}" data-title="{{ cs.course.name }} · {{ cs.name }}"><i class="fas fa-qrcode" aria-hidden="true"></i> 投影 QR</button>
+                {% if has_session_sheet %}
+                <a class="btn" href="{{ url_for('class_session_sheet', class_session_id=cs.id) }}"><i class="fas fa-table" aria-hidden="true"></i> 總表</a>
+                {% elif cs.offers %}
+                <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=cs.offers[0].quiz_bank_id) }}"><i class="fas fa-table" aria-hidden="true"></i> 總表</a>
+                {% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    {% call ui.empty('目前沒有進行中或即將開始的課堂。按右上角的「開課堂」。', icon='fa-calendar-alt') %}
+    <button type="button" class="btn btn-primary" data-open-session=""><i class="fas fa-plus" aria-hidden="true"></i> 開課堂</button>
+    {% endcall %}
+    {% endif %}
+</section>
 
 {% set attention_banks = banks | selectattr('attention') | list %}
 {% if attention_banks %}
@@ -33,7 +70,10 @@
             <tbody>
             {% for b in attention_banks %}
                 <tr>
-                    <td><a class="t-title" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}">{{ b.bank.title }}</a></td>
+                    <td>
+                        <a class="t-title" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}">{{ b.bank.title }}</a>
+                        <div class="t-sub">{% if b.folder %}<span class="fc-{{ b.folder.color }}">{{ ui.folder_dot(b.folder.color) }}</span> {{ b.folder.name }}{% else %}未分類{% endif %}</div>
+                    </td>
                     <td class="warn-text">{{ b.attention }}</td>
                     <td class="act"><a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=b.bank.id) }}"><i class="fas fa-chart-bar" aria-hidden="true"></i> 成績</a></td>
                 </tr>
@@ -70,16 +110,21 @@
 
     <section class="panel" aria-labelledby="qr-h">
         <div class="panel-h"><h2 id="qr-h">上課發題</h2><span class="muted small">學生掃描就能作答</span></div>
-        {% set open_banks = banks | selectattr('bank.is_active') | list %}
-        {% if open_banks %}
+        {% set live_rows = sessions | selectattr('status', 'equalto', 'live') | list %}
+        {% set soon_rows = sessions | selectattr('status', 'equalto', 'soon') | list %}
+        {% if sessions %}
         <div class="qr-box" id="qr-panel">
-            <label class="sr-only" for="qr-bank">選擇題庫</label>
+            <label class="sr-only" for="qr-bank">選擇課堂</label>
             <select id="qr-bank" class="inp">
-                {% for b in open_banks %}
-                <option value="{{ b.bank.access_code }}" data-title="{{ b.bank.title }}">{{ b.bank.title }}（{{ b.bank.access_code }}）</option>
+                {% for label, group in [('進行中', live_rows), ('即將開始', soon_rows)] if group %}
+                <optgroup label="{{ label }}">
+                    {% for row in group %}
+                    <option value="{{ row.session.code }}" data-title="{{ row.session.course.name }} · {{ row.session.name }}">{{ row.session.course.name }} · {{ row.session.name }}（{{ row.session.code }}）</option>
+                    {% endfor %}
+                </optgroup>
                 {% endfor %}
             </select>
-            <div class="qr-img" id="qr-img" role="img" aria-label="題庫連結 QR code"></div>
+            <div class="qr-img" id="qr-img" role="img" aria-label="課堂連結 QR code"></div>
             <div class="qr-url mono" id="qr-url"></div>
             <div class="qr-actions">
                 <button type="button" class="btn" id="qr-copy"><i class="fas fa-link" aria-hidden="true"></i> <span>複製連結</span></button>
@@ -87,7 +132,7 @@
             </div>
         </div>
         {% else %}
-        {{ ui.empty('沒有開放中的題庫。到題庫頁啟用一個題庫。', icon='fa-qrcode') }}
+        {{ ui.empty('沒有進行中或即將開始的課堂。先開一堂課。', icon='fa-qrcode') }}
         {% endif %}
     </section>
 </div>
@@ -104,4 +149,5 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/vendor/qrcode.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
+{% include "_class_session_dialog.html" %}
 {% endblock %}

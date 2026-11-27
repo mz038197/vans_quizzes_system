@@ -16,7 +16,8 @@
 {% call ui.page_head(folder.name, sub='這個資料夾裡的題庫。把題庫拖到上方的「題庫」就會移回未分類，拖到其他資料夾的標籤就會移過去。') %}
 <button type="button" class="btn" data-folder-edit><i class="fas fa-pen" aria-hidden="true"></i> 編輯資料夾</button>
 <button type="button" class="btn btn-danger" data-folder-delete><i class="fas fa-trash" aria-hidden="true"></i> 刪除資料夾</button>
-<a class="btn btn-primary" href="{{ url_for('create_quiz_bank', folder=folder.id) }}"><i class="fas fa-plus" aria-hidden="true"></i> 在這裡建立題庫</a>
+<a class="btn" href="{{ url_for('create_quiz_bank', folder=folder.id) }}"><i class="fas fa-plus" aria-hidden="true"></i> 在這裡建立題庫</a>
+<button type="button" class="btn btn-primary" data-open-session=""><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i> 開課堂</button>
 {% endcall %}
 
 {% if folder_cards|length > 1 %}
@@ -30,7 +31,8 @@
 {% else %}
 {% call ui.page_head('題庫', sub='備課時看這裡：整理題庫、管理題目、查看成績。把題庫拖到資料夾卡片上就能移進去。') %}
 <button type="button" class="btn" data-folder-new><i class="fas fa-folder-plus" aria-hidden="true"></i> 新增資料夾</button>
-<a class="btn btn-primary" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
+<a class="btn" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
+<button type="button" class="btn btn-primary" data-open-session=""><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i> 開課堂</button>
 {% endcall %}
 
 <nav class="tabs" aria-label="篩選題庫">
@@ -43,7 +45,7 @@
     {% for c in folder_cards %}
     <a class="fcard fc-{{ c.folder.color }}" data-folder="{{ c.folder.id }}" data-drop="{{ c.folder.id }}" href="{{ url_for('quiz_banks', folder=c.folder.id) }}">
         <span class="fcard-name"><i class="fas fa-folder" aria-hidden="true"></i> {{ c.folder.name }}</span>
-        <span class="fcard-meta">{{ c.n_banks }} 個題庫</span>
+        <span class="fcard-meta">{{ c.n_banks }} 個題庫{% if c.n_live %} <span class="bstat live">● {{ c.n_live }} 堂進行中</span>{% endif %}</span>
         {% if c.n_attention %}<span class="fcard-attn"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> {{ c.n_attention }} 個需要注意</span>{% endif %}
     </a>
     {% endfor %}
@@ -81,7 +83,7 @@
             <thead>
                 <tr>
                     <th class="chk"><input type="checkbox" data-pick-all aria-label="全選"></th>
-                    <th>題庫</th>{% if show_folder %}<th>資料夾</th>{% endif %}<th>模式</th><th>題數</th><th>作答</th><th>平均</th><th>狀態</th><th>代碼</th>
+                    <th>題庫</th>{% if show_folder %}<th>資料夾</th>{% endif %}<th>模式</th><th>題數</th><th>作答</th><th>平均</th><th>課堂</th><th>代碼</th>
                     <th><span class="sr-only">操作</span></th>
                 </tr>
             </thead>
@@ -104,7 +106,7 @@
                     <td class="num">{{ b.n_questions }}</td>
                     <td class="num">{{ b.n_subs }}</td>
                     <td class="num">{{ '—' if b.average_text is none else b.average_text ~ '%' }}</td>
-                    <td>{% if b.bank.is_active %}<span class="badge badge-on">開放中</span>{% else %}<span class="badge badge-off">已停用</span>{% endif %}</td>
+                    <td><span class="bstat {{ b.session_kind }}">{{ b.session_text }}</span></td>
                     <td><span class="code">{{ b.bank.access_code }}</span></td>
                     <td class="act">
                         <a class="btn" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}">管理</a>
@@ -144,4 +146,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/pages/quiz_banks.js') }}"></script>
+{% include "_class_session_dialog.html" %}
 {% endblock %}
