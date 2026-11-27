@@ -114,7 +114,7 @@ async function loadSubmissions() {
             <div style="text-align: center; padding: 2rem; color: #e74c3c;">
                 <h3>載入失敗</h3>
                 <p>無法載入成績資料，請稍後再試</p>
-                <button onclick="loadSubmissions()" class="btn">重新載入</button>
+                <button onclick="loadSubmissions()" class="btn btn-primary">重新載入</button>
             </div>
         `;
     }
@@ -218,7 +218,7 @@ function displaySubmissionsTable() {
 
 function exportToCSV() {
     if (submissionsData.length === 0) {
-        alert('沒有資料可以匯出');
+        UI.toast('沒有資料可以匯出', 'warn');
         return;
     }
     
@@ -254,42 +254,17 @@ function exportToCSV() {
     document.body.removeChild(link);
 }
 
-function copyQuizLink(accessCode) {
+async function copyQuizLink(accessCode) {
     const link = window.location.origin + '/quiz/' + accessCode;
-    
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(link).then(() => {
-            alert('題庫連結已複製到剪貼簿！\n' + link);
-        }).catch(() => {
-            fallbackCopyTextToClipboard(link);
-        });
+    if (await copyToClipboard(link)) {
+        UI.toast('題庫連結已複製到剪貼簿！\n' + link, 'ok');
     } else {
-        fallbackCopyTextToClipboard(link);
+        UI.tell('無法複製連結，請手動複製：\n' + link, { title: '複製連結' });
     }
-}
-
-function fallbackCopyTextToClipboard(text) {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-999999px";
-    textArea.style.top = "-999999px";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    
-    try {
-        document.execCommand('copy');
-        alert('題庫連結已複製到剪貼簿！\n' + text);
-    } catch (err) {
-        alert('無法複製連結，請手動複製：\n' + text);
-    }
-    
-    document.body.removeChild(textArea);
 }
 
 async function deleteSubmission(submissionId, studentName) {
-    if (!confirm(`確定要刪除 ${studentName} 的成績嗎？\n\n⚠️ 此操作無法復原！`)) {
+    if (!(await UI.ask(`確定要刪除 ${studentName} 的成績嗎？\n\n⚠️ 此操作無法復原！`, { title: '刪除成績', danger: true, okText: '刪除' }))) {
         return;
     }
     
@@ -304,14 +279,14 @@ async function deleteSubmission(submissionId, studentName) {
         const result = await response.json();
         
         if (response.ok) {
-            alert(result.message);
+            UI.toast(result.message, 'ok');
             // 重新載入成績資料
             loadSubmissions();
         } else {
-            alert(result.error || '刪除失敗，請稍後再試');
+            UI.toast(result.error || '刪除失敗，請稍後再試', 'error');
         }
     } catch (error) {
-        alert('網路錯誤，請檢查連線');
+        UI.toast('網路錯誤，請檢查連線', 'error');
     }
 }
 

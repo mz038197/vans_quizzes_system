@@ -1,48 +1,33 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}智慧題庫 - 線上教學平台{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    
-    <!-- MathJax for LaTeX support -->
-    <script>
-        MathJax = {
-            tex: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                processEscapes: true,
-                processEnvironments: true
-            },
-            options: {
-                skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-                ignoreHtmlClass: 'tex2jax_ignore',
-                processHtmlClass: 'tex2jax_process'
-            }
-        };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
-    
+    {% include "_head.html" %}
+    <title>{% block title %}智慧題庫{% endblock %}</title>
     {% block head %}{% endblock %}
 </head>
-<body>
-    <div class="container">
-        <nav class="navbar">
-            <h1><i class="fas fa-book"></i> 智慧題庫</h1>
-            <div class="nav-links">
-                <span class="nav-label">
-                    <i class="fas fa-user-graduate"></i> 學生測驗模式
-                </span>
+{#
+  Student layout (style A): logo and the student's name only, no teacher nav.
+  Blocks: title, head, body_class, topbar, main_class (default "quiz-main", max 720px),
+  student_name (server-side name, optional), content, scripts.
+  The name can also be set from the page: UI.setStudentName('王小明').
+#}
+<body class="{% block body_class %}{% endblock %}">
+    {% block topbar %}
+    <header class="top">
+        <div class="top-in">
+            <span class="top-logo"><i class="fas fa-book-open" aria-hidden="true"></i> 智慧題庫</span>
+            <div class="top-user">
+                <span id="top-student-name" data-student-name>{% block student_name %}{% endblock %}</span>
             </div>
-        </nav>
-        
-        <div class="content">
-            {% block content %}{% endblock %}
         </div>
-    </div>
-    
+    </header>
+    {% endblock %}
+
+    <main class="{% block main_class %}quiz-main{% endblock %}" id="main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

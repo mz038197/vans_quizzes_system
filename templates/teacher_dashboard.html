@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-header">
     <h1><i class="fas fa-tachometer-alt"></i> 教學儀表板</h1>
-    <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-lg">
+    <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-primary btn-lg">
         <i class="fas fa-plus"></i> 建立題庫
     </a>
 </div>
@@ -55,7 +55,7 @@
 <div class="card">
     <div class="card-header">
         <h2><i class="fas fa-book"></i> 我的題庫</h2>
-        <a href="{{ url_for('create_quiz_bank') }}" class="btn">
+        <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-primary">
             <i class="fas fa-plus"></i> 新增題庫
         </a>
     </div>
@@ -73,7 +73,7 @@
                         <span class="access-code">{{ quiz_bank.access_code }}</span>
                     </div>
                     <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                        <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="btn" style="flex: 1; text-align: center;">
+                        <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="btn btn-primary" style="flex: 1; text-align: center;">
                             <i class="fas fa-cog"></i> 管理題目
                         </a>
                         <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" style="flex: 1; text-align: center;">
@@ -114,7 +114,7 @@
                 </div>
                 <h3 style="color: #666; margin-bottom: 1rem;">還沒有題庫</h3>
                 <p style="color: #888; margin-bottom: 2rem;">開始建立您的第一個題庫吧！</p>
-                <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-lg">
+                <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-primary btn-lg">
                     <i class="fas fa-plus"></i> 建立題庫
                 </a>
             </div>
@@ -123,46 +123,21 @@
 </div>
 
 <script>
-function copyQuizLink(accessCode) {
+async function copyQuizLink(accessCode) {
     const link = window.location.origin + '/quiz/' + accessCode;
-    
-    if (navigator.clipboard) {
-        navigator.clipboard.writeText(link).then(() => {
-            alert('題庫連結已複製到剪貼簿！\n' + link);
-        }).catch(() => {
-            fallbackCopyTextToClipboard(link);
-        });
+    if (await copyToClipboard(link)) {
+        UI.toast('題庫連結已複製到剪貼簿！\n' + link, 'ok');
     } else {
-        fallbackCopyTextToClipboard(link);
+        UI.tell('無法複製連結，請手動複製：\n' + link, { title: '複製連結' });
     }
-}
-
-function fallbackCopyTextToClipboard(text) {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-999999px";
-    textArea.style.top = "-999999px";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    
-    try {
-        document.execCommand('copy');
-        alert('題庫連結已複製到剪貼簿！\n' + text);
-    } catch (err) {
-        alert('無法複製連結，請手動複製：\n' + text);
-    }
-    
-    document.body.removeChild(textArea);
 }
 
 async function toggleQuizBank(quizBankId, isActive) {
     const action = isActive ? '停用' : '啟用';
-    if (!confirm(`確定要${action}這個題庫嗎？`)) {
+    if (!(await UI.ask(`確定要${action}這個題庫嗎？`, { okText: action }))) {
         return;
     }
-    
+
     try {
         const response = await fetch(`/api/quiz-bank/${quizBankId}/toggle`, {
             method: 'POST',
@@ -170,19 +145,19 @@ async function toggleQuizBank(quizBankId, isActive) {
                 'Content-Type': 'application/json',
             }
         });
-        
+
         if (response.ok) {
             location.reload();
         } else {
-            alert('操作失敗，請稍後再試');
+            UI.toast('操作失敗，請稍後再試', 'error');
         }
     } catch (error) {
-        alert('網路錯誤，請檢查連線');
+        UI.toast('網路錯誤，請檢查連線', 'error');
     }
 }
 
 async function deleteQuizBank(quizBankId) {
-    if (!confirm('確定要刪除這個題庫嗎？\n\n⚠️ 警告：此操作將永久刪除題庫及其所有題目，且無法復原！')) {
+    if (!(await UI.ask('確定要刪除這個題庫嗎？\n\n⚠️ 警告：此操作將永久刪除題庫及其所有題目，且無法復原！', { title: '刪除題庫', danger: true, okText: '刪除' }))) {
         return;
     }
 
@@ -195,9 +170,10 @@ async function deleteQuizBank(quizBankId) {
 
         if (response.status === 409 && result.requires_confirm) {
             const count = result.submission_count;
-            const ok = confirm(
+            const ok = await UI.ask(
                 `此題庫已有 ${count} 筆作答紀錄（Submission）。\n` +
-                '刪除後題庫、題目與這些紀錄都會永久消失，無法復原。\n\n確定要繼續嗎？'
+                '刪除後題庫、題目與這些紀錄都會永久消失，無法復原。\n\n確定要繼續嗎？',
+                { title: '刪除題庫和作答紀錄', danger: true, okText: '全部刪除' }
             );
             if (!ok) {
                 return;
@@ -211,13 +187,13 @@ async function deleteQuizBank(quizBankId) {
         }
 
         if (response.ok) {
-            alert(result.message);
+            UI.flash(result.message, 'ok');
             location.reload();
         } else {
-            alert(result.error || '刪除失敗，請稍後再試');
+            UI.toast(result.error || '刪除失敗，請稍後再試', 'error');
         }
     } catch (error) {
-        alert('網路錯誤，請檢查連線');
+        UI.toast('網路錯誤，請檢查連線', 'error');
     }
 }
 </script>

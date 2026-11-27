@@ -9,7 +9,7 @@
         <h1 class="quiz-page-header__title">📝 {{ quiz_bank.title }}</h1>
         <p class="quiz-page-header__meta">題庫代碼：<span class="access-code">{{ quiz_bank.access_code }}</span></p>
         <div class="quiz-page-header__toolbar">
-            <button onclick="showAddQuestionModal()" class="btn">➕ 新增題目</button>
+            <button onclick="showAddQuestionModal()" class="btn btn-primary">➕ 新增題目</button>
             <div class="quiz-page-header__toolbar-secondary">
                 <a href="{{ url_for('export_quiz_bank_pdf', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" title="導出題庫為PDF文件">📄 導出PDF</a>
                 <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary">📊 查看成績</a>
@@ -95,7 +95,7 @@
                 <p id="scoring-preview" style="color: #667eea; font-size: 0.9rem; margin-top: 0.5rem;"></p>
             </div>
 
-            <button type="button" class="btn" onclick="savePracticeConfig()" style="margin-top: 1rem;">儲存模式設定</button>
+            <button type="button" class="btn btn-primary" onclick="savePracticeConfig()" style="margin-top: 1rem;">儲存模式設定</button>
             <div id="practice-config-alert" style="margin-top: 1rem;"></div>
         </div>
     </div>
@@ -121,7 +121,7 @@
 
             <div style="display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
                 <button type="button" class="btn btn-secondary" onclick="downloadAppendTemplate()">下載追加範本</button>
-                <button type="button" class="btn" onclick="previewAppendImport()">
+                <button type="button" class="btn btn-primary" onclick="previewAppendImport()">
                     <span id="append-preview-text">預覽追加</span>
                     <span id="append-preview-loading" class="loading" style="display: none;"></span>
                 </button>
@@ -143,7 +143,7 @@
                         <tbody id="append-preview-body"></tbody>
                     </table>
                 </div>
-                <button type="button" class="btn" id="confirm-append-btn" onclick="confirmAppendImport()" disabled>
+                <button type="button" class="btn btn-primary" id="confirm-append-btn" onclick="confirmAppendImport()" disabled>
                     <span id="append-confirm-text">確認追加</span>
                     <span id="append-confirm-loading" class="loading" style="display: none;"></span>
                 </button>
@@ -171,7 +171,7 @@
                         <span style="color: #666; margin-left: 1rem;">{{ question.points }} 分</span>
                     </div>
                     <div style="display: flex; gap: 0.5rem;">
-                        <button onclick="editQuestion({{ question.id }})" class="btn" style="padding: 6px 12px;">✏️ 編輯</button>
+                        <button onclick="editQuestion({{ question.id }})" class="btn btn-primary" style="padding: 6px 12px;">✏️ 編輯</button>
                         <button onclick="deleteQuestion({{ question.id }})" class="btn btn-danger" style="padding: 6px 12px;">🗑️ 刪除</button>
                     </div>
                 </div>
@@ -276,14 +276,14 @@
             <div style="text-align: center; padding: 3rem; background: #f8f9fa; border-radius: 10px;">
                 <h3 style="color: #666; margin-bottom: 1rem;">📝 還沒有題目</h3>
                 <p style="color: #888; margin-bottom: 2rem;">開始建立您的第一個題目吧！</p>
-                <button onclick="showAddQuestionModal()" class="btn">➕ 新增題目</button>
+                <button onclick="showAddQuestionModal()" class="btn btn-primary">➕ 新增題目</button>
             </div>
         {% endif %}
     </div>
 </div>
 
 <!-- 新增/編輯題目的模態框 -->
-<div id="question-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 9999;">
+<div id="question-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: var(--z-dialog);">
     <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; border-radius: 10px; width: 90%; max-width: 800px; max-height: 90%; overflow-y: auto;">
         <div style="padding: 2rem;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
@@ -347,7 +347,7 @@
                 <div id="question-specific-content"></div>
                 
                 <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-                    <button type="submit" class="btn" style="flex: 1;">儲存題目</button>
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">儲存題目</button>
                     <button type="button" onclick="hideQuestionModal()" class="btn btn-secondary" style="flex: 1;">取消</button>
                 </div>
             </form>
@@ -954,7 +954,7 @@ function parseBlanks() {
     const blanks = fillblankText.match(/\{\{[^}]*\}\}/g) || [];
     
     if (blanks.length === 0) {
-        alert('請先在題目文字中使用 {{ '{{}}' }} 標記填空位置');
+        UI.toast('請先在題目文字中使用 {{ '{{}}' }} 標記填空位置', 'warn');
         return;
     }
     
@@ -1027,14 +1027,14 @@ document.getElementById('question-form').addEventListener('submit', async functi
         const result = await response.json();
         
         if (response.ok) {
-            alert(result.message);
+            UI.flash(result.message, 'ok');
             hideQuestionModal();
             location.reload();
         } else {
-            alert(result.error || '操作失敗');
+            UI.toast(result.error || '操作失敗', 'error');
         }
     } catch (error) {
-        alert('網路錯誤，請稍後再試');
+        UI.toast('網路錯誤，請稍後再試', 'error');
     }
 });
 
@@ -1204,7 +1204,7 @@ function collectFormData() {
 
 function validateFormData(data) {
     if (!data.title || !data.question_text || !data.question_type) {
-        alert('請填寫所有必填欄位');
+        UI.toast('請填寫所有必填欄位', 'warn');
         return false;
     }
     
@@ -1212,44 +1212,44 @@ function validateFormData(data) {
         case 'single_choice':
         case 'multiple_choice':
             if (!data.question_data.options || data.question_data.options.length < 2) {
-                alert('至少需要2個選項');
+                UI.toast('至少需要2個選項', 'warn');
                 return false;
             }
             if (data.question_type === 'single_choice' && !data.question_data.correct_answer) {
-                alert('請選擇正確答案');
+                UI.toast('請選擇正確答案', 'warn');
                 return false;
             }
             if (data.question_type === 'multiple_choice' && (!data.question_data.correct_answers || data.question_data.correct_answers.length === 0)) {
-                alert('請選擇至少一個正確答案');
+                UI.toast('請選擇至少一個正確答案', 'warn');
                 return false;
             }
             break;
             
         case 'fill_blank':
             if (!data.question_data.correct_answer) {
-                alert('請輸入正確答案');
+                UI.toast('請輸入正確答案', 'warn');
                 return false;
             }
             break;
             
         case 'dropdown':
             if (!data.question_data.options || data.question_data.options.length < 2) {
-                alert('至少需要2個選項');
+                UI.toast('至少需要2個選項', 'warn');
                 return false;
             }
             if (!data.question_data.correct_answer) {
-                alert('請選擇正確答案');
+                UI.toast('請選擇正確答案', 'warn');
                 return false;
             }
             break;
             
         case 'dropdown_fillblank':
             if (!data.question_data.fillblank_text) {
-                alert('請輸入填空題目文字');
+                UI.toast('請輸入填空題目文字', 'warn');
                 return false;
             }
             if (!data.question_data.blanks || data.question_data.blanks.length === 0) {
-                alert('請先解析空格並設定選項');
+                UI.toast('請先解析空格並設定選項', 'warn');
                 return false;
             }
             
@@ -1257,11 +1257,11 @@ function validateFormData(data) {
             for (let i = 0; i < data.question_data.blanks.length; i++) {
                 const blank = data.question_data.blanks[i];
                 if (!blank.options || blank.options.length < 2) {
-                    alert(`空格 ${i + 1} 至少需要2個選項`);
+                    UI.toast(`空格 ${i + 1} 至少需要2個選項`, 'warn');
                     return false;
                 }
                 if (!blank.correct_answer) {
-                    alert(`空格 ${i + 1} 請選擇正確答案`);
+                    UI.toast(`空格 ${i + 1} 請選擇正確答案`, 'warn');
                     return false;
                 }
             }
@@ -1269,7 +1269,7 @@ function validateFormData(data) {
             
         case 'parsons':
             if (!data.question_data.code_blocks || Object.keys(data.question_data.code_blocks).length < 2) {
-                alert('❌ 至少需要2個程式碼塊才能建立程式碼排序題');
+                UI.toast('❌ 至少需要2個程式碼塊才能建立程式碼排序題', 'warn');
                 return false;
             }
             
@@ -1289,7 +1289,7 @@ function validateFormData(data) {
             
             if (missingSlots.length > 0) {
                 const missingList = missingSlots.join('、');
-                alert(`❌ 以下空格尚未設定：空格 ${missingList}\n\n請為每個空格選擇「普通答案」或「固定程式碼塊」。`);
+                UI.toast(`❌ 以下空格尚未設定：空格 ${missingList}\n\n請為每個空格選擇「普通答案」或「固定程式碼塊」。`, 'warn');
                 // 高亮顯示缺少設定的空格
                 setTimeout(() => {
                     missingSlots.forEach(slotNum => {
@@ -1321,7 +1321,7 @@ function validateFormData(data) {
             });
             
             if (emptyFixedBlocks.length > 0) {
-                alert(`❌ 以下固定程式碼塊未輸入內容：空格 ${emptyFixedBlocks.join('、')}\n\n請輸入固定程式碼塊的內容。`);
+                UI.toast(`❌ 以下固定程式碼塊未輸入內容：空格 ${emptyFixedBlocks.join('、')}\n\n請輸入固定程式碼塊的內容。`, 'warn');
                 return false;
             }
             
@@ -1343,7 +1343,7 @@ async function editQuestion(questionId) {
         // 找到要編輯的題目
         const question = questions.find(q => q.id === questionId);
         if (!question) {
-            alert('找不到題目數據');
+            UI.toast('找不到題目數據', 'error');
             return;
         }
         
@@ -1587,12 +1587,12 @@ async function editQuestion(questionId) {
         
     } catch (error) {
         console.error('獲取題目數據失敗', error);
-        alert('獲取題目數據失敗，請稍後再試');
+        UI.toast('獲取題目數據失敗，請稍後再試', 'error');
     }
 }
 
 async function deleteQuestion(questionId) {
-    if (!confirm('確定要刪除這個題目嗎？')) return;
+    if (!(await UI.ask('確定要刪除這個題目嗎？', { title: '刪除題目', danger: true, okText: '刪除' }))) return;
     
     try {
         const response = await fetch(`/api/question/${questionId}`, {
@@ -1602,13 +1602,13 @@ async function deleteQuestion(questionId) {
         const result = await response.json();
         
         if (response.ok) {
-            alert(result.message);
+            UI.flash(result.message, 'ok');
             location.reload();
         } else {
-            alert(result.error || '刪除失敗');
+            UI.toast(result.error || '刪除失敗', 'error');
         }
     } catch (error) {
-        alert('網路錯誤，請稍後再試');
+        UI.toast('網路錯誤，請稍後再試', 'error');
     }
 }
 
@@ -1879,12 +1879,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!file) return;
 
             if (!file.type.startsWith('image/')) {
-                alert('請選擇圖片檔案');
+                UI.toast('請選擇圖片檔案', 'warn');
                 imageInput.value = '';
                 return;
             }
             if (file.size > QUESTION_IMAGE_MAX_BYTES) {
-                alert('圖片大小不能超過 2MB');
+                UI.toast('圖片大小不能超過 2MB', 'warn');
                 imageInput.value = '';
                 return;
             }

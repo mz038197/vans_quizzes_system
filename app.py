@@ -22,6 +22,7 @@ from practice_utils import (
     validate_category_ratios,
 )
 from time_display import format_wall_clock_utc8
+from page_nav import register_page_nav
 from teacher_auth import (
     DEFAULT_SECRET_KEY,
     LoginError,
@@ -75,6 +76,7 @@ _DATA_URL_IMAGE_RE = re.compile(
 db = SQLAlchemy(app)
 CORS(app)
 configure_teacher_auth(app, ENVIRONMENT)
+register_page_nav(app)
 
 # 模板過濾器
 @app.template_filter('from_json')

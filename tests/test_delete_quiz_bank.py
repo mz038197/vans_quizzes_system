@@ -30,7 +30,7 @@ def test_delete_quiz_bank_without_submissions_succeeds(auth_client):
         assert Question.query.get(question_id) is None
 
 
-def test_delete_quiz_bank_with_submissions_requires_confirm(auth_client):
+def test_delete_quiz_bank_with_submissions_requires_confirm_flag(auth_client):
     quiz_bank_id = auth_client._ids['quiz_bank_id']
     _submit(auth_client, 'Alice')
     _submit(auth_client, 'Bob')

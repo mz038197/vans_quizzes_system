@@ -30,7 +30,7 @@
                         <input type="email" id="student-email" placeholder="您的電子郵件">
                     </div>
                 </div>
-                <button onclick="startQuiz()" class="btn">{% if is_practice %}開始作答{% else %}開始測驗{% endif %}</button>
+                <button onclick="startQuiz()" class="btn btn-primary">{% if is_practice %}開始作答{% else %}開始測驗{% endif %}</button>
             </div>
             
             <!-- 測驗進度 -->
@@ -174,7 +174,7 @@
                         {% if loop.last %}
                         <button onclick="submitQuiz()" class="btn btn-success">提交測驗</button>
                         {% else %}
-                        <button onclick="nextQuestion()" class="btn">下一題 →</button>
+                        <button onclick="nextQuestion()" class="btn btn-primary">下一題 →</button>
                         {% endif %}
                     </div>
                 </div>
@@ -422,11 +422,13 @@ function startCountdown() {
 function startQuiz() {
     const studentName = document.getElementById('student-name').value.trim();
     if (!studentName) {
-        alert('請輸入您的姓名');
+        UI.toast('請輸入您的姓名', 'warn');
+        document.getElementById('student-name').focus();
         return;
     }
     
     quizStarted = true;
+    UI.setStudentName(studentName);
     loadReviewFlags();
     document.getElementById('student-info-section').style.display = 'none';
     document.getElementById('quiz-progress').style.display = 'block';
@@ -684,7 +686,7 @@ function handleSlotDrop(e, questionId) {
     // 禁止在固定區塊上拖放
     if (targetSlot.dataset.fixed === 'true') {
         targetSlot.classList.remove('slot-highlight');
-        alert('此位置是固定的程式碼區塊，無法放置其他程式碼');
+        UI.toast('此位置是固定的程式碼區塊，無法放置其他程式碼', 'warn');
         return;
     }
     
@@ -819,8 +821,12 @@ async function submitQuiz(options) {
     if (quizSubmitted) {
         return;
     }
-    if (!skipConfirm && !confirm('確定要提交測驗嗎？提交後將無法修改。')) {
-        return;
+    if (!skipConfirm) {
+        const ok = await UI.ask('確定要提交測驗嗎？提交後將無法修改。', { title: '提交測驗', okText: '提交' });
+        // The Time-up Hand-in may have run while the question was open.
+        if (!ok || quizSubmitted) {
+            return;
+        }
     }
 
     quizSubmitted = true;
@@ -881,7 +887,7 @@ async function submitQuiz(options) {
             clearReviewFlags();
 
             if (fromTimeUp) {
-                alert('時間到，已自動繳交題目。按下確定後將查看結果。');
+                await UI.tell('時間到，已自動繳交題目。按下「查看結果」後將查看結果。', { title: '時間到', okText: '查看結果' });
                 window.location.href = result.result_url;
                 return;
             }
@@ -899,7 +905,7 @@ async function submitQuiz(options) {
             const scoreDisplay = document.getElementById('score-display');
             const detailsButton = document.createElement('a');
             detailsButton.href = result.result_url;
-            detailsButton.className = 'btn';
+            detailsButton.className = 'btn btn-primary';
             detailsButton.style.marginTop = '1rem';
             detailsButton.textContent = '查看測驗詳情';
             scoreDisplay.appendChild(detailsButton);
@@ -921,14 +927,14 @@ async function submitQuiz(options) {
             if (fromTimeUp && timeLimitMinutes) {
                 startCountdown();
             }
-            alert(result.error || '提交失敗，請稍後再試');
+            UI.toast(result.error || '提交失敗，請稍後再試', 'error');
         }
     } catch (error) {
         quizSubmitted = false;
         if (fromTimeUp && timeLimitMinutes) {
             startCountdown();
         }
-        alert('網路錯誤，請檢查連線');
+        UI.toast('網路錯誤，請檢查連線', 'error');
     }
 }
 
