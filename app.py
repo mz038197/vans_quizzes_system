@@ -91,17 +91,20 @@ def from_json_filter(value):
     except:
         return {}
 
+# Question types in display order, with their names (templates get it as `question_type_names`).
+QUESTION_TYPE_NAMES = {
+    'single_choice': '單選題',
+    'multiple_choice': '多選題',
+    'fill_blank': '填空題',
+    'dropdown': '下拉選單',
+    'dropdown_fillblank': '下拉選單填空題',
+    'parsons': '程式碼排序題',
+}
+app.jinja_env.globals['question_type_names'] = QUESTION_TYPE_NAMES
+
 @app.template_global()
 def get_question_type_name(question_type):
-    type_names = {
-        'single_choice': '單選題',
-        'multiple_choice': '多選題',
-        'fill_blank': '填空題',
-        'dropdown': '下拉選單',
-        'dropdown_fillblank': '下拉選單填空題',
-        'parsons': '程式碼排序題'
-    }
-    return type_names.get(question_type, question_type)
+    return QUESTION_TYPE_NAMES.get(question_type, question_type)
 
 def new_result_token():
     """The secret part of a Result Link (ADR 0008)."""
@@ -891,10 +894,13 @@ def create_quiz_bank():
             'access_code': quiz_bank.access_code
         })
     
+    tab = request.args.get('tab')
+    if tab not in ('manual', 'import'):
+        tab = 'manual'
     folder = db.session.get(Folder, request.args.get('folder', type=int) or 0)
     if folder is not None and not is_own_folder(folder):
         folder = None
-    return render_template('create_quiz_bank.html', folder=folder)
+    return render_template('create_quiz_bank.html', tab=tab, folder=folder)
 
 @app.route('/quiz-bank/<int:quiz_bank_id>')
 @teacher_required
@@ -906,8 +912,22 @@ def manage_quiz_bank(quiz_bank_id):
     questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
     category_stats = {}
     for question in questions:
-        category = (question.category or '未分類').strip()
+        category = (question.category or '').strip() or '未分類'
         category_stats[category] = category_stats.get(category, 0) + 1
+
+    type_counts = []
+    for question_type, name in QUESTION_TYPE_NAMES.items():
+        count = sum(1 for question in questions if question.question_type == question_type)
+        if count:
+            type_counts.append((question_type, name, count))
+
+    scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
+    if scoring_mode != 'average':
+        scoring_total = sum(question.points or 0 for question in questions)
+
+    tab = request.args.get('tab')
+    if tab not in MANAGE_TABS:
+        tab = MANAGE_TABS[0]
 
     return render_template(
         'manage_quiz_bank.html',
@@ -915,17 +935,28 @@ def manage_quiz_bank(quiz_bank_id):
         questions=questions,
         category_stats=category_stats,
         category_ratios=get_category_ratios(quiz_bank),
+        type_counts=type_counts,
+        scoring_mode=scoring_mode,
+        scoring_total=scoring_total,
+        tab=tab,
     )
+
+# Tabs of the Quiz Bank manage page, in order. The first one opens by default.
+MANAGE_TABS = ('questions', 'settings', 'import')
 
 @app.route('/quiz/<access_code>')
 def take_quiz(access_code):
     quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
 
     if quiz_bank.quiz_mode == 'practice':
+        practice_mode, practice_total = get_bank_scoring(quiz_bank)
         return render_template(
             'practice_landing.html',
             quiz_bank=quiz_bank,
             category_ratios=get_category_ratios(quiz_bank),
+            question_count=quiz_bank.session_question_count or 10,
+            # Explicit points depend on the draw, so the start page cannot know the total yet.
+            total_points=practice_total if practice_mode == 'average' else None,
         )
 
     questions, _take_order = load_fixed_take_questions(access_code, quiz_bank.id)
@@ -1436,9 +1467,9 @@ def view_submission_as_teacher(quiz_bank_id, submission_id):
     if not is_own_quiz_bank(quiz_bank):
         return redirect(url_for('teacher_dashboard'))
     submission = Submission.query.filter_by(id=submission_id, quiz_bank_id=quiz_bank.id).first_or_404()
-    return render_submission_result(submission)
+    return render_submission_result(submission, teacher_view=True)
 
-def render_submission_result(submission):
+def render_submission_result(submission, teacher_view=False):
     if submission.session_question_ids:
         question_ids = json.loads(submission.session_question_ids)
         loaded = Question.query.filter(Question.id.in_(question_ids)).all()
@@ -1455,6 +1486,11 @@ def render_submission_result(submission):
         # Use explicit None check so a legitimate 0 total is preserved.
         snap_total = submission.total_points if submission.total_points is not None else 100
     question_points = effective_points_map(questions, snap_mode, snap_total)
+    # Right or wrong comes from the same judgement as the score (points=1 so a 0-point question still counts).
+    correct_ids = {
+        q.id for q in questions
+        if grade_question(q, student_answers.get(str(q.id)), points=1) > 0
+    }
     return render_template(
         'result.html',
         submission=submission,
@@ -1462,6 +1498,8 @@ def render_submission_result(submission):
         student_answers=student_answers,
         question_points=question_points,
         review_flag_ids=review_flag_ids,
+        correct_ids=correct_ids,
+        teacher_view=teacher_view,
     )
 
 @app.route('/quiz-bank/<int:quiz_bank_id>/submissions')
