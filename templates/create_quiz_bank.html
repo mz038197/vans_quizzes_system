@@ -13,6 +13,11 @@
 
     <div id="alert-container"></div>
 
+    {# Folder for the new Quiz Bank (ticket 07, #9). Null = 未分類. #}
+    <div id="target-folder" data-folder-id="{{ folder.id if folder else '' }}">
+        {% if folder %}<p class="muted small"><i class="fas fa-folder" aria-hidden="true"></i> 新題庫會放進資料夾「{{ folder.name }}」</p>{% endif %}
+    </div>
+
     <div id="manual-tab">
         <form id="create-quiz-form">
             <div class="form-group">
@@ -103,6 +108,11 @@ function switchTab(tab) {
     clearAlert();
 }
 
+function targetFolderId() {
+    const id = document.getElementById('target-folder').dataset.folderId;
+    return id ? Number(id) : null;
+}
+
 function showAlert(message, type) {
     document.getElementById('alert-container').innerHTML = `<div class="alert alert-${type}">${message}</div>`;
 }
@@ -133,7 +143,7 @@ document.getElementById('create-quiz-form').addEventListener('submit', async fun
         const response = await fetch('/create-quiz-bank', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, description })
+            body: JSON.stringify({ title, description, folder_id: targetFolderId() })
         });
         const data = await response.json();
 
@@ -219,6 +229,7 @@ async function confirmImport() {
     const fileInput = document.getElementById('md-file');
     const formData = new FormData();
     formData.append('file', fileInput.files[0]);
+    if (targetFolderId()) formData.append('folder_id', targetFolderId());
 
     setLoading('confirm', true);
     try {
