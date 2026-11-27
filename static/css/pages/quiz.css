@@ -215,3 +215,6 @@
 .qz-gate-ico.is-closed { background: var(--bg); color: var(--muted); }
 .qz-gate-cd { font-family: var(--mono); font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--primary); }
 .qz-gate-when { background: var(--bg); border-radius: var(--r); padding: 10px var(--s2); width: 100%; }
+
+/* Ticket 12 (#14): the Class Session end banner, separate from the Take clock in .qz-side. */
+.qz-ending { font-weight: 500; margin-bottom: var(--s2); }
