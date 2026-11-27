@@ -1,0 +1,36 @@
+/* Quiz Bank 成績 page (ticket 05, #7). Tokens only. */
+
+.subs-loading { padding: var(--s5) var(--s3); text-align: center; color: var(--muted); }
+.subs-loading .spin { display: block; width: var(--fs-xl); height: var(--fs-xl); margin: 0 auto var(--s1); }
+
+.kpi .v .of { font-size: var(--fs-md); font-weight: 500; color: var(--muted); }
+
+.subs-table td.r { text-align: right; }
+.subs-table th.r { text-align: right; }
+.subs-table .nowrap { white-space: nowrap; }
+.subs-table .t-actions { white-space: nowrap; text-align: right; }
+.subs-table .t-actions .btn { margin-left: var(--s0); }
+
+.rank {
+  width: 24px; height: 24px; display: inline-grid; place-items: center;
+  border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: 600;
+  background: var(--bg); color: var(--muted);
+}
+.rank.top { background: var(--warning-soft); color: var(--warning); }
+
+.pct { display: grid; grid-template-columns: 48px 80px; gap: var(--s1); align-items: center; justify-content: end; }
+.pct b { text-align: right; }
+.pct .track { height: 6px; background: var(--bg); border-radius: var(--r-pill); overflow: hidden; }
+.pct .fill { height: 100%; border-radius: var(--r-pill); }
+.pct .pts { grid-column: 1 / -1; text-align: right; color: var(--muted); font-size: var(--fs-xs); }
+
+.hi { color: var(--success); } .mid { color: var(--warning); } .lo { color: var(--danger); }
+.bg-hi { background: var(--success); } .bg-mid { background: var(--warning); } .bg-lo { background: var(--danger); }
+
+.subs-empty-code { display: inline-flex; align-items: center; gap: var(--s1); flex-wrap: wrap; justify-content: center; }
+
+[hidden] { display: none !important; }
+
+@media (max-width: 760px) {
+  .pct { grid-template-columns: 48px 48px; }
+}

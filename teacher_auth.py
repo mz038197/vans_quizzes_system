@@ -55,6 +55,9 @@ ROUTER_UNAVAILABLE_NOTICE = '驗證服務暫時無法使用，請稍後再試'
 LOGIN_FAILED_NOTICE = '登入失敗，請再試一次'
 LOGIN_REQUIRED_NOTICE = '請先登入教師後台'
 BAD_ORIGIN_NOTICE = '請求來源不符，已拒絕'
+NON_TEACHER_HINT = '只有教師帳號可以登入後台。'
+# `?notice=` code on the home page: a teacher page was opened without signing in.
+LOGIN_REQUIRED = 'login_required'
 
 # Salts keep each signed value to its own purpose, so one cannot stand in for another.
 TEACHER_COOKIE_SALT = 'quizzes-teacher-cookie'
@@ -442,7 +445,7 @@ def teacher_required(view):
         if current_teacher() is None:
             if request.path.startswith('/api/'):
                 return jsonify({'error': LOGIN_REQUIRED_NOTICE}), 401
-            return redirect(url_for('teacher_auth.login', next=request.full_path.rstrip('?')))
+            return redirect(url_for('index', notice=LOGIN_REQUIRED, next=request.full_path.rstrip('?')))
         return view(*args, **kwargs)
 
     return wrapper
@@ -453,6 +456,13 @@ def safe_next(value: Optional[str]) -> str:
     if value and value.startswith('/') and not value.startswith('//') and '\\' not in value:
         return value
     return '/teacher-dashboard'
+
+
+def login_url(next_value: Optional[str] = None) -> str:
+    """The sign-in start address; keeps `next` only when it is a safe path on this site."""
+    if next_value and safe_next(next_value) == next_value:
+        return url_for('teacher_auth.login', next=next_value)
+    return url_for('teacher_auth.login')
 
 
 def _cookie_kwargs(max_age: int, path: str = '/') -> dict:
