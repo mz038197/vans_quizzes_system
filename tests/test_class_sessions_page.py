@@ -152,3 +152,18 @@ def test_page_shows_only_this_teachers_courses(auth_client):
 def test_page_needs_a_signed_in_teacher(client):
     response = client.get('/class-sessions')
     assert response.status_code == 302
+
+
+def test_live_and_upcoming_rows_have_a_projector_qr_button(auth_client):
+    """Review fix 4: the 投影 QR button of the dashboard cards, on the 課堂 page rows."""
+    ids = auth_client._ids
+    live = make_class_session(ids, name='現在')
+    soon = make_class_session(ids, starts_in=3600, ends_in=7200, name='等一下')
+    done = make_class_session(ids, starts_in=-7200, ends_in=-3600, name='剛剛')
+    html = _page(auth_client)
+    rows = dict(re.findall(r'<tr data-class-session="\d+".*?class="t-title">([^<]+)<(.*?)</tr>', html, re.S))
+    assert f'data-qr="{live}"' in rows['現在']
+    assert f'data-qr="{soon}"' in rows['等一下']
+    assert f'data-qr="{done}"' not in rows['剛剛']
+    assert 'id="qr-stage"' in html
+    assert '/static/js/vendor/qrcode.js' in html and '/static/js/qr_stage.js' in html

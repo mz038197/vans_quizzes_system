@@ -137,17 +137,10 @@
     </section>
 </div>
 
-<div class="qr-stage" id="qr-stage" role="dialog" aria-modal="true" aria-labelledby="qr-stage-title" hidden>
-    <button type="button" class="btn qr-close" id="qr-close"><i class="fas fa-times" aria-hidden="true"></i> 關閉（Esc）</button>
-    <h1 id="qr-stage-title"></h1>
-    <div class="qr-stage-img" id="qr-stage-img"></div>
-    <div class="qr-stage-url mono" id="qr-stage-url"></div>
-    <p class="qr-stage-hint">用手機相機掃描，輸入姓名就能開始作答，不用登入。</p>
-</div>
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ url_for('static', filename='js/vendor/qrcode.js') }}"></script>
+{% include "_qr_stage.html" %}
 <script src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
 {% include "_class_session_dialog.html" %}
 {% endblock %}

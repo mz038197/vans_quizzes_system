@@ -20,6 +20,7 @@
     <td>{{ ui.status_pill(row.status, row.status_label) }}</td>
     <td class="cs-acts">
         {% if row.status != 'done' %}
+        <button type="button" class="btn btn-icon" data-qr="{{ cs.code }}" data-title="{{ cs.course.name }} · {{ cs.name }}" title="投影 QR" aria-label="投影「{{ cs.name }}」的 QR code"><i class="fas fa-qrcode" aria-hidden="true"></i></button>
         <button type="button" class="btn btn-icon" data-copy-url="{{ url_for('take_quiz', code=cs.code, _external=True) }}" title="複製連結" aria-label="複製「{{ cs.name }}」的連結"><i class="fas fa-link" aria-hidden="true"></i></button>
         {% endif %}
         {% if row.status == 'live' %}
@@ -117,6 +118,7 @@
 {% endblock %}
 
 {% block scripts %}
+{% include "_qr_stage.html" %}
 <script src="{{ url_for('static', filename='js/class_session_actions.js') }}"></script>
 <script src="{{ url_for('static', filename='js/course_actions.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pages/class_sessions.js') }}"></script>

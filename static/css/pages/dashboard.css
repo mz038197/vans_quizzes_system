@@ -7,24 +7,11 @@
 .qr-box { padding: var(--s2) var(--s3) var(--s3); display: grid; gap: 12px; justify-items: center; }
 .qr-box select { width: 100%; }
 .qr-img { width: 184px; height: 184px; display: grid; place-items: center; }
-.qr-img svg, .qr-stage-img svg { width: 100%; height: 100%; }
+.qr-img svg { width: 100%; height: 100%; }
 .qr-url { color: var(--muted); font-size: var(--fs-sm); text-align: center; word-break: break-all; }
-.qr-url b, .qr-stage-url b { color: var(--text); }
+.qr-url b { color: var(--text); }
 .qr-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s1); width: 100%; }
 .qr-actions .btn { justify-content: center; }
-
-/* Full-screen projector */
-.qr-stage {
-  position: fixed; inset: 0; z-index: var(--z-dialog); background: var(--surface);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: var(--s3); padding: var(--s4);
-}
-.qr-stage[hidden] { display: none; }
-.qr-stage h1 { font-size: 40px; text-align: center; }
-.qr-stage-img { width: min(60vh, 80vw); height: min(60vh, 80vw); }
-.qr-stage-url { font-size: var(--fs-2xl); color: var(--muted); text-align: center; word-break: break-all; }
-.qr-stage-hint { color: var(--muted); font-size: var(--fs-lg); text-align: center; }
-.qr-close { position: absolute; top: var(--s3); right: var(--s3); }
 
 /* 進行中・即將開始的課堂 cards (ticket 13, #15) */
 .dash-sessions { margin-bottom: var(--s3); }
