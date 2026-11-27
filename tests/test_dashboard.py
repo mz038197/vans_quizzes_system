@@ -4,16 +4,13 @@ import re
 from datetime import datetime, timedelta
 
 import app as app_module
-from conftest import TEACHER_ROUTER_ID, make_class_session, sign_in
+from conftest import TEACHER_ROUTER_ID, ended_class_session_id, make_class_session, sign_in
 
-_code_seq = iter(range(100000, 999999))
-
-
-def _bank(title, teacher_id=TEACHER_ROUTER_ID, is_active=True):
+def _bank(title, teacher_id=TEACHER_ROUTER_ID):
     with app_module.app.app_context():
         bank = app_module.QuizBank(
-            title=title, description='', access_code=f'T{next(_code_seq)}',
-            teacher_id=teacher_id, quiz_mode='fixed', is_active=is_active,
+            title=title, description='',
+            teacher_id=teacher_id, quiz_mode='fixed',
         )
         app_module.db.session.add(bank)
         app_module.db.session.commit()
@@ -21,10 +18,12 @@ def _bank(title, teacher_id=TEACHER_ROUTER_ID, is_active=True):
 
 
 def _sub(bank_id, name, days_ago=0.0, score=1, total=1):
+    class_session_id = ended_class_session_id(bank_id)
     with app_module.app.app_context():
         app_module.db.session.add(app_module.Submission(
             student_name=name, answers='{}', score=score, total_points=total,
             submitted_at=datetime.utcnow() - timedelta(days=days_ago), quiz_bank_id=bank_id,
+            class_session_id=class_session_id,
         ))
         app_module.db.session.commit()
 
@@ -122,7 +121,8 @@ def test_quiz_banks_page_lists_banks_with_columns(auth_client):
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert 'Timed Bank' in html
-    for column in ('模式', '題數', '作答', '平均', '課堂', '代碼'):
+    assert '>代碼<' not in html  # Quiz Banks have no code (#16)
+    for column in ('模式', '題數', '作答', '平均', '課堂'):
         assert f'>{column}<' in html
     assert '建立題庫' in html
 

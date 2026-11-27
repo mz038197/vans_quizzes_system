@@ -14,7 +14,7 @@
 {% block crumbs %}{{ ui.crumbs([('題庫', banks_url), (quiz_bank.title, None)]) }}{% endblock %}
 
 {% block content %}
-{% set head_sub = ((quiz_bank.description ~ ' · ') if quiz_bank.description else '') ~ mode_name ~ ' · 題庫代碼 ' ~ quiz_bank.access_code %}
+{% set head_sub = ((quiz_bank.description ~ ' · ') if quiz_bank.description else '') ~ mode_name %}
 {% call ui.page_head(quiz_bank.title, sub=head_sub) %}
     <button type="button" class="btn" data-open-session="{{ quiz_bank.id }}" data-session-return="?tab=sessions"><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i> 開課堂</button>
     <a class="btn" href="{{ url_for('export_quiz_bank_pdf', quiz_bank_id=quiz_bank.id) }}"><i class="far fa-file-pdf" aria-hidden="true"></i> 匯出 PDF</a>
@@ -163,7 +163,6 @@
                     {% if is_practice %}<dt>每次出題</dt><dd>{{ quiz_bank.session_question_count or 10 }} 題</dd>{% endif %}
                     <dt>計分</dt><dd>{{ '依題數平均' if scoring_mode == 'average' else '各題分數' }}</dd>
                     <dt>總分</dt><dd class="num">{{ '%g' | format(scoring_total) }} 分</dd>
-                    <dt>時限</dt><dd>{{ (quiz_bank.time_limit_minutes ~ ' 分鐘') if quiz_bank.time_limit_minutes else '不限時' }}</dd>
                 </dl>
                 <a class="linkish" href="?tab=settings" data-tab-link="settings">修改設定 →</a>
             </div>
@@ -202,7 +201,7 @@
                     </td>
                     <td class="cs-acts">
                         {% if row.status != 'done' %}
-                        <button type="button" class="btn btn-icon" data-copy-url="{{ url_for('take_quiz', access_code=cs.code, _external=True) }}" title="複製連結" aria-label="複製「{{ cs.name }}」的連結"><i class="fas fa-link" aria-hidden="true"></i></button>
+                        <button type="button" class="btn btn-icon" data-copy-url="{{ url_for('take_quiz', code=cs.code, _external=True) }}" title="複製連結" aria-label="複製「{{ cs.name }}」的連結"><i class="fas fa-link" aria-hidden="true"></i></button>
                         {% endif %}
                         {% if row.status == 'live' %}<button type="button" class="btn" data-cs-action="end" data-id="{{ cs.id }}">立即結束</button>
                         {% elif row.status == 'soon' %}<button type="button" class="btn" data-cs-action="start-now" data-id="{{ cs.id }}">現在開始</button>
@@ -266,14 +265,6 @@
                     <input class="inp inp-short" type="number" id="scoring-total-points" min="0.01" step="any" value="{{ quiz_bank.scoring_total_points if quiz_bank.scoring_total_points is not none else 100 }}">
                 </div>
                 <p class="help" id="scoring-preview"></p>
-            </div>
-        </section>
-        <section class="set-sec">
-            <div><h3>時限</h3><p class="help">選填。學生進入作答畫面就開始倒數，時間到會自動交卷。</p></div>
-            <div class="fld">
-                <label for="time-limit-minutes">時限（分鐘）</label>
-                <input class="inp inp-short" type="number" id="time-limit-minutes" min="1" step="1" placeholder="空白＝不限時" value="{{ quiz_bank.time_limit_minutes if quiz_bank.time_limit_minutes else '' }}">
-                <span class="err" id="time-limit-error" hidden>時限要是大於 0 的整數分鐘。空白表示不限時。</span>
             </div>
         </section>
     </form>
@@ -1706,7 +1697,6 @@ function readSettingsForm() {
         ]),
         scoring_mode: checkedValue('scoring_mode'),
         scoring_total_points: document.getElementById('scoring-total-points').value.trim(),
-        time_limit_minutes: document.getElementById('time-limit-minutes').value.trim(),
     };
 }
 
@@ -1822,8 +1812,6 @@ function fillSettingsForm(settings) {
     settings.category_ratios.forEach(([category, ratio]) => addRatioRow(category, ratio));
     setChecked('scoring_mode', settings.scoring_mode);
     document.getElementById('scoring-total-points').value = settings.scoring_total_points;
-    document.getElementById('time-limit-minutes').value = settings.time_limit_minutes;
-    document.getElementById('time-limit-error').hidden = true;
 }
 
 function resetSettings() {
@@ -1832,29 +1820,12 @@ function resetSettings() {
 }
 
 async function savePracticeConfig() {
-    const timeLimitInput = document.getElementById('time-limit-minutes');
-    const timeLimitError = document.getElementById('time-limit-error');
-    const rawTimeLimit = timeLimitInput.value.trim();
-    let timeLimitMinutes = null;
-    if (rawTimeLimit) {
-        timeLimitMinutes = Number(rawTimeLimit);
-        if (!Number.isInteger(timeLimitMinutes) || timeLimitMinutes <= 0) {
-            timeLimitError.hidden = false;
-            timeLimitInput.setAttribute('aria-invalid', 'true');
-            timeLimitInput.focus();
-            return;
-        }
-    }
-    timeLimitError.hidden = true;
-    timeLimitInput.removeAttribute('aria-invalid');
-
     const payload = {
         quiz_mode: checkedValue('quiz_mode'),
         session_question_count: parseInt(document.getElementById('session-question-count').value, 10),
         category_ratios: collectCategoryRatios(),
         scoring_mode: checkedValue('scoring_mode'),
         scoring_total_points: parseFloat(document.getElementById('scoring-total-points').value),
-        time_limit_minutes: timeLimitMinutes,
     };
 
     const button = document.getElementById('save-settings-btn');

@@ -207,7 +207,7 @@ const takeKey = {{ take_key | tojson }};
 // The Time Limit this Class Session set for this Quiz Bank (null = no Time Limit).
 const timeLimitMinutes = {{ time_limit_minutes if time_limit_minutes is not none else 'null' }};
 // The Class Session end (earlier of its end and the Course end), counted from the server's seconds left
-// so that a wrong device clock does not move it. null = no Class Session end (old Quiz Bank code).
+// so that a wrong device clock does not move it.
 const takeData = document.getElementById('quiz-take').dataset;
 const sessionEndMs = takeData.sessionEndsIn === '' ? null : Date.now() + parseInt(takeData.sessionEndsIn, 10) * 1000;
 const sessionEndHm = takeData.sessionEndHm;

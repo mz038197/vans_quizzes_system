@@ -6,6 +6,7 @@ and the Submission APIs the page calls keep working.
 
 import re
 
+from conftest import live_code
 from test_design_system import HEX
 
 
@@ -19,7 +20,7 @@ def _page(auth_client):
 def _submit(client, name='學生甲', email='', answer='A'):
     ids = client._ids
     response = client.post(
-        f'/api/quiz/{ids["access_code"]}/submit',
+        f'/api/quiz/{live_code(client)}/submit',
         json={'student_name': name, 'student_email': email, 'answers': {str(ids['question_id']): answer}},
     )
     assert response.status_code == 200

@@ -96,7 +96,7 @@ def test_empty_quiz_bank_offers_add_and_markdown_import(auth_client):
     assert 'data-tab-link="import"' in cards
 
 
-def test_settings_tab_has_mode_cards_ratio_total_scoring_time_limit_and_hidden_save_bar(auth_client):
+def test_settings_tab_has_mode_cards_ratio_total_scoring_and_hidden_save_bar(auth_client):
     html = _page(auth_client, '?tab=settings')
     settings = _section(html, 'settings')
     assert re.search(r'name="quiz_mode" value="fixed" checked', settings)
@@ -104,7 +104,7 @@ def test_settings_tab_has_mode_cards_ratio_total_scoring_time_limit_and_hidden_s
     assert 'id="ratio-total"' in settings
     assert re.search(r'name="scoring_mode" value="explicit" checked', settings)
     assert 'name="scoring_mode" value="average"' in settings
-    assert 'id="time-limit-minutes"' in settings
+    assert 'time-limit' not in settings  # the Time Limit belongs to the Class Session (#16)
     assert re.search(r'<div class="savebar" id="savebar" hidden', settings)
     assert '儲存設定' in settings
 
@@ -113,16 +113,16 @@ def test_settings_tab_shows_the_saved_settings(auth_client):
     response = auth_client.put(
         f'/api/quiz-bank/{auth_client._ids["quiz_bank_id"]}/practice-config',
         json={'quiz_mode': 'practice', 'session_question_count': 1, 'category_ratios': {'未分類': 100},
-              'scoring_mode': 'average', 'scoring_total_points': 50, 'time_limit_minutes': 20},
+              'scoring_mode': 'average', 'scoring_total_points': 50},
     )
     assert response.status_code == 200, response.get_json()
     html = _page(auth_client, '?tab=settings')
     settings = _section(html, 'settings')
     assert re.search(r'name="quiz_mode" value="practice" checked', settings)
     assert re.search(r'name="scoring_mode" value="average" checked', settings)
-    assert re.search(r'id="time-limit-minutes"[^>]*value="20"', settings)
     summary = re.search(r'id="settings-summary".*?</dl>', html, re.S).group(0)
-    assert '隨機練習' in summary and '依題數平均' in summary and '50 分' in summary and '20 分鐘' in summary
+    assert '隨機練習' in summary and '依題數平均' in summary and '50 分' in summary
+    assert '時限' not in summary
 
 
 def test_import_tab_has_drop_area_and_template_link(auth_client):

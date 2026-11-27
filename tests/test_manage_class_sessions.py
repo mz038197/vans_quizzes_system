@@ -29,7 +29,7 @@ def _edit_body(code, **overrides):
 
 def _second_bank(title='第二份題庫'):
     with app_module.app.app_context():
-        bank = app_module.QuizBank(title=title, description='', access_code=app_module.generate_access_code(),
+        bank = app_module.QuizBank(title=title, description='',
                                    teacher_id=TEACHER_ROUTER_ID, quiz_mode='fixed')
         app_module.db.session.add(bank)
         app_module.db.session.flush()

@@ -6,13 +6,10 @@ from datetime import datetime, timedelta
 import app as app_module
 from conftest import TEACHER_ROUTER_ID, make_class_session, sign_in
 
-_code_seq = iter(range(100000, 999999))
-
-
 def _bank(title, teacher_id=TEACHER_ROUTER_ID, folder_id=None):
     with app_module.app.app_context():
         bank = app_module.QuizBank(
-            title=title, description='', access_code=f'S{next(_code_seq)}',
+            title=title, description='',
             teacher_id=teacher_id, quiz_mode='fixed', folder_id=folder_id,
         )
         app_module.db.session.add(bank)
@@ -134,7 +131,6 @@ def test_cards_show_live_and_upcoming_class_sessions_with_their_course(auth_clie
     assert select.index('進行中') < select.index(live) < select.index('即將開始') < select.index(soon)
     assert '三年一班 第一節 的課程 · 三年一班 第一節' in select
     assert done not in select and ended not in select
-    assert auth_client._ids['access_code'] not in select  # no more Quiz Bank codes
 
 
 def test_no_live_or_upcoming_class_session_shows_empty_cards(auth_client):

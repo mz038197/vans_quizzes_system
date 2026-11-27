@@ -322,7 +322,6 @@
 
   function openMenu(button) {
     const bank = button.dataset;
-    const active = bank.active === 'true';
     closeMenu();
     menuButton = button;
     menu = document.createElement('div');
@@ -331,8 +330,6 @@
     menu.append(
       item('fa-chalkboard-teacher', '開課堂…', () => openSession(bank.id)),
       item('fa-folder-open', '移動到…', () => moveDialog(moveWhat([button.closest('tr[data-bank]')]))),
-      item('fa-link', '複製連結', () => copyLink(bank.code)),
-      item(active ? 'fa-lock' : 'fa-lock-open', active ? '停用題庫' : '啟用題庫', () => toggleBank(bank.id, active)),
       document.createElement('hr'),
       item('fa-trash', '刪除題庫', () => deleteBank(bank.id, bank.title), true),
     );
@@ -365,31 +362,6 @@
       items[next].focus();
     }
   });
-
-  async function copyLink(code) {
-    const link = `${location.origin}/quiz/${code}`;
-    if (await copyToClipboard(link)) {
-      UI.toast(`已複製連結：${link}`, 'ok');
-    } else {
-      UI.toast(`無法複製，請手動複製：${link}`, 'error');
-    }
-  }
-
-  async function toggleBank(id, active) {
-    const action = active ? '停用' : '啟用';
-    const message = active ? '停用後，學生打不開這個題庫的連結。' : '啟用後，學生可以用連結作答。';
-    if (!(await UI.ask(message, { title: `${action}題庫`, okText: action }))) return;
-    try {
-      const response = await fetch(`/api/quiz-bank/${id}/toggle`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-      });
-      if (!response.ok) { UI.toast('操作失敗，請稍後再試', 'error'); return; }
-      UI.flash(`題庫已${action}`, 'ok');
-      location.reload();
-    } catch (error) {
-      UI.toast('網路錯誤，請檢查連線', 'error');
-    }
-  }
 
   async function deleteBank(id, title) {
     const ok = await UI.ask(`「${title}」和它的所有題目會永久刪除，無法復原。`, {

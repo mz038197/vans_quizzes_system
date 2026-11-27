@@ -121,14 +121,11 @@ class QuizBank(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
-    access_code = db.Column(db.String(10), unique=True, nullable=False)
-    is_active = db.Column(db.Boolean, default=True)
     quiz_mode = db.Column(db.String(20), default='fixed')
     session_question_count = db.Column(db.Integer, default=10)
     category_ratios = db.Column(db.Text)
     scoring_mode = db.Column(db.String(20), default='explicit')  # explicit | average
     scoring_total_points = db.Column(db.Float, default=100)
-    time_limit_minutes = db.Column(db.Integer)  # optional Time Limit; null = untimed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     teacher_id = db.Column(db.Integer, nullable=False, index=True)  # router user id (ADR 0007)
     folder_id = db.Column(db.Integer, db.ForeignKey('folder.id'), nullable=True, index=True)  # ADR 0009; null = 未分類
@@ -165,8 +162,8 @@ class Submission(db.Model):
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     quiz_bank_id = db.Column(db.Integer, db.ForeignKey('quiz_bank.id'), nullable=False)
     result_token = db.Column(db.String(64), unique=True, index=True, default=new_result_token)  # Result Link (ADR 0008)
-    # The Class Session this Take ran in. Nullable while old Quiz Bank codes still work (ticket 14 makes it required).
-    class_session_id = db.Column(db.Integer, db.ForeignKey('class_session.id'), index=True)
+    # The Class Session this Take ran in (required; old Submissions moved to 「改版前的作答」, issue #16).
+    class_session_id = db.Column(db.Integer, db.ForeignKey('class_session.id'), nullable=False, index=True)
 
 # ---- Courses and Class Sessions (ADR 0010, ADR 0011). Time rules live in class_session_rules.py. ----
 
@@ -220,21 +217,11 @@ def is_own(record):
     """Ownership check for a Course or Class Session (same rule as is_own_quiz_bank)."""
     return record is not None and record.teacher_id == current_teacher().user_id
 
-def new_class_session_code():
-    """An unguessable 6-character Class Session code that no Class Session or old Quiz Bank code uses."""
+def new_class_session_code(avoid=()):
+    """An unguessable 6-character Class Session code that no Class Session uses (nor any code in `avoid`)."""
     while True:
         code = class_session_rules.random_code()
-        if (not ClassSession.query.filter_by(code=code).first()
-                and not QuizBank.query.filter_by(access_code=code).first()):
-            return code
-
-def generate_access_code():
-    """生成6位數的存取代碼"""
-    import random
-    import string
-    while True:
-        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        if not QuizBank.query.filter_by(access_code=code).first():
+        if code not in avoid and not ClassSession.query.filter_by(code=code).first():
             return code
 
 def parse_points(value, default=1.0):
@@ -402,8 +389,6 @@ def ensure_schema_updates():
             statements.append("ALTER TABLE quiz_bank ADD COLUMN scoring_mode VARCHAR(20) DEFAULT 'explicit'")
         if 'scoring_total_points' not in cols:
             statements.append('ALTER TABLE quiz_bank ADD COLUMN scoring_total_points REAL DEFAULT 100')
-        if 'time_limit_minutes' not in cols:
-            statements.append('ALTER TABLE quiz_bank ADD COLUMN time_limit_minutes INTEGER')
         if 'folder_id' not in cols:
             statements.append('ALTER TABLE quiz_bank ADD COLUMN folder_id INTEGER REFERENCES folder(id)')
 
@@ -457,6 +442,146 @@ def ensure_schema_updates():
 
     for statement in statements:
         apply_statement(statement)
+
+
+# ---- One-time move of pre-redesign data (issue #16). Remove after production has run it (as ADR 0008 did). ----
+
+PRE_REDESIGN_COURSE = '改版前'
+PRE_REDESIGN_CLASS_SESSION = '改版前的作答'
+OLD_QUIZ_BANK_COLUMNS = ('access_code', 'is_active', 'time_limit_minutes')
+
+
+def attach_old_submissions(bank_columns):
+    """Put every Submission without a Class Session into a 「改版前的作答」 Class Session of its Quiz Bank,
+    inside one ended 「改版前」 Course per Teacher. Runs in the caller's transaction; safe to run again."""
+    from sqlalchemy import text
+
+    groups = (db.session.query(Submission.quiz_bank_id, db.func.min(Submission.submitted_at),
+                               db.func.max(Submission.submitted_at))
+              .filter(Submission.class_session_id.is_(None))
+              .group_by(Submission.quiz_bank_id).all())
+    if not groups:
+        return 0
+    old_limits = {}
+    if 'time_limit_minutes' in bank_columns:
+        old_limits = dict(db.session.execute(text('SELECT id, time_limit_minutes FROM quiz_bank')).all())
+    old_codes = set()
+    if 'access_code' in bank_columns:
+        old_codes = {row[0] for row in db.session.execute(text('SELECT access_code FROM quiz_bank'))}
+
+    now = datetime.utcnow()
+    courses = {}
+    moved = 0
+    for quiz_bank_id, first, last in groups:
+        quiz_bank = db.session.get(QuizBank, quiz_bank_id)
+        if quiz_bank is None:
+            logger.error('Pre-redesign migration: Submissions of missing Quiz Bank %s left alone', quiz_bank_id)
+            continue
+        teacher_id = quiz_bank.teacher_id
+        course = courses.get(teacher_id) or Course.query.filter(
+            Course.teacher_id == teacher_id, Course.name == PRE_REDESIGN_COURSE,
+            Course.ended_at.isnot(None)).first()
+        if course is None:
+            course = Course(teacher_id=teacher_id, name=PRE_REDESIGN_COURSE, ended_at=now)
+            db.session.add(course)
+            db.session.flush()
+        courses[teacher_id] = course
+        first = first or last or now
+        last = last or first
+        class_session = ClassSession(
+            teacher_id=teacher_id, course_id=course.id, name=PRE_REDESIGN_CLASS_SESSION,
+            code=new_class_session_code(avoid=old_codes), starts_at=first, ends_at=last,
+        )
+        db.session.add(class_session)
+        db.session.flush()
+        db.session.add(ClassSessionBank(class_session_id=class_session.id, quiz_bank_id=quiz_bank_id,
+                                        position=0, time_limit_minutes=old_limits.get(quiz_bank_id)))
+        moved += (Submission.query
+                  .filter(Submission.quiz_bank_id == quiz_bank_id, Submission.class_session_id.is_(None))
+                  .update({Submission.class_session_id: class_session.id}, synchronize_session=False))
+    return moved
+
+
+def rebuild_sqlite_table_from_model(model):
+    """SQLite cannot drop a UNIQUE column or add NOT NULL in place: build the table again from the
+    model, copy the shared columns, and create the model's indexes (SQLite's documented procedure)."""
+    from sqlalchemy import inspect, text
+    from sqlalchemy.schema import CreateTable
+
+    table = model.__table__
+    name = table.name
+    tmp = f'{name}__rebuild'
+    old_columns = {c['name'] for c in inspect(db.engine).get_columns(name)}
+    shared = ', '.join(c.name for c in table.columns if c.name in old_columns)
+    ddl = str(CreateTable(table).compile(db.engine)).strip()
+    prefix = f'CREATE TABLE {name} ('
+    if not ddl.startswith(prefix):
+        raise RuntimeError(f'unexpected DDL for {name}: {ddl[:60]}')
+    with db.engine.connect() as conn:
+        foreign_keys = conn.exec_driver_sql('PRAGMA foreign_keys').scalar()
+        conn.exec_driver_sql('PRAGMA foreign_keys=OFF')
+        conn.commit()  # PRAGMA foreign_keys has no effect inside a transaction
+        try:
+            with conn.begin():
+                conn.execute(text(f'DROP TABLE IF EXISTS {tmp}'))
+                conn.execute(text(f'CREATE TABLE {tmp} (' + ddl[len(prefix):]))
+                conn.execute(text(f'INSERT INTO {tmp} ({shared}) SELECT {shared} FROM {name}'))
+                conn.execute(text(f'DROP TABLE {name}'))
+                conn.execute(text(f'ALTER TABLE {tmp} RENAME TO {name}'))
+                for index in table.indexes:
+                    index.create(conn, checkfirst=True)
+        finally:
+            conn.exec_driver_sql(f'PRAGMA foreign_keys={"ON" if foreign_keys else "OFF"}')
+            conn.commit()
+
+
+def migrate_pre_redesign():
+    """Move old Submissions into 「改版前」 Class Sessions, then drop the old Quiz Bank code, on/off switch
+    and Time Limit and make Submission.class_session_id required. Old columns are dropped only after
+    every Submission has a Class Session, so a failed run loses nothing and is tried again next start."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if not {'quiz_bank', 'submission'} <= set(inspector.get_table_names()):
+        return
+    is_postgres = db.engine.dialect.name == 'postgresql'
+    bank_columns = {c['name'] for c in inspector.get_columns('quiz_bank')}
+    try:
+        if is_postgres:  # several workers may start at once; one moves the data, the others wait
+            db.session.execute(text('SELECT pg_advisory_xact_lock(2016016)'))
+        moved = attach_old_submissions(bank_columns)
+        db.session.commit()
+        if moved:
+            logger.warning('Pre-redesign migration: attached %s old Submissions', moved)
+    except Exception:
+        db.session.rollback()
+        logger.exception('Pre-redesign migration failed; old columns kept')
+        return
+
+    left = Submission.query.filter(Submission.class_session_id.is_(None)).count()
+    if left:
+        logger.error('Pre-redesign migration: %s Submissions still have no Class Session; old columns kept', left)
+        return
+
+    inspector = inspect(db.engine)
+    old_columns = [c for c in OLD_QUIZ_BANK_COLUMNS if c in {c['name'] for c in inspector.get_columns('quiz_bank')}]
+    session_column = next(c for c in inspector.get_columns('submission') if c['name'] == 'class_session_id')
+    try:
+        if is_postgres:
+            for column in old_columns:
+                db.session.execute(text(f'ALTER TABLE quiz_bank DROP COLUMN IF EXISTS {column}'))
+            if session_column['nullable']:
+                db.session.execute(text('ALTER TABLE submission ALTER COLUMN class_session_id SET NOT NULL'))
+            db.session.commit()
+        else:
+            db.session.commit()  # end the read transaction before the rebuild
+            if old_columns:
+                rebuild_sqlite_table_from_model(QuizBank)
+            if session_column['nullable']:
+                rebuild_sqlite_table_from_model(Submission)
+    except Exception:
+        db.session.rollback()
+        logger.exception('Pre-redesign migration: dropping old columns failed')
 
 def get_bank_scoring(quiz_bank):
     mode = (getattr(quiz_bank, 'scoring_mode', None) or 'explicit').strip().lower()
@@ -581,17 +706,17 @@ def validate_question_data_payload(raw_data):
         return None, '圖片格式不支援或超過 2MB'
     return normalized, None
 
-def get_practice_session_key(access_code):
-    return f'practice_session_{access_code}'
+def get_practice_session_key(take_key):
+    return f'practice_session_{take_key}'
 
 
-def get_take_session_key(access_code):
-    return f'take_session_{access_code}'
+def get_take_session_key(take_key):
+    return f'take_session_{take_key}'
 
 
-def get_or_create_fixed_take_order(access_code, bank_question_ids):
+def get_or_create_fixed_take_order(take_key, bank_question_ids):
     """Freeze Take Order for a fixed Quiz Bank Take in the Flask session."""
-    key = get_take_session_key(access_code)
+    key = get_take_session_key(take_key)
     bank_ids = list(bank_question_ids)
     data = session.get(key) or {}
     stored = data.get('question_ids') or []
@@ -602,17 +727,17 @@ def get_or_create_fixed_take_order(access_code, bank_question_ids):
     return ordered
 
 
-def load_fixed_take_questions(access_code, quiz_bank_id):
+def load_fixed_take_questions(take_key, quiz_bank_id):
     bank_questions = Question.query.filter_by(quiz_bank_id=quiz_bank_id).order_by(Question.order_index).all()
     bank_ids = [q.id for q in bank_questions]
-    take_order = get_or_create_fixed_take_order(access_code, bank_ids)
+    take_order = get_or_create_fixed_take_order(take_key, bank_ids)
     return questions_in_id_order(bank_questions, take_order), take_order
 
 
-def resolve_fixed_take_order_for_submit(access_code, bank_question_ids):
+def resolve_fixed_take_order_for_submit(take_key, bank_question_ids):
     """Use the frozen Take Order from session; never invent a new permutation at hand-in."""
     bank_ids = list(bank_question_ids)
-    data = session.get(get_take_session_key(access_code)) or {}
+    data = session.get(get_take_session_key(take_key)) or {}
     stored = data.get('question_ids') or []
     if stored and set(stored) == set(bank_ids) and len(stored) == len(bank_ids):
         return list(stored)
@@ -622,7 +747,6 @@ def create_quiz_bank_from_data(teacher_id, bank_data):
     quiz_bank = QuizBank(
         title=bank_data['title'],
         description=bank_data.get('description', ''),
-        access_code=generate_access_code(),
         teacher_id=teacher_id,
         quiz_mode=bank_data.get('quiz_mode', 'fixed'),
         session_question_count=bank_data.get('session_question_count') or 10,
@@ -1017,7 +1141,6 @@ def create_quiz_bank():
         quiz_bank = QuizBank(
             title=title,
             description=description,
-            access_code=generate_access_code(),
             teacher_id=current_teacher().user_id,
             folder_id=folder.id if folder else None,
         )
@@ -1027,7 +1150,6 @@ def create_quiz_bank():
         return jsonify({
             'message': '題庫建立成功',
             'quiz_bank_id': quiz_bank.id,
-            'access_code': quiz_bank.access_code
         })
     
     tab = request.args.get('tab')
@@ -1083,12 +1205,9 @@ def manage_quiz_bank(quiz_bank_id):
 MANAGE_TABS = ('questions', 'sessions', 'settings', 'import')
 
 class StudentEntry:
-    """What a student code opens: one Quiz Bank, through a Class Session (or an old Quiz Bank code).
+    """What a student code opens: one Quiz Bank offered by a Class Session."""
 
-    Old Quiz Bank codes still work until ticket 14 removes them; for them `class_session` is None.
-    """
-
-    def __init__(self, code, quiz_bank, class_session=None, offer=None):
+    def __init__(self, code, quiz_bank, class_session, offer):
         self.code = code
         self.quiz_bank = quiz_bank
         self.class_session = class_session
@@ -1097,29 +1216,23 @@ class StudentEntry:
     @property
     def take_key(self):
         """Key for Take continuity (Flask session and browser storage): one per code and Quiz Bank."""
-        return self.code if self.class_session is None else f'{self.code}-{self.quiz_bank.id}'
+        return f'{self.code}-{self.quiz_bank.id}'
 
     @property
     def time_limit_minutes(self):
-        if self.offer is not None:
-            return self.offer.time_limit_minutes
-        return self.quiz_bank.time_limit_minutes
+        return self.offer.time_limit_minutes
 
     def status(self, now=None):
-        if self.class_session is None:
-            return class_session_rules.LIVE
         return class_session_rules.status(self.class_session, now or datetime.utcnow())
 
     @property
     def ends_at(self):
-        """The effective end (UTC) students work against, or None for an old Quiz Bank code."""
-        return None if self.class_session is None else class_session_rules.effective_end(self.class_session)
+        """The effective end (UTC) students work against."""
+        return class_session_rules.effective_end(self.class_session)
 
     def ends_in_seconds(self, now=None):
-        """Whole seconds from now to the effective end (0 when past), or None for an old Quiz Bank code.
+        """Whole seconds from now to the effective end (0 when past).
         The take page counts the Class Session clock from this, so a wrong device clock does not matter."""
-        if self.ends_at is None:
-            return None
         return max(0, int((self.ends_at - (now or datetime.utcnow())).total_seconds()))
 
     def page_context(self):
@@ -1138,20 +1251,17 @@ class StudentEntry:
 def find_student_entry(code, quiz_bank_id=None):
     """Resolve a student code to a StudentEntry, or 404. `quiz_bank_id` picks one offered Quiz Bank
     (default: the first one by position)."""
-    class_session = ClassSession.query.filter_by(code=code).first()
-    if class_session is not None:
-        offers = class_session.offers
-        if quiz_bank_id not in (None, ''):
-            try:
-                wanted = int(quiz_bank_id)
-            except (TypeError, ValueError):
-                abort(404)
-            offers = [o for o in offers if o.quiz_bank_id == wanted]
-        if not offers:
+    class_session = ClassSession.query.filter_by(code=code).first_or_404()
+    offers = class_session.offers
+    if quiz_bank_id not in (None, ''):
+        try:
+            wanted = int(quiz_bank_id)
+        except (TypeError, ValueError):
             abort(404)
-        return StudentEntry(code, offers[0].quiz_bank, class_session, offers[0])
-    quiz_bank = QuizBank.query.filter_by(access_code=code, is_active=True).first_or_404()
-    return StudentEntry(code, quiz_bank)
+        offers = [o for o in offers if o.quiz_bank_id == wanted]
+    if not offers:
+        abort(404)
+    return StudentEntry(code, offers[0].quiz_bank, class_session, offers[0])
 
 
 def render_class_session_gate(entry, status):
@@ -1190,19 +1300,18 @@ def render_class_session_hub(entry):
         items.append({
             'bank': bank,
             'facts': f'{size} · {limit}',
-            'url': url_for('take_quiz', access_code=entry.code, bank=bank.id),
+            'url': url_for('take_quiz', code=entry.code, bank=bank.id),
         })
     return render_template('class_session_hub.html', items=items, **entry.page_context())
 
 
-@app.route('/quiz/<access_code>')
-def take_quiz(access_code):
-    entry = find_student_entry(access_code, request.args.get('bank'))
+@app.route('/quiz/<code>')
+def take_quiz(code):
+    entry = find_student_entry(code, request.args.get('bank'))
     status = entry.status()
     if status != class_session_rules.LIVE:
         return render_class_session_gate(entry, status)
-    if (entry.class_session is not None and len(entry.class_session.offers) > 1
-            and request.args.get('bank') in (None, '')):
+    if len(entry.class_session.offers) > 1 and request.args.get('bank') in (None, ''):
         return render_class_session_hub(entry)
     quiz_bank = entry.quiz_bank
 
@@ -1223,9 +1332,9 @@ def take_quiz(access_code):
     questions_data = build_questions_data(questions, points_map)
     return render_template('take_quiz.html', questions=questions_data, is_practice=False, **entry.page_context())
 
-@app.route('/quiz/<access_code>/play')
-def play_quiz(access_code):
-    entry = find_student_entry(access_code, request.args.get('bank'))
+@app.route('/quiz/<code>/play')
+def play_quiz(code):
+    entry = find_student_entry(code, request.args.get('bank'))
     status = entry.status()
     if status != class_session_rules.LIVE:
         return render_class_session_gate(entry, status)
@@ -1235,7 +1344,7 @@ def play_quiz(access_code):
 
     if quiz_bank.quiz_mode == 'practice':
         if not session_data or not session_data.get('question_ids'):
-            return redirect(url_for('take_quiz', access_code=access_code, bank=request.args.get('bank')))
+            return redirect(url_for('take_quiz', code=code, bank=request.args.get('bank')))
 
         loaded = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
         questions = questions_in_id_order(loaded, session_data['question_ids'])
@@ -1255,18 +1364,6 @@ def play_quiz(access_code):
     return render_template('take_quiz.html', questions=questions_data, is_practice=False, **entry.page_context())
 
 # API 路由
-@app.route('/api/quiz-bank/<int:quiz_bank_id>/toggle', methods=['POST'])
-@teacher_required
-def toggle_quiz_bank(quiz_bank_id):
-    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
-    if not is_own_quiz_bank(quiz_bank):
-        return jsonify({'error': '無權限操作'}), 403
-    
-    quiz_bank.is_active = not quiz_bank.is_active
-    db.session.commit()
-    
-    return jsonify({'message': '操作成功', 'is_active': quiz_bank.is_active})
-
 @app.route('/api/quiz-bank/<int:quiz_bank_id>', methods=['DELETE'])
 @teacher_required
 def delete_quiz_bank(quiz_bank_id):
@@ -1442,20 +1539,6 @@ def update_practice_config(quiz_bank_id):
     if scoring_total_points <= 0:
         return jsonify({'error': '總分必須大於 0'}), 400
 
-    if 'time_limit_minutes' in data:
-        raw_limit = data.get('time_limit_minutes')
-        if raw_limit is None or raw_limit == '':
-            time_limit_minutes = None
-        else:
-            try:
-                time_limit_minutes = int(raw_limit)
-            except (TypeError, ValueError):
-                return jsonify({'error': '時限必須是整數分鐘'}), 400
-            if time_limit_minutes <= 0:
-                time_limit_minutes = None
-    else:
-        time_limit_minutes = quiz_bank.time_limit_minutes
-
     if quiz_mode == 'practice':
         errors = validate_category_ratios(category_ratios)
         if errors:
@@ -1466,7 +1549,6 @@ def update_practice_config(quiz_bank_id):
     quiz_bank.category_ratios = json.dumps(category_ratios) if quiz_mode == 'practice' else None
     quiz_bank.scoring_mode = scoring_mode
     quiz_bank.scoring_total_points = scoring_total_points
-    quiz_bank.time_limit_minutes = time_limit_minutes
     db.session.commit()
 
     return jsonify({
@@ -1476,13 +1558,12 @@ def update_practice_config(quiz_bank_id):
         'category_ratios': get_category_ratios(quiz_bank),
         'scoring_mode': quiz_bank.scoring_mode,
         'scoring_total_points': quiz_bank.scoring_total_points,
-        'time_limit_minutes': quiz_bank.time_limit_minutes,
     })
 
-@app.route('/api/quiz/<access_code>/draw', methods=['POST'])
-def draw_practice_quiz(access_code):
+@app.route('/api/quiz/<code>/draw', methods=['POST'])
+def draw_practice_quiz(code):
     data = request.get_json(silent=True) or {}
-    entry = find_student_entry(access_code, data.get('quiz_bank_id'))
+    entry = find_student_entry(code, data.get('quiz_bank_id'))
     refusal = refuse_outside_window(entry)
     if refusal:
         return refusal
@@ -1505,8 +1586,7 @@ def draw_practice_quiz(access_code):
         'message': '抽題成功',
         'question_count': len(question_ids),
         'warnings': warnings,
-        'redirect': url_for('play_quiz', access_code=access_code,
-                            bank=quiz_bank.id if entry.class_session is not None else None),
+        'redirect': url_for('play_quiz', code=code, bank=quiz_bank.id),
     })
 
 @app.route('/api/import-quiz-md/preview', methods=['POST'])
@@ -1567,7 +1647,6 @@ def confirm_import_quiz_md():
         'success': True,
         'message': '題庫匯入成功',
         'quiz_bank_id': quiz_bank.id,
-        'access_code': quiz_bank.access_code,
         'question_count': len(parsed['questions']),
     })
 
@@ -1660,17 +1739,16 @@ def confirm_append_quiz_md(quiz_bank_id):
         'warnings': parsed.get('warnings', []),
     })
 
-@app.route('/api/quiz/<access_code>/submit', methods=['POST'])
-def submit_quiz(access_code):
+@app.route('/api/quiz/<code>/submit', methods=['POST'])
+def submit_quiz(code):
     data = request.get_json(silent=True) or {}
-    entry = find_student_entry(access_code, data.get('quiz_bank_id'))
-    if entry.class_session is not None:
-        now = datetime.utcnow()
-        if now < entry.class_session.starts_at:
-            return jsonify({'error': '這堂課還沒開始，不能交卷', 'status': class_session_rules.SOON}), 403
-        if not class_session_rules.accepts_hand_in(entry.class_session, now):
-            # Nothing is stored (spec #2 "Window check").
-            return jsonify({'error': LATE_HAND_IN_ERROR, 'status': class_session_rules.DONE}), 403
+    entry = find_student_entry(code, data.get('quiz_bank_id'))
+    now = datetime.utcnow()
+    if now < entry.class_session.starts_at:
+        return jsonify({'error': '這堂課還沒開始，不能交卷', 'status': class_session_rules.SOON}), 403
+    if not class_session_rules.accepts_hand_in(entry.class_session, now):
+        # Nothing is stored (spec #2 "Window check").
+        return jsonify({'error': LATE_HAND_IN_ERROR, 'status': class_session_rules.DONE}), 403
     quiz_bank = entry.quiz_bank
 
     student_name = data.get('student_name')
@@ -1734,7 +1812,7 @@ def submit_quiz(access_code):
         scoring_mode=scoring_mode,
         scoring_total_points=scoring_total,
         elapsed_seconds=elapsed_seconds,
-        class_session_id=entry.class_session.id if entry.class_session is not None else None,
+        class_session_id=entry.class_session.id,
     )
 
     db.session.add(submission)
@@ -1752,8 +1830,7 @@ def submit_quiz(access_code):
         'submission_id': submission.id,
         'result_url': url_for('view_result', result_token=submission.result_token),
         'is_practice': is_practice,
-        'retry_url': url_for('take_quiz', access_code=access_code,
-                             bank=quiz_bank.id if entry.class_session is not None else None) if is_practice else None,
+        'retry_url': url_for('take_quiz', code=code, bank=quiz_bank.id) if is_practice else None,
         'elapsed_seconds': submission.elapsed_seconds,
     })
 
@@ -1928,7 +2005,7 @@ def quiz_bank_grades(quiz_bank, class_session=None, query=''):
     for rank, s in enumerate(ranked, start=1):
         if needle and needle not in (s.student_name or '').casefold():
             continue
-        limit = limits.get(s.class_session_id) if s.class_session_id else getattr(quiz_bank, 'time_limit_minutes', None)
+        limit = limits.get(s.class_session_id)
         take, n_takes = takes[s.id]
         rows.append({
             'id': s.id, 'rank': rank,
@@ -2157,7 +2234,7 @@ def class_session_json(class_session):
         'name': class_session.name,
         'course_id': class_session.course_id,
         'course_name': class_session.course.name,
-        'url': url_for('take_quiz', access_code=class_session.code, _external=True),
+        'url': url_for('take_quiz', code=class_session.code, _external=True),
         'starts_at': class_session_rules.to_wall_clock(class_session.starts_at),
         'ends_at': class_session_rules.to_wall_clock(class_session.ends_at),
         'banks': [{'quiz_bank_id': o.quiz_bank_id, 'time_limit_minutes': o.time_limit_minutes}
@@ -2755,6 +2832,7 @@ def initialize_database():
     with app.app_context():
         db.create_all()
         ensure_schema_updates()
+        migrate_pre_redesign()
 
 # PROTOTYPE (prototype/redesign branch only): compare 3 site styles. Dev only; not for main.
 if ENVIRONMENT == 'development':
@@ -2765,12 +2843,17 @@ if ENVIRONMENT == 'development':
         screen = request.args.get('screen', 'teacher')
         banks = []
         recent = []
+        now = datetime.utcnow()
         for qb in QuizBank.query.filter_by(teacher_id=current_teacher().user_id).order_by(QuizBank.id).all():
             subs = qb.submissions
             pcts = [s.score / s.total_points * 100 for s in subs if s.total_points]
+            # Quiz Banks have no code or on/off switch any more (#16): show the newest Class Session's code,
+            # and call a Quiz Bank "open" while one of its Class Sessions is live.
+            sessions = sorted((o.class_session for o in qb.offers), key=lambda cs: cs.starts_at, reverse=True)
             banks.append({
                 'id': qb.id, 'title': qb.title, 'description': qb.description or '',
-                'access_code': qb.access_code, 'is_active': qb.is_active,
+                'access_code': sessions[0].code if sessions else '——',
+                'is_active': any(class_session_rules.status(cs, now) == class_session_rules.LIVE for cs in sessions),
                 'mode': '隨機練習' if qb.quiz_mode == 'practice' else '固定測驗',
                 'created': qb.created_at, 'n_questions': len(qb.questions),
                 'n_subs': len(subs), 'avg': round(sum(pcts) / len(pcts)) if pcts else None,
@@ -2780,8 +2863,6 @@ if ENVIRONMENT == 'development':
                                'pct': round(s.score / s.total_points * 100) if s.total_points else 0})
         recent.sort(key=lambda r: r['at'] or datetime.min, reverse=True)
         all_pcts = [b['avg'] for b in banks if b['avg'] is not None]
-        from datetime import timedelta
-        now = datetime.utcnow()
         week_ago, two_weeks_ago = now - timedelta(days=7), now - timedelta(days=14)
         this_week = [r for r in recent if r['at'] and r['at'] >= week_ago]
         last_week = [r for r in recent if r['at'] and two_weeks_ago <= r['at'] < week_ago]

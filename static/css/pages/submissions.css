@@ -27,7 +27,6 @@
 .hi { color: var(--success); } .mid { color: var(--warning); } .lo { color: var(--danger); }
 .bg-hi { background: var(--success); } .bg-mid { background: var(--warning); } .bg-lo { background: var(--danger); }
 
-.subs-empty-code { display: inline-flex; align-items: center; gap: var(--s1); flex-wrap: wrap; justify-content: center; }
 
 [hidden] { display: none !important; }
 

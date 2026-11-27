@@ -32,7 +32,7 @@ async function startPractice() {
     const button = document.getElementById('start-btn');
     setButtonLoading(button, true);
     try {
-        const response = await fetch({{ url_for('draw_practice_quiz', access_code=student_code) | tojson }}, {
+        const response = await fetch({{ url_for('draw_practice_quiz', code=student_code) | tojson }}, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

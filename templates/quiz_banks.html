@@ -83,7 +83,7 @@
             <thead>
                 <tr>
                     <th class="chk"><input type="checkbox" data-pick-all aria-label="全選"></th>
-                    <th>題庫</th>{% if show_folder %}<th>資料夾</th>{% endif %}<th>模式</th><th>題數</th><th>作答</th><th>平均</th><th>課堂</th><th>代碼</th>
+                    <th>題庫</th>{% if show_folder %}<th>資料夾</th>{% endif %}<th>模式</th><th>題數</th><th>作答</th><th>平均</th><th>課堂</th>
                     <th><span class="sr-only">操作</span></th>
                 </tr>
             </thead>
@@ -107,13 +107,11 @@
                     <td class="num">{{ b.n_subs }}</td>
                     <td class="num">{{ '—' if b.average_text is none else b.average_text ~ '%' }}</td>
                     <td><span class="bstat {{ b.session_kind }}">{{ b.session_text }}</span></td>
-                    <td><span class="code">{{ b.bank.access_code }}</span></td>
                     <td class="act">
                         <a class="btn" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}">管理</a>
                         <a class="btn btn-icon" href="{{ url_for('view_submissions_page', quiz_bank_id=b.bank.id) }}" title="成績" aria-label="{{ b.bank.title }} 的成績"><i class="fas fa-chart-bar" aria-hidden="true"></i></a>
                         <button type="button" class="btn btn-icon" data-more
-                                data-id="{{ b.bank.id }}" data-code="{{ b.bank.access_code }}"
-                                data-title="{{ b.bank.title }}" data-active="{{ 'true' if b.bank.is_active else 'false' }}"
+                                data-id="{{ b.bank.id }}" data-title="{{ b.bank.title }}"
                                 data-in-folder="{{ b.bank.folder_id or '' }}"
                                 aria-haspopup="menu" aria-expanded="false" title="更多" aria-label="{{ b.bank.title }} 的更多動作"><i class="fas fa-ellipsis-h" aria-hidden="true"></i></button>
                     </td>

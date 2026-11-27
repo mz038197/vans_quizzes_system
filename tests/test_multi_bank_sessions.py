@@ -17,7 +17,7 @@ def _add_bank(title, quiz_mode='fixed', n_questions=1, teacher_id=None, folder_i
     with app_module.app.app_context():
         bank = app_module.QuizBank.query.first()
         new = app_module.QuizBank(
-            title=title, description='', access_code=app_module.generate_access_code(),
+            title=title, description='',
             teacher_id=teacher_id or bank.teacher_id, quiz_mode=quiz_mode, folder_id=folder_id,
         )
         app_module.db.session.add(new)
