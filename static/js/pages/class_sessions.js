@@ -64,6 +64,8 @@
             return;
         }
         if (kind === 'end') {
+            // 「還在寫的會自動交卷」 is true because the take page polls /api/quiz/<code>/status every 20 s
+            // (take_quiz.html pollSessionStatus), inside the 60 s hand-in grace.
             const ok = await UI.ask(
                 (c.active ? `底下 ${c.active} 個進行中或還沒開始的課堂會一起結束。學生不能再作答，還在寫的會自動交卷。` : '底下的課堂都已經結束了。')
                 + '成績都會留著，之後可以「重新開啟」。',
