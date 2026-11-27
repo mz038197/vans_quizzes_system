@@ -232,3 +232,6 @@
 .hub-done { display: grid; justify-items: end; gap: 2px; font-size: var(--fs-sm); }
 .hub-done[hidden] { display: none; }
 .hub-link { color: var(--primary); font-size: var(--fs-sm); }
+
+/* Ticket 12 (#14): the Class Session end banner, separate from the Take clock in .qz-side. */
+.qz-ending { font-weight: 500; margin-bottom: var(--s2); }

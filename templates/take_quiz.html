@@ -15,10 +15,13 @@
 {% set start_label = '開始作答' if is_practice else '開始測驗' %}
 
 <!-- 開始頁 -->
-{% call entry(quiz_bank, questions|length, total_points, start_label, 'startQuiz()', mode_label='隨機練習' if is_practice else '固定測驗', time_limit=time_limit_minutes, class_session=class_session, ends_at=session_ends_at) %}{% endcall %}
+{% call entry(quiz_bank, questions|length, total_points, start_label, 'startQuiz()', mode_label='隨機練習' if is_practice else '固定測驗', time_limit=time_limit_minutes, class_session=class_session, ends_at=session_ends_at, ends_in=session_ends_in) %}{% endcall %}
 
 <!-- 作答頁：左邊計時和題號格，右邊題目 -->
-<div class="qz-take" id="quiz-take" hidden>
+<div class="qz-take" id="quiz-take" hidden
+     data-time-limit="{{ time_limit_minutes or '' }}"
+     data-session-ends-in="{{ session_ends_in if session_ends_in is not none else '' }}"
+     data-session-end-hm="{{ session_ends_at | utc8('%H:%M') if session_ends_at else '' }}">
     <aside class="qz-side">
         <div class="qz-timer" id="qz-timer" role="timer" aria-live="off">
             <div class="k" id="qz-timer-label">
@@ -52,6 +55,11 @@
     </aside>
 
     <div class="qz-main">
+        <!-- 課堂最後 5 分鐘：和自己的計時器分開的第二個時鐘 -->
+        <div class="note note-warn qz-ending" id="qz-ending" role="status" hidden>
+            <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
+            <span id="qz-ending-text"></span>
+        </div>
         {% if is_practice and draw_warnings %}
         <div class="note note-warn" role="alert">
             <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
@@ -198,6 +206,14 @@ const quizBankId = {{ quiz_bank.id }};
 const takeKey = {{ take_key | tojson }};
 // The Time Limit this Class Session set for this Quiz Bank (null = no Time Limit).
 const timeLimitMinutes = {{ time_limit_minutes if time_limit_minutes is not none else 'null' }};
+// The Class Session end (earlier of its end and the Course end), counted from the server's seconds left
+// so that a wrong device clock does not move it. null = no Class Session end (old Quiz Bank code).
+const takeData = document.getElementById('quiz-take').dataset;
+const sessionEndMs = takeData.sessionEndsIn === '' ? null : Date.now() + parseInt(takeData.sessionEndsIn, 10) * 1000;
+const sessionEndHm = takeData.sessionEndHm;
+// The two reasons for a Time-up Hand-in (CONTEXT.md).
+const TIME_UP = 'time_limit';
+const SESSION_ENDED = 'session_end';
 const takeStartStorageKey = 'take_start_' + takeKey;
 const reviewFlagsStorageKey = 'review_flags_' + takeKey;
 
@@ -450,18 +466,37 @@ function updateCountdownDisplay() {
     }
     const countdownEl = document.getElementById('quiz-countdown');
     const timerEl = document.getElementById('qz-timer');
+    let timeUp = false;
     if (!timeLimitMinutes) {
         countdownEl.textContent = formatCountdown(elapsed);
-        return;
+    } else {
+        const remaining = timeLimitMinutes * 60 - elapsed;
+        countdownEl.textContent = formatCountdown(remaining);
+        timerEl.classList.toggle('warn', remaining <= 300 && remaining > 60);
+        timerEl.classList.toggle('danger', remaining <= 60);
+        timeUp = remaining <= 0;
     }
-    const remaining = timeLimitMinutes * 60 - elapsed;
-    countdownEl.textContent = formatCountdown(remaining);
-    timerEl.classList.toggle('warn', remaining <= 300 && remaining > 60);
-    timerEl.classList.toggle('danger', remaining <= 60);
-    if (remaining <= 0) {
+    const sessionLeft = updateSessionEnding();
+    // Whichever comes first: the Time Limit or the Class Session end.
+    if (timeUp || sessionLeft === 0) {
         stopCountdown();
-        submitQuiz({ skipConfirm: true, fromTimeUp: true });
+        submitQuiz({ skipConfirm: true, timeUpReason: timeUp ? TIME_UP : SESSION_ENDED });
     }
+}
+
+// The Class Session clock: an orange banner in its last 5 minutes. Returns the seconds left, or null.
+function updateSessionEnding() {
+    if (sessionEndMs === null) {
+        return null;
+    }
+    const left = Math.max(0, Math.ceil((sessionEndMs - Date.now()) / 1000));
+    const banner = document.getElementById('qz-ending');
+    banner.hidden = left > 300;
+    if (!banner.hidden) {
+        document.getElementById('qz-ending-text').textContent =
+            '課堂 ' + sessionEndHm + ' 結束（剩 ' + formatCountdown(left) + '），時間到會自動交卷';
+    }
+    return left;
 }
 
 function startCountdown() {
@@ -765,7 +800,9 @@ function collectTextAnswers() {
 async function submitQuiz(options) {
     options = options || {};
     const skipConfirm = options.skipConfirm === true;
-    const fromTimeUp = options.fromTimeUp === true;
+    // TIME_UP or SESSION_ENDED for a Time-up Hand-in, else null.
+    const timeUpReason = options.timeUpReason || null;
+    const fromTimeUp = timeUpReason !== null;
 
     if (quizSubmitted) {
         return;
@@ -807,21 +844,24 @@ async function submitQuiz(options) {
             clearTakeStart();
             clearReviewFlags();
             if (window.StudentHub) StudentHub.markDone(studentCode, quizBankId, result.percentage, result.result_url);
-            if (fromTimeUp) {
-                await UI.tell('時間到，已自動交卷。按「查看成績單」看結果和正確答案。', { title: '時間到', okText: '查看成績單' });
+            if (timeUpReason === SESSION_ENDED) {
+                await UI.tell('課堂已結束，已自動交卷。按「查看成績單」看結果和正確答案。', { title: '課堂已結束', okText: '查看成績單' });
+            } else if (fromTimeUp) {
+                await UI.tell('作答時間到，已自動交卷。按「查看成績單」看結果和正確答案。', { title: '作答時間到', okText: '查看成績單' });
             }
             // The Result Link shows the score and the correct answers at once.
             window.location.href = result.result_url;
         } else {
             quizSubmitted = false;
-            if (fromTimeUp && timeLimitMinutes) {
+            // 403 = the server refused it (課堂已結束): trying again every second does not help.
+            if (fromTimeUp && response.status !== 403) {
                 startCountdown();
             }
             UI.toast(result.error || '交卷失敗，請稍後再試', 'error');
         }
     } catch (error) {
         quizSubmitted = false;
-        if (fromTimeUp && timeLimitMinutes) {
+        if (fromTimeUp) {
             startCountdown();
         }
         UI.toast('網路錯誤，請檢查連線', 'error');

@@ -8,7 +8,7 @@
 {% endblock %}
 
 {% block content %}
-{% call entry(quiz_bank, question_count, total_points, '開始練習', 'startPractice()', mode_label='隨機練習', time_limit=time_limit_minutes, class_session=class_session, ends_at=session_ends_at) %}
+{% call entry(quiz_bank, question_count, total_points, '開始練習', 'startPractice()', mode_label='隨機練習', time_limit=time_limit_minutes, class_session=class_session, ends_at=session_ends_at, ends_in=session_ends_in) %}
 <div class="note" role="status">
   <i class="fas fa-random" aria-hidden="true"></i>
   <span>每次練習隨機抽出 {{ question_count }} 題，同一場練習內題目不重複。多次練習可能抽到相同題目。</span>

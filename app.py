@@ -1054,6 +1054,13 @@ class StudentEntry:
         """The effective end (UTC) students work against, or None for an old Quiz Bank code."""
         return None if self.class_session is None else class_session_rules.effective_end(self.class_session)
 
+    def ends_in_seconds(self, now=None):
+        """Whole seconds from now to the effective end (0 when past), or None for an old Quiz Bank code.
+        The take page counts the Class Session clock from this, so a wrong device clock does not matter."""
+        if self.ends_at is None:
+            return None
+        return max(0, int((self.ends_at - (now or datetime.utcnow())).total_seconds()))
+
     def page_context(self):
         """Template values shared by the start, play, wait and ended pages."""
         return {
@@ -1063,6 +1070,7 @@ class StudentEntry:
             'take_key': self.take_key,
             'time_limit_minutes': self.time_limit_minutes,
             'session_ends_at': self.ends_at,
+            'session_ends_in': self.ends_in_seconds(),
         }
 
 
