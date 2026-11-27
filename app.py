@@ -1340,6 +1340,62 @@ def initialize_database():
         db.create_all()
         ensure_schema_updates()
 
+# PROTOTYPE (prototype/redesign branch only): compare 3 site styles. Dev only; not for main.
+if ENVIRONMENT == 'development':
+    @app.route('/prototype/design')
+    @teacher_required
+    def prototype_design():
+        variant = request.args.get('variant', 'A')
+        screen = request.args.get('screen', 'teacher')
+        banks = []
+        recent = []
+        for qb in QuizBank.query.filter_by(teacher_id=current_teacher().user_id).order_by(QuizBank.id).all():
+            subs = qb.submissions
+            pcts = [s.score / s.total_points * 100 for s in subs if s.total_points]
+            banks.append({
+                'id': qb.id, 'title': qb.title, 'description': qb.description or '',
+                'access_code': qb.access_code, 'is_active': qb.is_active,
+                'mode': '隨機練習' if qb.quiz_mode == 'practice' else '固定測驗',
+                'created': qb.created_at, 'n_questions': len(qb.questions),
+                'n_subs': len(subs), 'avg': round(sum(pcts) / len(pcts)) if pcts else None,
+            })
+            for s in subs:
+                recent.append({'name': s.student_name, 'bank': qb.title, 'at': s.submitted_at,
+                               'pct': round(s.score / s.total_points * 100) if s.total_points else 0})
+        recent.sort(key=lambda r: r['at'] or datetime.min, reverse=True)
+        all_pcts = [b['avg'] for b in banks if b['avg'] is not None]
+        from datetime import timedelta
+        now = datetime.utcnow()
+        week_ago, two_weeks_ago = now - timedelta(days=7), now - timedelta(days=14)
+        this_week = [r for r in recent if r['at'] and r['at'] >= week_ago]
+        last_week = [r for r in recent if r['at'] and two_weeks_ago <= r['at'] < week_ago]
+        for b in banks:
+            mine = [r for r in recent if r['bank'] == b['title']]
+            b['week_subs'] = sum(1 for r in mine if r['at'] and r['at'] >= week_ago)
+            b['prev_week_subs'] = sum(1 for r in mine if r['at'] and two_weeks_ago <= r['at'] < week_ago)
+            b['week_names'] = sorted({r['name'].strip() for r in mine if r['at'] and r['at'] >= week_ago})
+            b['attention'] = (
+                f"平均 {b['avg']}%，低於 60%" if b['avg'] is not None and b['avg'] < 60
+                else ('開放中，還沒有人作答' if b['is_active'] and b['n_subs'] == 0 else None)
+            )
+        stats = {
+            'banks': len(banks),
+            'open_banks': sum(1 for b in banks if b['is_active']),
+            'week_subs': len(this_week),
+            'week_delta': len(this_week) - len(last_week),
+            'week_students': len({r['name'].strip() for r in this_week}),
+            'attention': sum(1 for b in banks if b['attention']),
+            'questions': sum(b['n_questions'] for b in banks),
+            'subs': sum(b['n_subs'] for b in banks),
+            'avg': round(sum(all_pcts) / len(all_pcts)) if all_pcts else None,
+        }
+        selected_id = request.args.get('bank', type=int) or (banks[0]['id'] if banks else None)
+        selected = next((b for b in banks if b['id'] == selected_id), None)
+        return render_template('prototype_design.html', variant=variant, screen=screen,
+                               banks=banks, recent=recent[:6], stats=stats, selected=selected,
+                               banks_json=[{k: v for k, v in b.items() if k != 'created'} for b in banks],
+                               recent_json=[{'name': r['name'], 'bank': r['bank'], 'pct': r['pct']} for r in recent[:20]])
+
 initialize_database()
 
 if __name__ == '__main__':
