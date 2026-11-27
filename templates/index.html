@@ -15,8 +15,10 @@
             <div class="card-body">
                 <p style="margin-bottom: 1.5rem;">建立和管理題庫，設計多種題型，追蹤學生成績</p>
                 <div style="margin-bottom: 2rem;">
-                    <!-- <a href="{{ url_for('register') }}" class="btn" style="margin-right: 0.5rem; width: 45%;">註冊</a> -->
-                    <a href="{{ url_for('login') }}" class="btn btn-secondary" style="width: 45%;">登入</a>
+                    {% if login_error %}
+                    <div class="alert alert-error" role="alert" style="margin-bottom: 1rem;">{{ login_error }}</div>
+                    {% endif %}
+                    <a href="{{ url_for('teacher_auth.login') }}" class="btn btn-secondary" style="width: 70%;">用 Google 登入（vcrouter）</a>
                 </div>
                 <div style="background: #f8f9fa; padding: 1rem; border-radius: 5px; border-left: 4px solid #667eea;">
                     <p style="margin: 0; font-size: 0.9rem; color: #666;">

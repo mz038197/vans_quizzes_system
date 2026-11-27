@@ -65,9 +65,31 @@ body {
     color: #666;
 }
 
-.navbar a:hover {
+.navbar a:hover,
+.navbar .nav-logout:hover {
     background-color: #f0f7ff;
     color: #1890ff;
+}
+
+/* 登出是 POST 表單，外觀與導覽連結相同 */
+.navbar .nav-logout-form {
+    margin: 0;
+}
+
+.navbar .nav-logout {
+    width: 100%;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+    color: #555;
+    padding: 0.8rem 1.5rem;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
 }
 
 .navbar a.active {

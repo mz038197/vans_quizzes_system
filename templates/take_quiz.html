@@ -882,7 +882,7 @@ async function submitQuiz(options) {
 
             if (fromTimeUp) {
                 alert('時間到，已自動繳交題目。按下確定後將查看結果。');
-                window.location.href = '/result/' + result.submission_id;
+                window.location.href = result.result_url;
                 return;
             }
 
@@ -898,7 +898,7 @@ async function submitQuiz(options) {
 
             const scoreDisplay = document.getElementById('score-display');
             const detailsButton = document.createElement('a');
-            detailsButton.href = `/result/${result.submission_id}`;
+            detailsButton.href = result.result_url;
             detailsButton.className = 'btn';
             detailsButton.style.marginTop = '1rem';
             detailsButton.textContent = '查看測驗詳情';
