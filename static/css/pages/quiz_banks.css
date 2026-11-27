@@ -1,0 +1,5 @@
+/* 題庫 page (ticket 06, #8). Tokens only. */
+.bank-table tr.is-attn td:first-child { box-shadow: inset 3px 0 0 var(--warning); }
+.bank-table .attn-note { color: var(--warning); font-size: var(--fs-xs); margin-top: 2px; }
+.bank-table td.act { white-space: nowrap; text-align: right; }
+.bank-table td.act .btn { vertical-align: middle; }
