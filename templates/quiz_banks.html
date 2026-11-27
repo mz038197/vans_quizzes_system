@@ -1,14 +1,35 @@
 {% extends "base.html" %}
 {% import "_ui.html" as ui %}
 
-{% block title %}題庫 - 智慧題庫{% endblock %}
+{% block title %}{{ folder.name ~ ' - ' if folder }}題庫 - 智慧題庫{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/pages/quiz_banks.css') }}">
 {% endblock %}
 
+{% block crumbs %}
+{% if folder %}{{ ui.crumbs([('題庫', url_for('quiz_banks')), (folder.name, None)]) }}{% endif %}
+{% endblock %}
+
 {% block content %}
+{% if folder %}
+{% call ui.page_head(folder.name, sub='這個資料夾裡的題庫。') %}
+<button type="button" class="btn" data-folder-edit><i class="fas fa-pen" aria-hidden="true"></i> 編輯資料夾</button>
+<button type="button" class="btn btn-danger" data-folder-delete><i class="fas fa-trash" aria-hidden="true"></i> 刪除資料夾</button>
+<a class="btn btn-primary" href="{{ url_for('create_quiz_bank', folder=folder.id) }}"><i class="fas fa-plus" aria-hidden="true"></i> 在這裡建立題庫</a>
+{% endcall %}
+
+{% if folder_cards|length > 1 %}
+<nav class="folder-chips" aria-label="其他資料夾">
+    <span class="muted small">其他資料夾：</span>
+    {% for c in folder_cards if c.folder.id != folder.id %}
+    <a class="chip fc-{{ c.folder.color }}" href="{{ url_for('quiz_banks', folder=c.folder.id) }}">{{ ui.folder_dot(c.folder.color) }} {{ c.folder.name }}</a>
+    {% endfor %}
+</nav>
+{% endif %}
+{% else %}
 {% call ui.page_head('題庫', sub='備課時看這裡：整理題庫、管理題目、查看成績。') %}
+<button type="button" class="btn" data-folder-new><i class="fas fa-folder-plus" aria-hidden="true"></i> 新增資料夾</button>
 <a class="btn btn-primary" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
 {% endcall %}
 
@@ -16,6 +37,24 @@
     <a href="{{ url_for('quiz_banks') }}"{% if not attention_only %} aria-current="page"{% endif %}>全部 <span class="cnt">{{ total }}</span></a>
     <a href="{{ url_for('quiz_banks', filter='attention') }}"{% if attention_only %} aria-current="page"{% endif %}>需要注意 <span class="cnt">{{ attention_count }}</span></a>
 </nav>
+
+{% if not attention_only %}
+<section class="fgrid" aria-label="資料夾">
+    {% for c in folder_cards %}
+    <a class="fcard fc-{{ c.folder.color }}" data-folder="{{ c.folder.id }}" href="{{ url_for('quiz_banks', folder=c.folder.id) }}">
+        <span class="fcard-name"><i class="fas fa-folder" aria-hidden="true"></i> {{ c.folder.name }}</span>
+        <span class="fcard-meta">{{ c.n_banks }} 個題庫</span>
+        {% if c.n_attention %}<span class="fcard-attn"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> {{ c.n_attention }} 個需要注意</span>{% endif %}
+    </a>
+    {% endfor %}
+    <button type="button" class="fcard fcard-new" data-folder-new>
+        <span class="fcard-name"><i class="fas fa-plus" aria-hidden="true"></i> 新增資料夾</span>
+        <span class="fcard-meta">名稱加一個顏色</span>
+    </button>
+</section>
+<h2 class="section-title">未分類</h2>
+{% endif %}
+{% endif %}
 
 <section class="panel" aria-label="題庫列表">
     {% if banks %}
@@ -33,6 +72,7 @@
                     <td>
                         <a class="t-title" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}">{{ b.bank.title }}</a>
                         <div class="t-sub">{{ b.bank.description or '沒有描述' }}</div>
+                        {% if attention_only %}<div class="t-sub">{% if b.folder %}{{ ui.folder_dot(b.folder.color) }} {{ b.folder.name }}{% else %}未分類{% endif %}</div>{% endif %}
                         {% if b.attention %}<div class="attn-note"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> {{ b.attention }}</div>{% endif %}
                     </td>
                     <td>{{ b.mode }}</td>
@@ -47,6 +87,7 @@
                         <button type="button" class="btn btn-icon" data-more
                                 data-id="{{ b.bank.id }}" data-code="{{ b.bank.access_code }}"
                                 data-title="{{ b.bank.title }}" data-active="{{ 'true' if b.bank.is_active else 'false' }}"
+                                data-in-folder="{{ b.bank.folder_id or '' }}"
                                 aria-haspopup="menu" aria-expanded="false" title="更多" aria-label="{{ b.bank.title }} 的更多動作"><i class="fas fa-ellipsis-h" aria-hidden="true"></i></button>
                     </td>
                 </tr>
@@ -58,12 +99,20 @@
     {% call ui.empty('目前沒有需要注意的題庫。', icon='fa-check-circle') %}
     <a class="btn" href="{{ url_for('quiz_banks') }}">看全部題庫</a>
     {% endcall %}
+    {% elif folder %}
+    {% call ui.empty('這個資料夾還沒有題庫。用題庫的「移動到…」放進來，或在這裡建立一個。', icon='fa-folder-open') %}
+    <a class="btn btn-primary" href="{{ url_for('create_quiz_bank', folder=folder.id) }}"><i class="fas fa-plus" aria-hidden="true"></i> 在這裡建立題庫</a>
+    {% endcall %}
+    {% elif total %}
+    {{ ui.empty('所有題庫都放進資料夾了。', icon='fa-check-circle') }}
     {% else %}
     {% call ui.empty('還沒有題庫。建立第一個題庫吧。', icon='fa-layer-group') %}
     <a class="btn btn-primary" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
     {% endcall %}
     {% endif %}
 </section>
+
+<script type="application/json" id="folder-data">{{ {'folders': folders_json, 'colors': folder_colors, 'current': folder.id if folder else None} | tojson }}</script>
 {% endblock %}
 
 {% block scripts %}
