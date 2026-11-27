@@ -260,11 +260,11 @@ def class_session_window(class_session):
     """The window as shown (UTC+8), e.g. '11/27 10:00–10:50'."""
     return class_session_rules.window_text(class_session.starts_at, class_session.ends_at)
 
-def new_class_session_code(avoid=()):
-    """An unguessable 6-character Class Session code that no Class Session uses (nor any code in `avoid`)."""
+def new_class_session_code():
+    """An unguessable 6-character Class Session code that no Class Session uses."""
     while True:
         code = class_session_rules.random_code()
-        if code not in avoid and not ClassSession.query.filter_by(code=code).first():
+        if not ClassSession.query.filter_by(code=code).first():
             return code
 
 def parse_points(value, default=1.0):
@@ -463,8 +463,6 @@ def ensure_schema_updates():
             statements.append('ALTER TABLE submission ADD COLUMN elapsed_seconds INTEGER')
         if 'review_flag_question_ids' not in cols:
             statements.append('ALTER TABLE submission ADD COLUMN review_flag_question_ids TEXT')
-        if 'class_session_id' not in cols:
-            statements.append('ALTER TABLE submission ADD COLUMN class_session_id INTEGER REFERENCES class_session (id)')
         if 'total_points' in cols and needs_float_migration('submission', 'total_points'):
             if is_postgres:
                 statements.append('ALTER TABLE submission ALTER COLUMN total_points TYPE DOUBLE PRECISION')
@@ -486,145 +484,10 @@ def ensure_schema_updates():
     for statement in statements:
         apply_statement(statement)
 
+    # The model declares this index, but old databases got folder_id through ALTER TABLE without it.
+    if 'quiz_bank' in table_names:
+        apply_statement('CREATE INDEX IF NOT EXISTS ix_quiz_bank_folder_id ON quiz_bank (folder_id)')
 
-# ---- One-time move of pre-redesign data (issue #16). Remove after production has run it (as ADR 0008 did). ----
-
-PRE_REDESIGN_COURSE = '改版前'
-PRE_REDESIGN_CLASS_SESSION = '改版前的作答'
-OLD_QUIZ_BANK_COLUMNS = ('access_code', 'is_active', 'time_limit_minutes')
-
-
-def attach_old_submissions(bank_columns):
-    """Put every Submission without a Class Session into a 「改版前的作答」 Class Session of its Quiz Bank,
-    inside one ended 「改版前」 Course per Teacher. Runs in the caller's transaction; safe to run again."""
-    from sqlalchemy import text
-
-    groups = (db.session.query(Submission.quiz_bank_id, db.func.min(Submission.submitted_at),
-                               db.func.max(Submission.submitted_at))
-              .filter(Submission.class_session_id.is_(None))
-              .group_by(Submission.quiz_bank_id).all())
-    if not groups:
-        return 0
-    old_limits = {}
-    if 'time_limit_minutes' in bank_columns:
-        old_limits = dict(db.session.execute(text('SELECT id, time_limit_minutes FROM quiz_bank')).all())
-    old_codes = set()
-    if 'access_code' in bank_columns:
-        old_codes = {row[0] for row in db.session.execute(text('SELECT access_code FROM quiz_bank'))}
-
-    now = datetime.utcnow()
-    courses = {}
-    moved = 0
-    for quiz_bank_id, first, last in groups:
-        quiz_bank = db.session.get(QuizBank, quiz_bank_id)
-        if quiz_bank is None:
-            logger.error('Pre-redesign migration: Submissions of missing Quiz Bank %s left alone', quiz_bank_id)
-            continue
-        teacher_id = quiz_bank.teacher_id
-        course = courses.get(teacher_id) or Course.query.filter(
-            Course.teacher_id == teacher_id, Course.name == PRE_REDESIGN_COURSE,
-            Course.ended_at.isnot(None)).first()
-        if course is None:
-            course = Course(teacher_id=teacher_id, name=PRE_REDESIGN_COURSE, ended_at=now)
-            db.session.add(course)
-            db.session.flush()
-        courses[teacher_id] = course
-        first = first or last or now
-        last = last or first
-        class_session = ClassSession(
-            teacher_id=teacher_id, course_id=course.id, name=PRE_REDESIGN_CLASS_SESSION,
-            code=new_class_session_code(avoid=old_codes), starts_at=first, ends_at=last,
-        )
-        db.session.add(class_session)
-        db.session.flush()
-        db.session.add(ClassSessionBank(class_session_id=class_session.id, quiz_bank_id=quiz_bank_id,
-                                        position=0, time_limit_minutes=old_limits.get(quiz_bank_id)))
-        moved += (Submission.query
-                  .filter(Submission.quiz_bank_id == quiz_bank_id, Submission.class_session_id.is_(None))
-                  .update({Submission.class_session_id: class_session.id}, synchronize_session=False))
-    return moved
-
-
-def rebuild_sqlite_table_from_model(model):
-    """SQLite cannot drop a UNIQUE column or add NOT NULL in place: build the table again from the
-    model, copy the shared columns, and create the model's indexes (SQLite's documented procedure)."""
-    from sqlalchemy import inspect, text
-    from sqlalchemy.schema import CreateTable
-
-    table = model.__table__
-    name = table.name
-    tmp = f'{name}__rebuild'
-    old_columns = {c['name'] for c in inspect(db.engine).get_columns(name)}
-    shared = ', '.join(c.name for c in table.columns if c.name in old_columns)
-    ddl = str(CreateTable(table).compile(db.engine)).strip()
-    prefix = f'CREATE TABLE {name} ('
-    if not ddl.startswith(prefix):
-        raise RuntimeError(f'unexpected DDL for {name}: {ddl[:60]}')
-    with db.engine.connect() as conn:
-        foreign_keys = conn.exec_driver_sql('PRAGMA foreign_keys').scalar()
-        conn.exec_driver_sql('PRAGMA foreign_keys=OFF')
-        conn.commit()  # PRAGMA foreign_keys has no effect inside a transaction
-        try:
-            with conn.begin():
-                conn.execute(text(f'DROP TABLE IF EXISTS {tmp}'))
-                conn.execute(text(f'CREATE TABLE {tmp} (' + ddl[len(prefix):]))
-                conn.execute(text(f'INSERT INTO {tmp} ({shared}) SELECT {shared} FROM {name}'))
-                conn.execute(text(f'DROP TABLE {name}'))
-                conn.execute(text(f'ALTER TABLE {tmp} RENAME TO {name}'))
-                for index in table.indexes:
-                    index.create(conn, checkfirst=True)
-        finally:
-            conn.exec_driver_sql(f'PRAGMA foreign_keys={"ON" if foreign_keys else "OFF"}')
-            conn.commit()
-
-
-def migrate_pre_redesign():
-    """Move old Submissions into 「改版前」 Class Sessions, then drop the old Quiz Bank code, on/off switch
-    and Time Limit and make Submission.class_session_id required. Old columns are dropped only after
-    every Submission has a Class Session, so a failed run loses nothing and is tried again next start."""
-    from sqlalchemy import inspect, text
-
-    inspector = inspect(db.engine)
-    if not {'quiz_bank', 'submission'} <= set(inspector.get_table_names()):
-        return
-    is_postgres = db.engine.dialect.name == 'postgresql'
-    bank_columns = {c['name'] for c in inspector.get_columns('quiz_bank')}
-    try:
-        if is_postgres:  # several workers may start at once; one moves the data, the others wait
-            db.session.execute(text('SELECT pg_advisory_xact_lock(2016016)'))
-        moved = attach_old_submissions(bank_columns)
-        db.session.commit()
-        if moved:
-            logger.warning('Pre-redesign migration: attached %s old Submissions', moved)
-    except Exception:
-        db.session.rollback()
-        logger.exception('Pre-redesign migration failed; old columns kept')
-        return
-
-    left = Submission.query.filter(Submission.class_session_id.is_(None)).count()
-    if left:
-        logger.error('Pre-redesign migration: %s Submissions still have no Class Session; old columns kept', left)
-        return
-
-    inspector = inspect(db.engine)
-    old_columns = [c for c in OLD_QUIZ_BANK_COLUMNS if c in {c['name'] for c in inspector.get_columns('quiz_bank')}]
-    session_column = next(c for c in inspector.get_columns('submission') if c['name'] == 'class_session_id')
-    try:
-        if is_postgres:
-            for column in old_columns:
-                db.session.execute(text(f'ALTER TABLE quiz_bank DROP COLUMN IF EXISTS {column}'))
-            if session_column['nullable']:
-                db.session.execute(text('ALTER TABLE submission ALTER COLUMN class_session_id SET NOT NULL'))
-            db.session.commit()
-        else:
-            db.session.commit()  # end the read transaction before the rebuild
-            if old_columns:
-                rebuild_sqlite_table_from_model(QuizBank)
-            if session_column['nullable']:
-                rebuild_sqlite_table_from_model(Submission)
-    except Exception:
-        db.session.rollback()
-        logger.exception('Pre-redesign migration: dropping old columns failed')
 
 def get_bank_scoring(quiz_bank):
     mode = (getattr(quiz_bank, 'scoring_mode', None) or 'explicit').strip().lower()
@@ -2785,7 +2648,6 @@ def initialize_database():
     with app.app_context():
         db.create_all()
         ensure_schema_updates()
-        migrate_pre_redesign()
 
 initialize_database()
 
