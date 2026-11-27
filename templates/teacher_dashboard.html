@@ -1,200 +1,107 @@
 {% extends "base.html" %}
+{% import "_ui.html" as ui %}
 
 {% block title %}教學儀表板 - 智慧題庫{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/dashboard.css') }}">
+{% endblock %}
+
 {% block content %}
-<div class="page-header">
-    <h1><i class="fas fa-tachometer-alt"></i> 教學儀表板</h1>
-    <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-primary btn-lg">
-        <i class="fas fa-plus"></i> 建立題庫
-    </a>
+{% call ui.page_head('教學儀表板', sub='上課時看這裡：需要注意的題庫、最新的作答，還有發給學生的連結。') %}
+<a class="btn btn-primary" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
+{% endcall %}
+
+<div class="kpis">
+    {{ ui.kpi('開放中的題庫', numbers.open_banks ~ ' / ' ~ numbers.banks, delta='學生現在可以作答的題庫／全部') }}
+    {{ ui.kpi('本週作答', numbers.week_subs, delta=numbers.week_delta_text) }}
+    {{ ui.kpi('本週學生', numbers.week_students, delta='依姓名計算，同一人只算一次') }}
+    {{ ui.kpi('需要注意', numbers.attention,
+              delta=('平均低於 60% 的題庫' if numbers.attention else '目前都沒問題'),
+              href=url_for('quiz_banks', filter='attention')) }}
 </div>
 
-<div class="stats-cards">
-    <div class="stat-card">
-        <div class="stat-icon blue">
-            <i class="fas fa-book"></i>
-        </div>
-        <div class="stat-content">
-            <div class="stat-title">題庫總數</div>
-            <div class="stat-value">{{ quiz_banks|length }}</div>
-        </div>
+{% set attention_banks = banks | selectattr('attention') | list %}
+{% if attention_banks %}
+<section class="panel dash-attn" aria-labelledby="attn-h">
+    <div class="panel-h">
+        <h2 id="attn-h"><i class="fas fa-exclamation-triangle warn-text" aria-hidden="true"></i> 需要注意</h2>
+        <a href="{{ url_for('quiz_banks', filter='attention') }}">到題庫頁看 →</a>
     </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon green">
-            <i class="fas fa-file-alt"></i>
-        </div>
-        <div class="stat-content">
-            <div class="stat-title">題目總數</div>
-            <div class="stat-value">{% set total_questions = 0 %}{% for bank in quiz_banks %}{% set total_questions = total_questions + bank.questions|length %}{% endfor %}{{ total_questions }}</div>
-        </div>
+    <div class="table-wrap">
+        <table class="table">
+            <tbody>
+            {% for b in attention_banks %}
+                <tr>
+                    <td><a class="t-title" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}">{{ b.bank.title }}</a></td>
+                    <td class="warn-text">{{ b.attention }}</td>
+                    <td class="act"><a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=b.bank.id) }}"><i class="fas fa-chart-bar" aria-hidden="true"></i> 成績</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
     </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon purple">
-            <i class="fas fa-users"></i>
-        </div>
-        <div class="stat-content">
-            <div class="stat-title">學生人數</div>
-            <div class="stat-value">{% set total_submissions = 0 %}{% for bank in quiz_banks %}{% set total_submissions = total_submissions + bank.submissions|length %}{% endfor %}{{ total_submissions }}</div>
-        </div>
-    </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon orange">
-            <i class="fas fa-chart-line"></i>
-        </div>
-        <div class="stat-content">
-            <div class="stat-title">平均分數</div>
-            <div class="stat-value">100%</div>
-        </div>
-    </div>
-</div>
+</section>
+{% endif %}
 
-<div class="card">
-    <div class="card-header">
-        <h2><i class="fas fa-book"></i> 我的題庫</h2>
-        <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-primary">
-            <i class="fas fa-plus"></i> 新增題庫
-        </a>
-    </div>
-    <div class="card-body">
-        {% if quiz_banks %}
-            <div class="quiz-banks-grid">
-                {% for quiz_bank in quiz_banks %}
-                <div class="quiz-bank-card">
-                    <div class="quiz-bank-title">{{ quiz_bank.title }}</div>
-                    <div class="quiz-bank-description">
-                        {{ quiz_bank.description if quiz_bank.description else '暫無描述' }}
-                    </div>
-                    <div class="quiz-bank-info">
-                        <span><i class="far fa-calendar-alt"></i> {{ quiz_bank.created_at|utc8('%Y-%m-%d') }}</span>
-                        <span class="access-code">{{ quiz_bank.access_code }}</span>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                        <a href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id) }}" class="btn btn-primary" style="flex: 1; text-align: center;">
-                            <i class="fas fa-cog"></i> 管理題目
-                        </a>
-                        <a href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}" class="btn btn-secondary" style="flex: 1; text-align: center;">
-                            <i class="fas fa-chart-bar"></i> 查看成績
-                        </a>
-                    </div>
-                    <div style="margin-top: 0.5rem;">
-                        <button onclick="copyQuizLink('{{ quiz_bank.access_code }}')" class="btn btn-secondary" style="width: 100%;">
-                            <i class="fas fa-link"></i> 複製題庫連結
-                        </button>
-                    </div>
-                    <div style="margin-top: 0.5rem;">
-                        <button onclick="toggleQuizBank({{ quiz_bank.id }}, {{ quiz_bank.is_active|lower }})" 
-                                class="btn {{ 'btn-danger' if quiz_bank.is_active else 'btn-success' }}" 
-                                style="width: 100%;">
-                            <i class="fas fa-{{ 'lock' if quiz_bank.is_active else 'lock-open' }}"></i>
-                            {{ '停用題庫' if quiz_bank.is_active else '啟用題庫' }}
-                        </button>
-                    </div>
-                    <div style="margin-top: 0.5rem;">
-                        <button onclick="deleteQuizBank({{ quiz_bank.id }})" 
-                                class="btn btn-danger" 
-                                style="width: 100%; background-color: #dc3545;">
-                            <i class="fas fa-trash"></i> 刪除題庫
-                        </button>
-                    </div>
-                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; font-size: 0.9rem; color: #666;">
-                        <div><i class="fas fa-file-alt"></i> 題目數量：{{ quiz_bank.questions|length }} 題</div>
-                        <div><i class="fas fa-users"></i> 作答次數：{{ quiz_bank.submissions|length }} 次</div>
-                    </div>
-                </div>
+<div class="grid-main-side">
+    <section class="panel" aria-labelledby="recent-h">
+        <div class="panel-h"><h2 id="recent-h">最近的作答</h2></div>
+        {% if recent %}
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th>學生</th><th>題庫</th><th>分數</th><th>交卷時間</th></tr></thead>
+                <tbody>
+                {% for r in recent %}
+                    <tr>
+                        <td class="t-title">{{ r.submission.student_name }}</td>
+                        <td>{{ r.bank_title }}</td>
+                        <td class="num">{{ '—' if r.percent is none else '%.0f%%' % r.percent }}</td>
+                        <td class="muted small">{{ r.submission.submitted_at|utc8('%m/%d %H:%M') }}</td>
+                    </tr>
                 {% endfor %}
-            </div>
+                </tbody>
+            </table>
+        </div>
         {% else %}
-            <div style="text-align: center; padding: 3rem; background: #f8f9fa; border-radius: 2px;">
-                <div style="font-size: 3rem; color: #d9d9d9; margin-bottom: 1rem;">
-                    <i class="fas fa-book"></i>
-                </div>
-                <h3 style="color: #666; margin-bottom: 1rem;">還沒有題庫</h3>
-                <p style="color: #888; margin-bottom: 2rem;">開始建立您的第一個題庫吧！</p>
-                <a href="{{ url_for('create_quiz_bank') }}" class="btn btn-primary btn-lg">
-                    <i class="fas fa-plus"></i> 建立題庫
-                </a>
-            </div>
+        {{ ui.empty('還沒有學生作答。', icon='fa-inbox') }}
         {% endif %}
-    </div>
+    </section>
+
+    <section class="panel" aria-labelledby="qr-h">
+        <div class="panel-h"><h2 id="qr-h">上課發題</h2><span class="muted small">學生掃描就能作答</span></div>
+        {% set open_banks = banks | selectattr('bank.is_active') | list %}
+        {% if open_banks %}
+        <div class="qr-box" id="qr-panel">
+            <label class="sr-only" for="qr-bank">選擇題庫</label>
+            <select id="qr-bank" class="inp">
+                {% for b in open_banks %}
+                <option value="{{ b.bank.access_code }}" data-title="{{ b.bank.title }}">{{ b.bank.title }}（{{ b.bank.access_code }}）</option>
+                {% endfor %}
+            </select>
+            <div class="qr-img" id="qr-img" role="img" aria-label="題庫連結 QR code"></div>
+            <div class="qr-url mono" id="qr-url"></div>
+            <div class="qr-actions">
+                <button type="button" class="btn" id="qr-copy"><i class="fas fa-link" aria-hidden="true"></i> <span>複製連結</span></button>
+                <button type="button" class="btn btn-primary" id="qr-full"><i class="fas fa-expand" aria-hidden="true"></i> 全螢幕投影</button>
+            </div>
+        </div>
+        {% else %}
+        {{ ui.empty('沒有開放中的題庫。到題庫頁啟用一個題庫。', icon='fa-qrcode') }}
+        {% endif %}
+    </section>
 </div>
 
-<script>
-async function copyQuizLink(accessCode) {
-    const link = window.location.origin + '/quiz/' + accessCode;
-    if (await copyToClipboard(link)) {
-        UI.toast('題庫連結已複製到剪貼簿！\n' + link, 'ok');
-    } else {
-        UI.tell('無法複製連結，請手動複製：\n' + link, { title: '複製連結' });
-    }
-}
+<div class="qr-stage" id="qr-stage" role="dialog" aria-modal="true" aria-labelledby="qr-stage-title" hidden>
+    <button type="button" class="btn qr-close" id="qr-close"><i class="fas fa-times" aria-hidden="true"></i> 關閉（Esc）</button>
+    <h1 id="qr-stage-title"></h1>
+    <div class="qr-stage-img" id="qr-stage-img"></div>
+    <div class="qr-stage-url mono" id="qr-stage-url"></div>
+    <p class="qr-stage-hint">用手機相機掃描，輸入姓名就能開始作答，不用登入。</p>
+</div>
+{% endblock %}
 
-async function toggleQuizBank(quizBankId, isActive) {
-    const action = isActive ? '停用' : '啟用';
-    if (!(await UI.ask(`確定要${action}這個題庫嗎？`, { okText: action }))) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/quiz-bank/${quizBankId}/toggle`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        });
-
-        if (response.ok) {
-            location.reload();
-        } else {
-            UI.toast('操作失敗，請稍後再試', 'error');
-        }
-    } catch (error) {
-        UI.toast('網路錯誤，請檢查連線', 'error');
-    }
-}
-
-async function deleteQuizBank(quizBankId) {
-    if (!(await UI.ask('確定要刪除這個題庫嗎？\n\n⚠️ 警告：此操作將永久刪除題庫及其所有題目，且無法復原！', { title: '刪除題庫', danger: true, okText: '刪除' }))) {
-        return;
-    }
-
-    try {
-        let response = await fetch(`/api/quiz-bank/${quizBankId}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-        });
-        let result = await response.json();
-
-        if (response.status === 409 && result.requires_confirm) {
-            const count = result.submission_count;
-            const ok = await UI.ask(
-                `此題庫已有 ${count} 筆作答紀錄（Submission）。\n` +
-                '刪除後題庫、題目與這些紀錄都會永久消失，無法復原。\n\n確定要繼續嗎？',
-                { title: '刪除題庫和作答紀錄', danger: true, okText: '全部刪除' }
-            );
-            if (!ok) {
-                return;
-            }
-            response = await fetch(`/api/quiz-bank/${quizBankId}`, {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ confirm: true }),
-            });
-            result = await response.json();
-        }
-
-        if (response.ok) {
-            UI.flash(result.message, 'ok');
-            location.reload();
-        } else {
-            UI.toast(result.error || '刪除失敗，請稍後再試', 'error');
-        }
-    } catch (error) {
-        UI.toast('網路錯誤，請檢查連線', 'error');
-    }
-}
-</script>
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/vendor/qrcode.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
 {% endblock %}

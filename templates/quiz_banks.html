@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+
+{% block title %}題庫 - 智慧題庫{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/quiz_banks.css') }}">
+{% endblock %}
+
+{% block content %}
+{% call ui.page_head('題庫', sub='備課時看這裡：整理題庫、管理題目、查看成績。') %}
+<a class="btn btn-primary" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
+{% endcall %}
+
+<nav class="tabs" aria-label="篩選題庫">
+    <a href="{{ url_for('quiz_banks') }}"{% if not attention_only %} aria-current="page"{% endif %}>全部 <span class="cnt">{{ total }}</span></a>
+    <a href="{{ url_for('quiz_banks', filter='attention') }}"{% if attention_only %} aria-current="page"{% endif %}>需要注意 <span class="cnt">{{ attention_count }}</span></a>
+</nav>
+
+<section class="panel" aria-label="題庫列表">
+    {% if banks %}
+    <div class="table-wrap">
+        <table class="table bank-table">
+            <thead>
+                <tr>
+                    <th>題庫</th><th>模式</th><th>題數</th><th>作答</th><th>平均</th><th>狀態</th><th>代碼</th>
+                    <th><span class="sr-only">操作</span></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for b in banks %}
+                <tr{% if b.attention %} class="is-attn"{% endif %} data-bank="{{ b.bank.id }}">
+                    <td>
+                        <a class="t-title" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}">{{ b.bank.title }}</a>
+                        <div class="t-sub">{{ b.bank.description or '沒有描述' }}</div>
+                        {% if b.attention %}<div class="attn-note"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> {{ b.attention }}</div>{% endif %}
+                    </td>
+                    <td>{{ b.mode }}</td>
+                    <td class="num">{{ b.n_questions }}</td>
+                    <td class="num">{{ b.n_subs }}</td>
+                    <td class="num">{{ '—' if b.average_text is none else b.average_text ~ '%' }}</td>
+                    <td>{% if b.bank.is_active %}<span class="badge badge-on">開放中</span>{% else %}<span class="badge badge-off">已停用</span>{% endif %}</td>
+                    <td><span class="code">{{ b.bank.access_code }}</span></td>
+                    <td class="act">
+                        <a class="btn" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}">管理</a>
+                        <a class="btn btn-icon" href="{{ url_for('view_submissions_page', quiz_bank_id=b.bank.id) }}" title="成績" aria-label="{{ b.bank.title }} 的成績"><i class="fas fa-chart-bar" aria-hidden="true"></i></a>
+                        <button type="button" class="btn btn-icon" data-more
+                                data-id="{{ b.bank.id }}" data-code="{{ b.bank.access_code }}"
+                                data-title="{{ b.bank.title }}" data-active="{{ 'true' if b.bank.is_active else 'false' }}"
+                                aria-haspopup="menu" aria-expanded="false" title="更多" aria-label="{{ b.bank.title }} 的更多動作"><i class="fas fa-ellipsis-h" aria-hidden="true"></i></button>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% elif attention_only %}
+    {% call ui.empty('目前沒有需要注意的題庫。', icon='fa-check-circle') %}
+    <a class="btn" href="{{ url_for('quiz_banks') }}">看全部題庫</a>
+    {% endcall %}
+    {% else %}
+    {% call ui.empty('還沒有題庫。建立第一個題庫吧。', icon='fa-layer-group') %}
+    <a class="btn btn-primary" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
+    {% endcall %}
+    {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/pages/quiz_banks.js') }}"></script>
+{% endblock %}

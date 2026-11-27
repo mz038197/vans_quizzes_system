@@ -208,113 +208,6 @@
     border-top: 1px solid var(--border);
 }
 
-/* 統計卡片區域 */
-.stats-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-
-.stat-card {
-    background: var(--surface);
-    border-radius: 2px;
-    padding: 1.2rem;
-    display: flex;
-    align-items: center;
-    box-shadow: var(--shadow-1);
-    border: 1px solid var(--border);
-}
-
-.stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 1rem;
-    font-size: 1.5rem;
-    color: var(--on-primary);
-}
-
-.stat-icon.blue {
-    background: var(--primary);
-}
-
-.stat-icon.green {
-    background: var(--success);
-}
-
-.stat-icon.purple {
-    background: var(--secondary);
-}
-
-.stat-icon.orange {
-    background: var(--warning);
-}
-
-.stat-content {
-    flex: 1;
-}
-
-.stat-title {
-    font-size: 0.85rem;
-    color: var(--muted);
-    margin-bottom: 0.3rem;
-}
-
-.stat-value {
-    font-size: 1.8rem;
-    font-weight: 500;
-    color: var(--text);
-    line-height: 1;
-}
-
-/* 題庫卡片網格 */
-.quiz-banks-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1rem;
-    margin-top: 1.5rem;
-}
-
-.quiz-bank-card {
-    background: var(--surface);
-    border-radius: 2px;
-    box-shadow: var(--shadow-1);
-    border: 1px solid var(--border);
-    padding: 1.2rem;
-    transition: all 0.3s;
-}
-
-.quiz-bank-card:hover {
-    box-shadow: var(--shadow-1);
-}
-
-.quiz-bank-title {
-    font-size: 1.1rem;
-    font-weight: 500;
-    color: var(--text);
-    margin-bottom: 0.5rem;
-}
-
-.quiz-bank-description {
-    color: var(--muted);
-    margin-bottom: 1rem;
-    line-height: 1.4;
-    font-size: 0.9rem;
-}
-
-.quiz-bank-info {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    font-size: 0.85rem;
-    color: var(--muted);
-}
-
 .access-code {
     background: var(--bg);
     padding: 3px 6px;
@@ -693,16 +586,7 @@
 }
 
 /* 響應式設計 */
-@media (max-width: 992px) {
-    .stats-cards {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
 @media (max-width: 768px) {
-    .quiz-banks-grid {
-        grid-template-columns: 1fr;
-    }
     .parsons-container {
         flex-direction: column;
     }
@@ -714,9 +598,6 @@
     .parsons-preview-bank,
     .parsons-preview-target {
         min-height: 200px !important;
-    }
-    .stats-cards {
-        grid-template-columns: 1fr;
     }
 }
 

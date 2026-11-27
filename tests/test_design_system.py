@@ -54,6 +54,7 @@ def test_token_stylesheet_defines_every_token(client):
 
 TEACHER_PAGES = [
     '/teacher-dashboard',
+    '/quiz-banks',
     '/create-quiz-bank',
     '/quiz-bank/{qb}',
     '/quiz-bank/{qb}/submissions',
@@ -95,7 +96,8 @@ def test_student_pages_use_the_shared_layout_without_teacher_nav(client):
         assert '登出' not in html, path
 
 
-@pytest.mark.parametrize('path', ['/static/css/app.css', '/static/css/legacy.css'])
+@pytest.mark.parametrize('path', ['/static/css/app.css', '/static/css/legacy.css',
+                                  '/static/css/pages/dashboard.css', '/static/css/pages/quiz_banks.css'])
 def test_shared_stylesheets_take_every_colour_from_the_tokens(client, path):
     css = _text(client.get(path))
     assert not HEX.findall(css)
@@ -122,7 +124,7 @@ def _all_pages(auth_client):
     qb = auth_client._ids['quiz_bank_id']
     token = _submission_token(auth_client)
     pages = [
-        '/', '/teacher-dashboard', '/create-quiz-bank', f'/quiz-bank/{qb}',
+        '/', '/teacher-dashboard', '/quiz-banks', '/create-quiz-bank', f'/quiz-bank/{qb}',
         f'/quiz-bank/{qb}/submissions', f'/quiz-bank/{qb}/export-pdf',
         f'/quiz/{auth_client._ids["access_code"]}', f'/result/{token}',
     ]
@@ -135,7 +137,8 @@ def test_no_page_uses_browser_dialog_boxes(auth_client):
         assert not BROWSER_DIALOG.findall(html), path
 
 
-@pytest.mark.parametrize('path', ['/static/js/main.js', '/static/js/ui.js'])
+@pytest.mark.parametrize('path', ['/static/js/main.js', '/static/js/ui.js',
+                                  '/static/js/pages/dashboard.js', '/static/js/pages/quiz_banks.js'])
 def test_shared_scripts_use_no_browser_dialog_boxes(client, path):
     js = _text(client.get(path))
     assert not BROWSER_DIALOG.findall(js)
