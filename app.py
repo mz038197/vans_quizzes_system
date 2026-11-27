@@ -25,10 +25,14 @@ from time_display import format_wall_clock_utc8
 from page_nav import register_page_nav
 from teacher_auth import (
     DEFAULT_SECRET_KEY,
+    LOGIN_REQUIRED,
+    LOGIN_REQUIRED_NOTICE,
+    NON_TEACHER_HINT,
     LoginError,
     check_environment,
     configure_teacher_auth,
     current_teacher,
+    login_url as teacher_login_url,
     teacher_required,
 )
 
@@ -651,8 +655,14 @@ def grade_question(question, user_answer, points=None):
 # 路由定義
 @app.route('/')
 def index():
-    login_error = LoginError.notice_for(request.args.get('error'))
-    return render_template('index.html', login_error=login_error)
+    error_code = request.args.get('error')
+    return render_template(
+        'index.html',
+        login_error=LoginError.notice_for(error_code),
+        login_error_hint=NON_TEACHER_HINT if error_code == LoginError.LOGIN_FAILED.value else None,
+        login_required=LOGIN_REQUIRED_NOTICE if request.args.get('notice') == LOGIN_REQUIRED else None,
+        login_url=teacher_login_url(request.args.get('next')),
+    )
 
 @app.route('/teacher-dashboard')
 @teacher_required

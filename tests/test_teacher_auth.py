@@ -26,7 +26,7 @@ def _query(url):
 def test_teacher_page_without_sign_in_redirects_to_login(client):
     response = client.get('/teacher-dashboard')
     assert response.status_code == 302
-    assert _location(response).startswith('/auth/login?next=')
+    assert _location(response).startswith("/?notice=login_required&next=")
 
 
 def test_teacher_api_without_sign_in_is_401(client):

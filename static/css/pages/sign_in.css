@@ -1,0 +1,146 @@
+/*
+ * Sign-in page (templates/index.html). Tokens only: the hero colours are in tokens.css
+ * (--hero-*, --glow-1..6). Reduced motion: app.css stops every animation; the rules
+ * at the end of this file set the still frame.
+ */
+body.sign-in { background: var(--hero-bg); }
+.lp { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; background: var(--hero-bg); color: var(--hero-fg); }
+
+/* ---- banners at the top ---- */
+.lp-banner { position: relative; z-index: 2; border-radius: 0; justify-content: center; text-align: center; flex-wrap: wrap; }
+.lp-banner a { color: inherit; font-weight: 700; text-decoration: underline; }
+
+/* ---- hero ---- */
+.lp-hero { flex: 1; display: flex; align-items: center; position: relative; overflow: hidden; padding: clamp(32px, 7vh, 72px) 0; }
+.lp-in {
+  position: relative; z-index: 1; width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 var(--s2);
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: var(--s5); align-items: center;
+}
+.lp-brand { display: inline-flex; align-items: center; gap: var(--s1); font-family: var(--display); font-weight: 600; font-size: 18px; margin-bottom: var(--s3); }
+.lp-mark { width: 28px; height: 28px; border-radius: var(--r); display: grid; place-items: center; background: var(--primary); color: var(--on-primary); font-size: var(--fs-sm); }
+.lp-title { font-family: var(--display); font-size: clamp(32px, min(5vw, 7vh), 52px); line-height: 1.15; letter-spacing: -1px; margin-bottom: 28px; }
+.lp-btn {
+  display: inline-flex; align-items: center; min-height: var(--tap); padding: 12px 20px;
+  background: var(--hero-fg); color: var(--hero-bg); border: 1px solid var(--hero-fg); border-radius: var(--r-sm);
+  font-size: 15px; font-weight: 500;
+}
+.lp-btn:hover { background: var(--hero-fg-hover); color: var(--hero-bg); }
+.lp-hint { color: var(--hero-muted); font-size: 13px; margin-top: 12px; }
+
+/* ---- breathing glows (JS adds .lp-blob elements) ---- */
+.lp-glow { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.lp-blob {
+  position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0; transform: translate(-50%, -50%) scale(.85);
+  animation: lp-breathe ease-in-out infinite; will-change: opacity, transform;
+}
+@keyframes lp-breathe {
+  0%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(.85); }
+  50% { opacity: var(--peak, .5); transform: translate(-50%, -50%) scale(1.1); }
+}
+
+/* ---- animated question cards ---- */
+.sc { position: relative; height: 420px; }
+.sc-card {
+  position: absolute; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 14px 16px; box-shadow: var(--hero-shadow);
+  transform: rotate(var(--tilt)); animation: sc-float var(--fd, 7s) ease-in-out infinite; animation-delay: var(--fdl, 0s);
+}
+@keyframes sc-float { 0%, 100% { transform: translateY(0) rotate(var(--tilt)); } 50% { transform: translateY(-10px) rotate(var(--tilt)); } }
+.sc-kind { font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--primary); margin-bottom: var(--s1); display: flex; gap: 6px; align-items: center; }
+.sc-q { font-weight: 500; font-size: var(--fs-sm); }
+
+/* 單選題: an answer gets picked, turns green, +10 分 pops up */
+.sc-single { left: 30px; top: 80px; width: 290px; z-index: 3; --tilt: -2deg; --fd: 8s; }
+.sc-code { font-family: var(--mono); font-size: 13px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--s1) 10px; margin: var(--s1) 0 10px; }
+.sc-opt { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: var(--r); padding: 7px 10px; margin-top: 6px; font-size: 13px; font-family: var(--mono); }
+.sc-opt .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); flex: none; }
+.sc-opt .ok { margin-left: auto; color: var(--success); opacity: 0; }
+.sc-opt.ans { animation: sc-pick 6s ease-in-out infinite; }
+.sc-opt.ans .dot { animation: sc-pick-dot 6s ease-in-out infinite; }
+.sc-opt.ans .ok { animation: sc-show 6s ease-in-out infinite; }
+@keyframes sc-pick {
+  0%, 25%, 100% { border-color: var(--border); background: var(--surface); }
+  32%, 48% { border-color: var(--primary); background: var(--primary-soft); }
+  55%, 88% { border-color: var(--success); background: var(--success-soft); }
+}
+@keyframes sc-pick-dot {
+  0%, 25%, 100% { border: 2px solid var(--border); }
+  32%, 48% { border: 5px solid var(--primary); }
+  55%, 88% { border: 5px solid var(--success); }
+}
+@keyframes sc-show { 0%, 50%, 100% { opacity: 0; } 56%, 88% { opacity: 1; } }
+.sc-pop {
+  position: absolute; right: -14px; top: -14px; background: var(--success); color: var(--on-primary); font-weight: 700; font-size: 13px;
+  padding: var(--s0) 10px; border-radius: var(--r-pill); box-shadow: var(--hero-pop-shadow); opacity: 0; animation: sc-popup 6s ease-out infinite;
+}
+@keyframes sc-popup {
+  0%, 52% { opacity: 0; transform: translateY(6px) scale(.8); }
+  58% { opacity: 1; transform: translateY(0) scale(1.08); }
+  62%, 86% { opacity: 1; transform: scale(1); }
+  94%, 100% { opacity: 0; transform: translateY(-6px); }
+}
+
+/* 程式碼排序: lines start as 2, 3, 1 and slide into 1, 2, 3 */
+.sc-parsons { right: -30px; top: 0; width: 250px; z-index: 1; --tilt: 4deg; --fd: 9s; --fdl: -2s; }
+.sc-lines { position: relative; height: 96px; }
+.sc-ln {
+  position: absolute; left: 0; right: 0; height: 26px; line-height: 24px; font-family: var(--mono); font-size: var(--fs-xs); white-space: pre;
+  border: 1px solid var(--border); border-left: 3px solid var(--secondary); border-radius: 5px; padding: 0 var(--s1); background: var(--bg);
+  animation: 7s ease-in-out infinite;
+}
+.sc-ln.l1 { animation-name: sc-l1; }
+.sc-ln.l2 { animation-name: sc-l2; }
+.sc-ln.l3 { animation-name: sc-l3; }
+@keyframes sc-l1 { 0%, 30%, 100% { top: 64px; } 45%, 85% { top: 0; } }
+@keyframes sc-l2 { 0%, 30%, 100% { top: 0; } 45%, 85% { top: 32px; } }
+@keyframes sc-l3 { 0%, 30%, 100% { top: 32px; } 45%, 85% { top: 64px; } }
+
+/* 填空題: the blank types its answer */
+.sc-fill { left: 0; bottom: 30px; width: 250px; z-index: 4; --tilt: 3deg; --fd: 7.5s; --fdl: -4s; }
+.sc-blank { display: inline-block; min-width: 46px; border-bottom: 2px solid var(--primary); text-align: center; font-family: var(--mono); color: var(--primary); font-weight: 700; }
+.sc-typed {
+  display: inline-block; overflow: hidden; white-space: nowrap; vertical-align: bottom; width: 0; border-right: 2px solid var(--primary);
+  animation: sc-type 5s steps(3) infinite, sc-caret .8s step-end infinite;
+}
+@keyframes sc-type { 0%, 15%, 100% { width: 0; } 40%, 85% { width: 3ch; } }
+@keyframes sc-caret { 50% { border-color: transparent; } }
+
+/* QR card: how students get in (a picture only, not a real link) */
+.sc-qr { right: 20px; bottom: 0; width: 136px; text-align: center; z-index: 5; padding: 10px; --tilt: -4deg; --fd: 8.5s; --fdl: -1s; }
+.sc-qr-img { width: 110px; height: 110px; margin: 0 auto 6px; color: var(--text); }
+.sc-qr-img svg { display: block; width: 100%; height: 100%; }
+.sc-qr-t { font-size: var(--fs-xs); font-weight: 500; }
+
+/* chips */
+.sc-chip {
+  position: absolute; z-index: 6; font-size: var(--fs-xs); font-weight: 600; padding: 6px 12px; border-radius: var(--r-pill);
+  color: var(--on-primary); display: flex; gap: 6px; align-items: center; box-shadow: var(--hero-chip-shadow);
+  --tilt: 0deg; animation: sc-float 6s ease-in-out infinite;
+}
+.sc-chip.c1 { left: 0; top: 30px; background: var(--primary); animation-delay: -1s; }
+.sc-chip.c2 { right: -20px; top: 160px; background: var(--secondary); animation-delay: -3s; }
+.sc-chip.c3 { left: 60px; bottom: -6px; background: var(--type-fill); animation-delay: -2s; }
+
+/* ---- narrow screens: one column, cards under the headline ---- */
+@media (max-width: 899px) {
+  .lp-in { grid-template-columns: 1fr; text-align: center; gap: var(--s4); }
+  .sc { max-width: 380px; width: 100%; margin: 0 auto; }
+}
+@media (max-width: 760px) {
+  .sc { transform: scale(.85); transform-origin: top center; height: 380px; }
+  .sc-parsons { right: 0; }
+  .sc-chip.c2 { right: 0; }
+}
+
+/* ---- reduced motion: a still frame (app.css already stops every animation) ---- */
+@media (prefers-reduced-motion: reduce) {
+  .lp-blob { opacity: calc(var(--peak, .5) * .6); transform: translate(-50%, -50%); }
+  .sc-card, .sc-chip { transform: rotate(var(--tilt)); }
+  .sc-opt.ans { border-color: var(--success); background: var(--success-soft); }
+  .sc-opt.ans .dot { border: 5px solid var(--success); }
+  .sc-opt.ans .ok, .sc-pop { opacity: 1; }
+  .sc-ln.l1 { top: 0; }
+  .sc-ln.l2 { top: 32px; }
+  .sc-ln.l3 { top: 64px; }
+  .sc-typed { width: 3ch; border-right: 0; }
+}
