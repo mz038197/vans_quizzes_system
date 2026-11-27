@@ -47,3 +47,30 @@
 .move-item i { width: 16px; color: var(--muted); }
 .move-new { border-style: dashed; color: var(--primary); }
 .move-new i { color: var(--primary); }
+
+/* Drag, bulk move and search (ticket 08, #10). Tokens only. */
+.bank-table .chk { width: 64px; white-space: nowrap; }
+.bank-table .chk input { width: 18px; height: 18px; vertical-align: middle; accent-color: var(--primary); cursor: pointer; }
+.bank-table .grip { color: var(--border-strong); cursor: grab; padding: var(--s0); }
+.bank-table tr[draggable="true"]:hover .grip { color: var(--muted); }
+.bank-table tr.is-dragging { opacity: .4; }
+.bank-table tr.is-picked td { background: var(--primary-soft); }
+.bulk {
+  display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; justify-content: space-between;
+  padding: var(--s1) var(--s2); background: var(--primary-soft); color: var(--primary-strong);
+  border-bottom: 1px solid var(--border); font-weight: 500;
+}
+.panel-h .search .inp { width: 260px; max-width: 100%; }
+.panel-h .hint-drag { margin-left: auto; }
+.fname { display: inline-flex; gap: var(--s0); align-items: center; color: var(--text); text-decoration: none; font-size: var(--fs-sm); }
+.fname:hover { text-decoration: underline; }
+.fcard.drop-ok, .folder-chips .chip.drop-ok {
+  border-color: var(--fc); box-shadow: 0 0 0 3px color-mix(in srgb, var(--fc) 30%, transparent);
+  background: color-mix(in srgb, var(--fc) 8%, var(--surface));
+}
+.fcard.drop-ok { transform: scale(1.02); }
+.crumbs a.drop-ok { border-color: var(--primary); background: var(--primary-soft); }
+@media (max-width: 760px) {
+  .panel-h .hint-drag { display: none; }
+  .panel-h .search, .panel-h .search .inp { width: 100%; }
+}
