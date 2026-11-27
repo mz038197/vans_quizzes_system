@@ -3,3 +3,47 @@
 .bank-table .attn-note { color: var(--warning); font-size: var(--fs-xs); margin-top: 2px; }
 .bank-table td.act { white-space: nowrap; text-align: right; }
 .bank-table td.act .btn { vertical-align: middle; }
+
+/* Folders (ticket 07, #9). Tokens only. A card sets --fc with .fc-<color>. */
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--s2); margin: var(--s2) 0 var(--s3); }
+.fcard {
+  display: grid; gap: var(--s0); align-content: start; min-height: calc(var(--tap) * 2);
+  padding: var(--s2); border: 1px solid var(--border); border-top: 4px solid var(--fc, var(--border-strong));
+  border-radius: var(--r); background: var(--surface); color: var(--text); text-decoration: none;
+  box-shadow: var(--shadow-1); text-align: left; font: inherit; cursor: pointer;
+}
+.fcard:hover { border-color: var(--fc, var(--border-strong)); box-shadow: var(--shadow-2); }
+.fcard-name { font-weight: 600; display: flex; gap: var(--s1); align-items: center; }
+.fcard-name i { color: var(--fc, var(--muted)); }
+.fcard-meta { color: var(--muted); font-size: var(--fs-sm); }
+.fcard-attn { color: var(--warning); font-size: var(--fs-xs); }
+.fcard-new { border-style: dashed; border-top-width: 1px; background: transparent; box-shadow: none; color: var(--muted); }
+.fcard-new .fcard-name i { color: var(--muted); }
+.section-title { font-size: var(--fs-md); margin: var(--s2) 0 var(--s1); }
+.folder-chips { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; margin-bottom: var(--s2); }
+.folder-chips .chip { text-decoration: none; min-height: var(--tap-sm); color: var(--text); }
+
+/* Folder dialog: six colour swatches as radio buttons. */
+.color-pick { display: flex; gap: var(--s1); flex-wrap: wrap; }
+.color-pick label { position: relative; cursor: pointer; }
+.color-pick input { position: absolute; opacity: 0; pointer-events: none; }
+.color-pick .swatch {
+  display: block; width: var(--tap-sm); height: var(--tap-sm); border-radius: 50%;
+  background: var(--fc); border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--border);
+}
+.color-pick input:checked + .swatch { box-shadow: 0 0 0 2px var(--text); }
+.color-pick input:focus-visible + .swatch { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* 移動到… list. */
+.move-list { display: grid; gap: var(--s0); min-width: 280px; }
+.move-item {
+  display: flex; gap: 10px; align-items: center; min-height: var(--tap); width: 100%;
+  padding: var(--s1) var(--s2); border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.move-item:hover:not(:disabled) { background: var(--bg); }
+.move-item:disabled { cursor: default; background: var(--bg); }
+.move-item .move-name { flex: 1; }
+.move-item i { width: 16px; color: var(--muted); }
+.move-new { border-style: dashed; color: var(--primary); }
+.move-new i { color: var(--primary); }

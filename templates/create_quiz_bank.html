@@ -18,17 +18,22 @@
     {{ ui.page_head('建立題庫', sub='先建立空的題庫再加題目，或直接匯入整份 Markdown。') }}
 
     <div class="pick" role="tablist" aria-label="建立方式">
-        <a href="?tab=manual" data-pick="manual" role="tab" aria-controls="manual-tab" aria-current="{{ 'true' if tab == 'manual' else 'false' }}" aria-selected="{{ 'true' if tab == 'manual' else 'false' }}">
+        <a href="?tab=manual{{ '&folder=' ~ folder.id if folder }}" data-pick="manual" role="tab" aria-controls="manual-tab" aria-current="{{ 'true' if tab == 'manual' else 'false' }}" aria-selected="{{ 'true' if tab == 'manual' else 'false' }}">
             <span class="ico"><i class="fas fa-pen" aria-hidden="true"></i></span>
             <div><b>手動建立</b><span>填標題和描述，之後一題一題加入。</span></div>
         </a>
-        <a href="?tab=import" data-pick="import" role="tab" aria-controls="import-tab" aria-current="{{ 'true' if tab == 'import' else 'false' }}" aria-selected="{{ 'true' if tab == 'import' else 'false' }}">
+        <a href="?tab=import{{ '&folder=' ~ folder.id if folder }}" data-pick="import" role="tab" aria-controls="import-tab" aria-current="{{ 'true' if tab == 'import' else 'false' }}" aria-selected="{{ 'true' if tab == 'import' else 'false' }}">
             <span class="ico"><i class="fab fa-markdown" aria-hidden="true"></i></span>
             <div><b>從 Markdown 匯入</b><span>上傳一份 .md 檔，一次建立題庫和所有題目。</span></div>
         </a>
     </div>
 
     <div id="alert-container"></div>
+
+    {# Folder for the new Quiz Bank (ticket 07, #9). Empty = 未分類. #}
+    <div id="target-folder" data-folder-id="{{ folder.id if folder else '' }}">
+        {% if folder %}{{ ui.note('新題庫會放進資料夾「' ~ folder.name ~ '」。') }}{% endif %}
+    </div>
 
     <div id="manual-tab" role="tabpanel"{% if tab != 'manual' %} hidden{% endif %}>
         <form id="create-quiz-form" class="form-card" novalidate>
@@ -88,6 +93,11 @@ const QUESTION_TYPE_NAMES = {{ question_type_names | tojson }};
 let previewReady = false;
 let importFile = null;
 
+function targetFolderId() {
+    const id = document.getElementById('target-folder').dataset.folderId;
+    return id ? Number(id) : null;
+}
+
 function escapeHtml(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 }
@@ -144,7 +154,7 @@ document.getElementById('create-quiz-form').addEventListener('submit', async fun
         const response = await fetch('/create-quiz-bank', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, description })
+            body: JSON.stringify({ title, description, folder_id: targetFolderId() })
         });
         const data = await response.json();
 
@@ -218,6 +228,7 @@ async function confirmImport() {
 
     const formData = new FormData();
     formData.append('file', importFile);
+    if (targetFolderId()) formData.append('folder_id', targetFolderId());
     const button = document.getElementById('confirm-import-btn');
     setButtonLoading(button, true);
     try {
