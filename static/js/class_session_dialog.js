@@ -2,6 +2,10 @@
  * Shared 開課堂 dialog (ticket 09, #11). See templates/_class_session_dialog.html for how a page uses it.
  *
  * window.ClassSessionDialog.open({ bankIds, courseId }) → Promise<created Class Session | null>
+ * window.ClassSessionDialog.open({ session }) → edit mode (#13); `session` is GET /api/class-sessions/<id>.
+ *   Resolves to the saved Class Session or null. The Course cannot change; after the start, the start
+ *   and the Time Limits of offered Quiz Banks are locked; removing a Quiz Bank with Submissions asks
+ *   for its title to be typed and sends confirm: true.
  *
  * Parts that later tickets edit here (keep the names):
  *   renderPicker(state)  — how Quiz Banks are added: a searchable list grouped by Folder, the page's Folder first (#12).
@@ -87,13 +91,16 @@
         box.innerHTML = state.chosen.length ? state.chosen.map((c, i) => `
             <div class="csd-row">
                 <span class="n num">${i + 1}</span>
-                <div><b>${esc(c.title)}</b><span class="muted small">${esc(c.mode)} · ${c.n_questions} 題</span></div>
+                <div><b>${esc(c.title)}</b><span class="muted small">${c.n_subs ? `已有 ${c.n_subs} 份作答` : `${esc(c.mode)} · ${c.n_questions} 題`}</span></div>
                 <label class="csd-lim">時限 <input class="inp" type="number" min="1" step="1" inputmode="numeric"
-                    placeholder="不限" value="${c.limit == null ? '' : c.limit}" data-lim="${i}"
+                    placeholder="不限" value="${c.limit == null ? '' : c.limit}" data-lim="${i}"${c.locked ? ' disabled title="課堂已開始，時限不能改"' : ''}
                     aria-label="「${esc(c.title)}」的時限（分鐘，空白是不限時）"> 分</label>
                 <button type="button" class="btn btn-icon" data-unpick="${i}" aria-label="移除「${esc(c.title)}」"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>`).join('')
             : '<p class="muted small">還沒有選題庫。</p>';
+        if (state.chosen.some((c) => c.locked)) {
+            box.insertAdjacentHTML('beforeend', '<p class="muted small"><i class="fas fa-lock" aria-hidden="true"></i> 課堂已開始，開始時間和時限鎖住了。可以改名稱、結束時間，或加入、移除題庫。</p>');
+        }
         renderPicker(state);
     }
 
@@ -107,7 +114,7 @@
         const limits = state.chosen.map((c) => c.limit).filter(Boolean);
         const longest = limits.length ? Math.max(...limits) : 0;
         sum.innerHTML = `學生在 <b>${rangeText(a, b)}</b> 之間可以作答（${lengthText(b - a)}），共 <b>${state.chosen.length} 份題庫</b>。`
-            + (a <= Date.now() && b > Date.now() ? ' 建立後<b>馬上開始</b>。' : '')
+            + (!state.editing && a <= Date.now() && b > Date.now() ? ' 建立後<b>馬上開始</b>。' : '')
             + (longest && longest * MINUTE > b - a
                 ? `<br><span class="warn-text">注意：有題庫的時限 ${longest} 分鐘比開放時間長，課堂結束時就不能再交卷。</span>` : '');
     }
@@ -155,8 +162,19 @@
         if (!state.chosen.length) { state.showError('至少要選一份題庫。'); $('find').focus(); return; }
         const okButton = dlg.buttons[dlg.buttons.length - 1];
         okButton.disabled = true;
+        const editing = state.editing;
         try {
-            const response = await fetch('/api/class-sessions', {
+            const response = editing ? await fetch(`/api/class-sessions/${editing.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name,
+                    starts_at: editing.started ? null : $('start').value,
+                    ends_at: $('end').value,
+                    banks: state.chosen.map((c) => ({ quiz_bank_id: c.id, time_limit_minutes: c.limit })),
+                    confirm: state.confirmed,
+                }),
+            }) : await fetch('/api/class-sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -186,10 +204,17 @@
         d.folders = d.folders || [];
         const byId = (id) => d.banks.find((b) => b.id === Number(id));
         const pick = (bank) => ({ ...bank, limit: bank.last_time_limit == null ? null : bank.last_time_limit });
+        const editing = options.session || null;
+        const offered = (o) => ({
+            mode: '', n_questions: 0, ...(byId(o.quiz_bank_id) || {}), id: o.quiz_bank_id, title: o.title,
+            limit: o.time_limit_minutes, n_subs: o.n_subs, locked: !!editing.started,
+        });
 
         const state = {
             data: d,
-            chosen: (options.bankIds || []).map(byId).filter(Boolean).map(pick),
+            chosen: editing ? editing.banks.map(offered) : (options.bankIds || []).map(byId).filter(Boolean).map(pick),
+            editing,
+            confirmed: false,
             root: null,
             $: (id) => state.root.querySelector('#csd-' + id),
             course: () => d.courses.find((c) => String(c.id) === state.$('course').value) || null,
@@ -202,6 +227,17 @@
         state.$('course').value = startCourse ? String(startCourse) : 'new';
         state.$('start').value = toWall(Date.now());
         state.$('end').value = toWall(Date.now() + 50 * MINUTE);
+        if (editing) {
+            // The Course is fixed after creation; show only that one.
+            state.$('course').innerHTML = `<option value="${editing.course_id}">${esc(editing.course_name)}${editing.course_open ? '' : '（已結束）'}</option>`;
+            state.$('course').disabled = true;
+            state.$('course').insertAdjacentHTML('afterend', '<span class="help muted small">課堂建立後不能換課程。</span>');
+            state.$('name').value = editing.name;
+            state.$('start').value = editing.starts_at;
+            state.$('end').value = editing.ends_at;
+            state.$('start').disabled = !!editing.started;
+            root.querySelector('.csd-presets').hidden = true;
+        }
 
         function courseChanged() {
             const isNew = state.$('course').value === 'new';
@@ -232,7 +268,19 @@
                 return;
             }
             const un = e.target.closest('[data-unpick]');
-            if (un) { state.chosen.splice(Number(un.dataset.unpick), 1); renderChosen(state); renderSummary(state); return; }
+            if (un) {
+                const index = Number(un.dataset.unpick), c = state.chosen[index];
+                if (!c.n_subs) { state.chosen.splice(index, 1); renderChosen(state); renderSummary(state); return; }
+                UI.ask(`這份題庫在這堂課已經有 ${c.n_subs} 份作答。儲存後，這些作答會永久刪除，學生的成績單連結也會打不開。`,
+                    { title: `從課堂移除「${c.title}」？`, danger: true, okText: '移除並刪除作答', matchText: c.title })
+                    .then((ok) => {
+                        if (!ok) return;
+                        state.confirmed = true;
+                        state.chosen.splice(state.chosen.indexOf(c), 1);
+                        renderChosen(state); renderSummary(state);
+                    });
+                return;
+            }
             const p = e.target.closest('[data-preset]');
             if (p) {
                 const preset = PRESETS.find(([k]) => k === p.dataset.preset);
@@ -249,13 +297,13 @@
 
         let dlg;
         dlg = UI.dialog({
-            title: '開課堂',
+            title: editing ? `編輯課堂「${editing.name}」` : '開課堂',
             body: root,
             wide: true,
             cancelValue: null,
             actions: [
                 { label: '取消', value: null },
-                { label: '開課堂', kind: 'primary', value: () => { submit(state, dlg); return undefined; } },
+                { label: editing ? '儲存' : '開課堂', kind: 'primary', value: () => { submit(state, dlg); return undefined; } },
             ],
         });
         root.addEventListener('keydown', (e) => {

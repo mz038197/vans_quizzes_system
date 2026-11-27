@@ -9,7 +9,7 @@ import json
 import logging
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote
 import os
 import sys
@@ -1225,7 +1225,13 @@ def delete_quiz_bank(quiz_bank_id):
         }), 409
 
     try:
+        session_ids = [o.class_session_id for o in quiz_bank.offers]
         db.session.delete(quiz_bank)
+        db.session.flush()
+        # A Class Session left with no Quiz Bank goes too (spec #2, ticket 11).
+        for class_session in ClassSession.query.filter(ClassSession.id.in_(session_ids)).all():
+            if not ClassSessionBank.query.filter_by(class_session_id=class_session.id).count():
+                db.session.delete(class_session)
         db.session.commit()
         return jsonify({'message': '題庫已成功刪除'})
     except Exception:
@@ -2031,6 +2037,7 @@ def quiz_bank_class_sessions(quiz_bank, now=None):
             'status_label': class_session_status_label(class_session, status, now),
             'n_subs': counts.get(class_session.id, 0),
             'n_other_banks': len(class_session.offers) - 1,
+            'course_open': class_session_rules.course_is_open(class_session.course, now),
         })
     rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}
 
@@ -2058,15 +2065,18 @@ def class_session_status_label(class_session, status, now=None):
 @app.route('/api/courses', methods=['POST'])
 @teacher_required
 def create_course():
-    """Create a Course with a name (ticket 13 adds the end date, end, reopen and delete)."""
+    """Create a Course. Body: name, ends_on ('YYYY-MM-DD' UTC+8 day, optional). Edit and the rest are below."""
     data = request.get_json(silent=True) or {}
     name = (data.get('name') or '').strip()
     if not name:
         return _field_error('請輸入課程名稱', 'name')
-    course = Course(teacher_id=current_teacher().user_id, name=name)
+    ends_at, error = parse_course_end(data.get('ends_on'))
+    if error:
+        return _field_error(error, 'ends_on')
+    course = Course(teacher_id=current_teacher().user_id, name=name, ends_at=ends_at)
     db.session.add(course)
     db.session.commit()
-    return jsonify({'id': course.id, 'name': course.name}), 201
+    return jsonify(course_json(course)), 201
 
 
 @app.route('/api/class-sessions', methods=['POST'])
@@ -2149,6 +2159,407 @@ def create_class_session():
                                         position=position, time_limit_minutes=minutes))
     db.session.commit()
     return jsonify(class_session_json(class_session)), 201
+
+
+# ----- Manage Class Sessions and Courses (ticket 11, issue #13) -----
+
+REOPEN_FOR = timedelta(minutes=30)
+COURSE_ENDED_ERROR = '這個課程已經結束。請先重新開啟課程。'
+
+
+def owned_or_error(model, record_id):
+    """(record, None) for a Course or Class Session of this Teacher; (None, error response) if not."""
+    record = db.session.get(model, record_id)
+    if record is None:
+        return None, (jsonify({'error': '找不到資料'}), 404)
+    if not is_own(record):
+        return None, (jsonify({'error': '無權限操作'}), 403)
+    return record, None
+
+
+def submission_counts_by_bank(class_session):
+    """{quiz_bank_id: Submissions of that Quiz Bank in this Class Session}."""
+    return dict(
+        db.session.query(Submission.quiz_bank_id, db.func.count(Submission.id))
+        .filter(Submission.class_session_id == class_session.id).group_by(Submission.quiz_bank_id).all()
+    )
+
+
+def class_session_edit_json(class_session, now=None):
+    """class_session_json plus what the edit dialog needs: lock state and each Quiz Bank's title and count."""
+    now = now or datetime.utcnow()
+    counts = submission_counts_by_bank(class_session)
+    data = class_session_json(class_session)
+    data.update({
+        'started': now >= class_session.starts_at,
+        'course_open': class_session_rules.course_is_open(class_session.course, now),
+        'status': class_session_rules.status(class_session, now),
+        'n_subs': sum(counts.values()),
+        'banks': [{
+            'quiz_bank_id': o.quiz_bank_id, 'title': o.quiz_bank.title,
+            'time_limit_minutes': o.time_limit_minutes, 'n_subs': counts.get(o.quiz_bank_id, 0),
+        } for o in class_session.offers],
+    })
+    return data
+
+
+def _same_minute(a, b):
+    return abs((a - b).total_seconds()) < 60
+
+
+@app.route('/api/class-sessions/<int:class_session_id>', methods=['GET', 'PUT', 'DELETE'])
+@teacher_required
+def manage_class_session(class_session_id):
+    """GET: edit data. PUT: edit (spec #2: start and Time Limits only before the start).
+    DELETE: delete with its Submissions (needs {confirm: true} when it has Submissions)."""
+    class_session, error = owned_or_error(ClassSession, class_session_id)
+    if error:
+        return error
+    now = datetime.utcnow()
+    if request.method == 'GET':
+        return jsonify(class_session_edit_json(class_session, now))
+    data = request.get_json(silent=True) or {}
+    if request.method == 'DELETE':
+        n_subs = len(class_session.submissions)
+        if n_subs and data.get('confirm') is not True:
+            return jsonify({
+                'error': f'這堂課有 {n_subs} 份作答，確認後會一起永久刪除',
+                'requires_confirm': True, 'submission_count': n_subs,
+            }), 409
+        db.session.delete(class_session)
+        db.session.commit()
+        return jsonify({'message': f'已刪除課堂「{class_session.name}」'})
+    return edit_class_session(class_session, data, now)
+
+
+def edit_class_session(class_session, data, now):
+    started = now >= class_session.starts_at
+    if data.get('course_id') not in (None, '') and str(data.get('course_id')) != str(class_session.course_id):
+        return _field_error('課堂建立後不能換課程', 'course')
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return _field_error('請輸入課堂名稱', 'name')
+
+    starts_at = class_session.starts_at
+    if data.get('starts_at'):
+        starts_at = class_session_rules.parse_wall_clock(data.get('starts_at'))
+        if starts_at is None:
+            return _field_error('請選好開始時間', 'starts_at')
+        if started and not _same_minute(starts_at, class_session.starts_at):
+            return _field_error('課堂已經開始，不能改開始時間', 'starts_at')
+        if started:
+            starts_at = class_session.starts_at
+    ends_at = class_session.ends_at
+    if data.get('ends_at'):
+        ends_at = class_session_rules.parse_wall_clock(data.get('ends_at'))
+        if ends_at is None:
+            return _field_error('請選好結束時間', 'ends_at')
+        if _same_minute(ends_at, class_session.ends_at):
+            ends_at = class_session.ends_at
+        elif ends_at <= now:
+            return _field_error('結束時間已經過了。要現在結束，請按「立即結束」。', 'ends_at')
+    if ends_at <= starts_at:
+        return _field_error('結束時間要晚於開始時間', 'ends_at')
+
+    current = {o.quiz_bank_id: o for o in class_session.offers}
+    wanted = []
+    for item in data.get('banks') or []:
+        item = item if isinstance(item, dict) else {'quiz_bank_id': item}
+        try:
+            bank_id = int(item.get('quiz_bank_id'))
+        except (TypeError, ValueError):
+            return _field_error('找不到這份題庫', 'banks', 404)
+        if any(bank_id == b for b, _ in wanted):
+            continue
+        if bank_id not in current:
+            quiz_bank = db.session.get(QuizBank, bank_id)
+            if quiz_bank is None:
+                return _field_error('找不到這份題庫', 'banks', 404)
+            if not is_own_quiz_bank(quiz_bank):
+                return jsonify({'error': '無權限操作'}), 403
+        minutes, error = parse_time_limit(item.get('time_limit_minutes'))
+        if error:
+            return _field_error(error, 'banks')
+        if started and bank_id in current and minutes != current[bank_id].time_limit_minutes:
+            return _field_error('課堂已經開始，不能改時限', 'banks')
+        wanted.append((bank_id, minutes))
+    if not wanted:
+        return _field_error('至少要選一份題庫', 'banks')
+
+    kept = {b for b, _ in wanted}
+    counts = submission_counts_by_bank(class_session)
+    removed = [o for b, o in current.items() if b not in kept]
+    lost = sum(counts.get(o.quiz_bank_id, 0) for o in removed)
+    if lost and data.get('confirm') is not True:
+        return jsonify({
+            'error': f'移除的題庫在這堂課有 {lost} 份作答，確認後會一起永久刪除',
+            'requires_confirm': True, 'submission_count': lost,
+            'removed': [{'quiz_bank_id': o.quiz_bank_id, 'title': o.quiz_bank.title,
+                         'n_subs': counts.get(o.quiz_bank_id, 0)} for o in removed],
+        }), 409
+
+    for offer in removed:
+        Submission.query.filter_by(class_session_id=class_session.id, quiz_bank_id=offer.quiz_bank_id).delete()
+        class_session.offers.remove(offer)
+    db.session.flush()
+    for position, (bank_id, minutes) in enumerate(wanted):
+        offer = current.get(bank_id)
+        if offer is None:
+            class_session.offers.append(ClassSessionBank(quiz_bank_id=bank_id, position=position,
+                                                         time_limit_minutes=minutes))
+        else:
+            offer.position = position
+            offer.time_limit_minutes = minutes
+    class_session.name = name
+    class_session.starts_at = starts_at
+    class_session.ends_at = ends_at
+    db.session.commit()
+    return jsonify(class_session_edit_json(class_session, now))
+
+
+@app.route('/api/class-sessions/<int:class_session_id>/<action>', methods=['POST'])
+@teacher_required
+def class_session_action(class_session_id, action):
+    """end (a live one, now), start-now (an upcoming one, same length), extend ({minutes}, default 10;
+    live or upcoming), reopen (an ended one, for 30 minutes). An ended Course refuses all but end."""
+    if action not in ('end', 'start-now', 'extend', 'reopen'):
+        return jsonify({'error': '找不到這個動作'}), 404
+    class_session, error = owned_or_error(ClassSession, class_session_id)
+    if error:
+        return error
+    now = datetime.utcnow().replace(microsecond=0)
+    status = class_session_rules.status(class_session, now)
+    if action != 'end' and not class_session_rules.course_is_open(class_session.course, now):
+        return _field_error(COURSE_ENDED_ERROR, 'course')
+
+    if action == 'end':
+        if status != class_session_rules.LIVE:
+            return jsonify({'error': '這堂課沒有在進行'}), 400
+        class_session.ends_at = now - timedelta(seconds=1)
+        message = f'「{class_session.name}」已結束，學生不能再作答'
+    elif action == 'start-now':
+        if status != class_session_rules.SOON:
+            return jsonify({'error': '只有還沒開始的課堂可以現在開始'}), 400
+        length = class_session.ends_at - class_session.starts_at
+        class_session.starts_at = now
+        class_session.ends_at = now + length
+        message = f'「{class_session.name}」現在開始'
+    elif action == 'extend':
+        if status == class_session_rules.DONE:
+            return jsonify({'error': '這堂課已經結束，請用「重新開放」'}), 400
+        minutes, error_text = parse_time_limit((request.get_json(silent=True) or {}).get('minutes') or 10)
+        if error_text:
+            return jsonify({'error': '延長的時間要是大於 0 的整數分鐘'}), 400
+        class_session.ends_at += timedelta(minutes=minutes)
+        message = f'「{class_session.name}」延長 {minutes} 分鐘'
+    else:
+        if status != class_session_rules.DONE:
+            return jsonify({'error': '只有已結束的課堂可以重新開放'}), 400
+        class_session.ends_at = now + REOPEN_FOR
+        message = f'「{class_session.name}」重新開放 30 分鐘'
+    db.session.commit()
+    data = class_session_edit_json(class_session, now)
+    data['message'] = message
+    return jsonify(data)
+
+
+def parse_course_end(value, now=None):
+    """A Course end date ('YYYY-MM-DD', a UTC+8 day) → naive UTC of 23:59 that day.
+    Returns (ends_at or None, error or None). A day already past is refused (spec #2)."""
+    if value is None or not str(value).strip():
+        return None, None
+    try:
+        day = datetime.strptime(str(value).strip()[:10], '%Y-%m-%d')
+    except ValueError:
+        return None, '結束日期的格式不對'
+    ends_at = class_session_rules.parse_wall_clock(day.replace(hour=23, minute=59).isoformat())
+    if ends_at < (now or datetime.utcnow()):
+        return None, '結束日期已經過了。要結束課程，請按「結束課程」。'
+    return ends_at, None
+
+
+def course_json(course, now=None):
+    now = now or datetime.utcnow()
+    return {
+        'id': course.id, 'name': course.name,
+        'ends_on': class_session_rules.to_wall_clock(course.ends_at)[:10] if course.ends_at else None,
+        'ends_at': class_session_rules.to_wall_clock(course.ends_at) if course.ends_at else None,
+        'open': class_session_rules.course_is_open(course, now),
+    }
+
+
+def course_numbers(course, now):
+    """(live or upcoming Class Sessions, Class Sessions, Submissions) of a Course."""
+    sessions = course.class_sessions
+    active = sum(1 for s in sessions if class_session_rules.status(s, now) != class_session_rules.DONE)
+    ids = [s.id for s in sessions]
+    n_subs = Submission.query.filter(Submission.class_session_id.in_(ids)).count() if ids else 0
+    return active, len(sessions), n_subs
+
+
+@app.route('/api/courses/<int:course_id>', methods=['PUT', 'DELETE'])
+@teacher_required
+def manage_course(course_id):
+    """PUT: rename and set or clear the end date (ends_on). DELETE: delete with its Class Sessions
+    and Submissions (needs {confirm: true} when there are Submissions)."""
+    course, error = owned_or_error(Course, course_id)
+    if error:
+        return error
+    data = request.get_json(silent=True) or {}
+    now = datetime.utcnow()
+    if request.method == 'DELETE':
+        _, n_sessions, n_subs = course_numbers(course, now)
+        if n_subs and data.get('confirm') is not True:
+            return jsonify({
+                'error': f'這個課程有 {n_sessions} 個課堂和 {n_subs} 份作答，確認後會一起永久刪除',
+                'requires_confirm': True, 'session_count': n_sessions, 'submission_count': n_subs,
+            }), 409
+        db.session.delete(course)
+        db.session.commit()
+        return jsonify({'message': f'已刪除課程「{course.name}」'})
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return _field_error('請輸入課程名稱', 'name')
+    if 'ends_on' in data:
+        same_day = course.ends_at is not None and str(data.get('ends_on') or '')[:10] == course_json(course)['ends_on']
+        if not same_day:
+            ends_at, error_text = parse_course_end(data.get('ends_on'), now)
+            if error_text:
+                return _field_error(error_text, 'ends_on')
+            course.ends_at = ends_at
+    course.name = name
+    db.session.commit()
+    return jsonify(course_json(course, now))
+
+
+@app.route('/api/courses/<int:course_id>/<action>', methods=['POST'])
+@teacher_required
+def course_action(course_id, action):
+    """end: 結束課程 (sets ended_at; Class Session times stay). reopen: clears ended_at and a passed end date."""
+    if action not in ('end', 'reopen'):
+        return jsonify({'error': '找不到這個動作'}), 404
+    course, error = owned_or_error(Course, course_id)
+    if error:
+        return error
+    now = datetime.utcnow()
+    is_open = class_session_rules.course_is_open(course, now)
+    if action == 'end':
+        if not is_open:
+            return jsonify({'error': '這個課程已經結束'}), 400
+        n_ended, _, _ = course_numbers(course, now)
+        course.ended_at = now
+        db.session.commit()
+        data = course_json(course, now)
+        data.update({'n_ended': n_ended, 'message': f'課程「{course.name}」已結束'})
+        return jsonify(data)
+    if is_open:
+        return jsonify({'error': '這個課程沒有結束'}), 400
+    course.ended_at = None
+    if course.ends_at is not None and course.ends_at < now:
+        course.ends_at = None
+    db.session.commit()
+    n_back, _, _ = course_numbers(course, now)
+    data = course_json(course, now)
+    data.update({'n_back': n_back, 'message': (
+        f'已重新開啟「{course.name}」，{n_back} 個課堂的時間還沒過，學生可以繼續作答' if n_back
+        else f'已重新開啟「{course.name}」。底下課堂的時間都過了，要的話再開新課堂')})
+    return jsonify(data)
+
+
+SESSION_TABS = (('all', '全部'), ('live', '進行中'), ('soon', '即將開始'), ('done', '已結束'))
+
+
+def class_session_order(row):
+    """Live first, then upcoming (soonest first), then ended (latest end first)."""
+    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}[row['status']]
+    class_session = row['session']
+    if row['status'] == class_session_rules.DONE:
+        return (rank, -class_session_rules.effective_end(class_session).timestamp())
+    return (rank, class_session.starts_at.timestamp())
+
+
+def class_sessions_page_data(teacher_id, status_filter='all', query='', now=None):
+    """The 課堂 page: open and ended Courses, each with its matching Class Session rows, and tab counts."""
+    now = now or datetime.utcnow()
+    needle = query.casefold()
+    courses = Course.query.filter_by(teacher_id=teacher_id).order_by(Course.created_at.desc(), Course.id.desc()).all()
+    folders = {f.id: f for f in teacher_folders(teacher_id)}
+    counts = {}  # (class_session_id, quiz_bank_id) -> Submissions
+    for session_id, bank_id, n in (db.session.query(Submission.class_session_id, Submission.quiz_bank_id,
+                                                    db.func.count(Submission.id))
+                                   .join(ClassSession).filter(ClassSession.teacher_id == teacher_id)
+                                   .group_by(Submission.class_session_id, Submission.quiz_bank_id).all()):
+        counts[(session_id, bank_id)] = n
+    tab_counts = {key: 0 for key, _ in SESSION_TABS}
+    open_blocks, ended_blocks = [], []
+    for course in courses:
+        is_open = class_session_rules.course_is_open(course, now)
+        rows = []
+        for class_session in course.class_sessions:
+            status = class_session_rules.status(class_session, now)
+            banks = [{
+                'title': o.quiz_bank.title, 'time_limit': o.time_limit_minutes,
+                'n_subs': counts.get((class_session.id, o.quiz_bank_id), 0),
+                'folder': folders.get(o.quiz_bank.folder_id),
+            } for o in class_session.offers]
+            rows.append({'session': class_session, 'status': status, 'banks': banks,
+                         'status_label': class_session_status_label(class_session, status, now)})
+            if is_open:
+                tab_counts['all'] += 1
+                tab_counts[status] += 1
+        rows.sort(key=class_session_order)
+        text = lambda row: ' '.join([course.name, row['session'].name, row['session'].code]
+                                    + [b['title'] for b in row['banks']]).casefold()
+        shown = [r for r in rows if (status_filter == 'all' or r['status'] == status_filter)
+                 and (not needle or needle in text(r))]
+        if not shown and not (status_filter == 'all' and (not needle or needle in course.name.casefold())):
+            continue
+        block = {
+            'course': course, 'open': is_open, 'rows': shown, 'n_sessions': len(rows),
+            'ends_on': course_json(course, now)['ends_on'],
+            'n_live': sum(1 for r in rows if r['status'] == class_session_rules.LIVE),
+            'n_active': sum(1 for r in rows if r['status'] != class_session_rules.DONE),
+            'n_subs': sum(sum(b['n_subs'] for b in r['banks']) for r in rows),
+        }
+        (open_blocks if is_open else ended_blocks).append(block)
+    return {'open_courses': open_blocks, 'ended_courses': ended_blocks, 'counts': tab_counts,
+            'n_courses': len(courses)}
+
+
+@app.template_global()
+def course_end_text(course):
+    """到 12/31 23:59 / 已在 11/27 結束 / 沒有結束日期 (UTC+8)."""
+    def md(utc):
+        local = utc + timedelta(hours=8)
+        return f'{local.month}/{local.day}'
+
+    if course.ended_at is not None:
+        return f'已在 {md(course.ended_at)} 結束'
+    if course.ends_at is not None:
+        if course.ends_at < datetime.utcnow():
+            return f'已在 {md(course.ends_at)} 結束'
+        return f'到 {md(course.ends_at)} 23:59'
+    return '沒有結束日期'
+
+
+@app.route('/class-sessions')
+@teacher_required
+def class_sessions():
+    teacher_id = current_teacher().user_id
+    status_filter = request.args.get('status') or 'all'
+    if status_filter not in dict(SESSION_TABS):
+        status_filter = 'all'
+    query = (request.args.get('q') or '').strip()
+    return render_template(
+        'class_sessions.html',
+        page=class_sessions_page_data(teacher_id, status_filter, query),
+        tabs=SESSION_TABS, status_filter=status_filter, query=query,
+        cs_dialog=class_session_dialog_data(teacher_id),
+        has_session_sheet='class_session_sheet' in app.view_functions,
+        has_course_sheet='course_sheet' in app.view_functions,
+    )
 
 
 # 獲取當前環境

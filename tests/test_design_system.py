@@ -58,6 +58,7 @@ TEACHER_PAGES = [
     '/create-quiz-bank',
     '/quiz-bank/{qb}',
     '/quiz-bank/{qb}/submissions',
+    '/class-sessions',
 ]
 
 
