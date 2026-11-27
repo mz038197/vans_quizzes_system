@@ -1015,7 +1015,7 @@ def manage_quiz_bank(quiz_bank_id):
         scoring_total=scoring_total,
         tab=tab,
         class_session_rows=quiz_bank_class_sessions(quiz_bank),
-        cs_dialog=class_session_dialog_data(current_teacher().user_id),
+        cs_dialog=class_session_dialog_data(current_teacher().user_id, current_folder_id=quiz_bank.folder_id),
     )
 
 # Tabs of the Quiz Bank manage page, in order. The first one opens by default.
@@ -1108,12 +1108,33 @@ def refuse_outside_window(entry):
     return jsonify({'error': message, 'status': status}), 403
 
 
+def render_class_session_hub(entry):
+    """The 課堂清單 page: a Class Session with several Quiz Banks, any order, one Hand-in each (#12)."""
+    items = []
+    for offer in entry.class_session.offers:
+        bank = offer.quiz_bank
+        if bank.quiz_mode == 'practice':
+            size = f'隨機抽 {bank.session_question_count or 10} 題'
+        else:
+            size = f'{Question.query.filter_by(quiz_bank_id=bank.id).count()} 題'
+        limit = f'時限 {offer.time_limit_minutes} 分鐘' if offer.time_limit_minutes else '不限時'
+        items.append({
+            'bank': bank,
+            'facts': f'{size} · {limit}',
+            'url': url_for('take_quiz', access_code=entry.code, bank=bank.id),
+        })
+    return render_template('class_session_hub.html', items=items, **entry.page_context())
+
+
 @app.route('/quiz/<access_code>')
 def take_quiz(access_code):
     entry = find_student_entry(access_code, request.args.get('bank'))
     status = entry.status()
     if status != class_session_rules.LIVE:
         return render_class_session_gate(entry, status)
+    if (entry.class_session is not None and len(entry.class_session.offers) > 1
+            and request.args.get('bank') in (None, '')):
+        return render_class_session_hub(entry)
     quiz_bank = entry.quiz_bank
 
     if quiz_bank.quiz_mode == 'practice':
@@ -1931,9 +1952,14 @@ def last_time_limits(teacher_id):
     return limits
 
 
-def class_session_dialog_data(teacher_id):
-    """Data for templates/_class_session_dialog.html: the open Courses and the pickable Quiz Banks."""
+def class_session_dialog_data(teacher_id, current_folder_id=None):
+    """Data for templates/_class_session_dialog.html: the open Courses and the pickable Quiz Banks.
+
+    `current_folder_id` is the Folder the page shows (#12): it comes first in the bank list.
+    """
     courses = open_courses(teacher_id)
+    folders = teacher_folders(teacher_id)
+    folders.sort(key=lambda f: f.id != current_folder_id)  # stable: the rest keep Folder page order
     limits = last_time_limits(teacher_id)
     banks = (QuizBank.query.filter_by(teacher_id=teacher_id)
              .order_by(QuizBank.created_at.desc(), QuizBank.id.desc()).all())
@@ -1947,11 +1973,14 @@ def class_session_dialog_data(teacher_id):
             'ends_at': class_session_rules.to_wall_clock(c.ends_at) if c.ends_at else None,
         } for c in courses],
         'default_course_id': courses[0].id if courses else None,
+        'folders': [folder_json(f) for f in folders],
+        'current_folder_id': current_folder_id if any(f.id == current_folder_id for f in folders) else None,
         'banks': [{
             'id': b.id, 'title': b.title,
             'mode': '隨機練習' if b.quiz_mode == 'practice' else '固定測驗',
             'n_questions': question_counts.get(b.id, 0),
             'last_time_limit': limits.get(b.id),
+            'folder_id': b.folder_id,
         } for b in banks],
     }
 

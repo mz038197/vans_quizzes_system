@@ -13,7 +13,9 @@
        It resolves to the new Class Session (class_session_json in app.py) or null when cancelled.
 
   The dialog posts to POST /api/class-sessions (create_class_session in app.py).
-  Data shape: {courses: [{id, name, ends_at}], default_course_id, banks: [{id, title, mode, n_questions, last_time_limit}]}.
+  Data shape: {courses: [{id, name, ends_at}], default_course_id, folders: [{id, name, color}] (the page's
+  Folder first), current_folder_id, banks: [{id, title, mode, n_questions, last_time_limit, folder_id}]}.
+  Pass  class_session_dialog_data(teacher_id, current_folder_id=<Folder id the page shows>)  to put that Folder first.
   Times are UTC+8 wall clocks ('YYYY-MM-DDTHH:MM'), as the datetime-local inputs show them.
 #}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/class_session_dialog.css') }}">

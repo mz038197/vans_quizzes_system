@@ -5,12 +5,13 @@
                  time_limit=..., class_session=..., ends_at=...) %}extra notes{% endcall %}
   Fact values: question_count (int), total_points (number or None), time_limit (the Class Session's
   Time Limit for this Quiz Bank, minutes or None). With class_session, the card names it and shows the
-  green 「開放到」 note with ends_at (the effective end, naive UTC).
+  green 「開放到」 note with ends_at (the effective end, naive UTC). With class_session, the name and
+  email typed once for that code are filled in (static/js/student_hub.js, #12).
 #}
 {% macro num(value) -%}{{ '%g'|format(value) }}{%- endmacro %}
 
 {% macro entry(quiz_bank, question_count, total_points, start_label, start_action, mode_label='固定測驗', time_limit=None, class_session=None, ends_at=None) -%}
-<section class="qz-entry" id="student-info-section">
+<section class="qz-entry" id="student-info-section"{% if class_session %} data-hub-code="{{ class_session.code }}"{% endif %}>
   <div class="form-card">
     <div>
       <div class="muted small"><i class="fas fa-clipboard-list" aria-hidden="true"></i> {{ mode_label }}{% if class_session %} · {{ class_session.name }}{% endif %}</div>
@@ -57,4 +58,5 @@
     </button>
   </div>
 </section>
+{% if class_session %}<script src="{{ url_for('static', filename='js/student_hub.js') }}"></script>{% endif %}
 {%- endmacro %}
