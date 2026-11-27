@@ -215,3 +215,23 @@
 .qz-gate-ico.is-closed { background: var(--bg); color: var(--muted); }
 .qz-gate-cd { font-family: var(--mono); font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--primary); }
 .qz-gate-when { background: var(--bg); border-radius: var(--r); padding: 10px var(--s2); width: 100%; }
+
+/* 課堂清單 (ticket 10, #12): templates/class_session_hub.html, marks from static/js/student_hub.js */
+.hub-list { display: grid; gap: var(--s1); }
+.hub-item {
+  display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center;
+  min-height: var(--tap); border: 1px solid var(--border); border-radius: var(--r);
+  padding: 12px; background: var(--surface); color: var(--text); text-decoration: none;
+}
+.hub-item:hover { border-color: var(--primary); }
+.hub-ic { width: 40px; height: 40px; border-radius: var(--r); display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); }
+.hub-item.is-done .hub-ic { background: var(--success-soft); color: var(--success); }
+.hub-t b { display: block; font-weight: 600; }
+.hub-r { display: grid; justify-items: end; gap: 2px; }
+.hub-go { min-height: var(--tap-sm); }
+.hub-done { display: grid; justify-items: end; gap: 2px; font-size: var(--fs-sm); }
+.hub-done[hidden] { display: none; }
+.hub-link { color: var(--primary); font-size: var(--fs-sm); }
+
+/* Ticket 12 (#14): the Class Session end banner, separate from the Take clock in .qz-side. */
+.qz-ending { font-weight: 500; margin-bottom: var(--s2); }

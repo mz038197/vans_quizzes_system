@@ -52,40 +52,74 @@
         </div>
         <div class="kpi">
             <div class="k">平均</div>
-            <div class="v num"><span id="kpi-avg">0</span><span class="of">%</span></div>
-            <div class="d">所有作答的平均</div>
+            <div class="v num"><span id="kpi-avg">—</span><span class="of">%</span></div>
+            <div class="d" id="kpi-avg-d"></div>
         </div>
         <div class="kpi">
-            <div class="k">最高</div>
-            <div class="v num"><span id="kpi-max">0</span><span class="of">%</span></div>
+            <div class="k">最高 / 最低</div>
+            <div class="v num"><span id="kpi-max">—</span><span class="of"> / <span id="kpi-min">—</span>%</span></div>
             <div class="d" id="kpi-max-d"></div>
         </div>
         <div class="kpi">
             <div class="k">及格率</div>
-            <div class="v num"><span id="kpi-pass">0</span><span class="of">%</span></div>
+            <div class="v num"><span id="kpi-pass">—</span><span class="of">%</span></div>
             <div class="d" id="kpi-pass-d"></div>
         </div>
     </div><!-- /kpis -->
 
-    <section class="panel">
-        <div class="panel-h"><h2>每一份作答</h2></div>
-        <div class="table-wrap">
-            <table class="table subs-table">
-                <thead>
-                    <tr>
-                        <th>名次</th>
-                        <th>姓名</th>
-                        <th>Email</th>
-                        <th class="r">分數</th>
-                        <th>用時</th>
-                        <th>交卷時間</th>
-                        <th><span class="sr-only">操作</span></th>
-                    </tr>
-                </thead>
-                <tbody id="subs-tbody"></tbody>
-            </table>
-        </div>
-    </section>
+    <div class="grid-main-side subs-grid">
+        <section class="panel">
+            <div class="panel-h subs-filters">
+                <h2>每一份作答</h2>
+                <div class="row">
+                    <label class="sr-only" for="cs-filter">課堂</label>
+                    <select id="cs-filter" class="inp">
+                        <option value="">全部課堂（{{ class_session_options | length }}）</option>
+                        {% for cs in class_session_options %}
+                        <option value="{{ cs.id }}" data-status="{{ cs.status }}"{% if selected_class_session == cs.id | string %} selected{% endif %}>{{ cs.name }} · {{ cs.status_label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="search">
+                        <i class="fas fa-search" aria-hidden="true"></i>
+                        <label class="sr-only" for="subs-search">搜尋姓名</label>
+                        <input id="subs-search" class="inp" type="search" placeholder="搜尋姓名" autocomplete="off">
+                    </div>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="table subs-table">
+                    <thead>
+                        <tr>
+                            <th>名次</th>
+                            <th>姓名</th>
+                            <th>Email</th>
+                            <th>課堂</th>
+                            <th class="r">分數</th>
+                            <th>用時</th>
+                            <th>交卷時間</th>
+                            <th><span class="sr-only">操作</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="subs-tbody"></tbody>
+                </table>
+            </div>
+            <p id="subs-none" class="empty" hidden></p>
+        </section>
+
+        <aside class="stack">
+            <section class="panel">
+                <div class="panel-h"><h2>分數分布</h2></div>
+                <div class="panel-b dist" id="dist"></div>
+            </section>
+            <section class="panel">
+                <div class="panel-h"><h2>最常答錯</h2></div>
+                <div class="table-wrap">
+                    <table class="table missed-table"><tbody id="missed-tbody"></tbody></table>
+                </div>
+                <p id="missed-none" class="empty small" hidden>沒有答錯的題目。</p>
+            </section>
+        </aside>
+    </div>
 </div>
 {% endblock %}
 
@@ -93,8 +127,10 @@
 <script>
 const QUIZ_BANK_ID = {{ quiz_bank.id }};
 const SUBMISSIONS_URL = {{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) | tojson }};
-const QUIZ_BANK_TITLE = {{ quiz_bank.title | tojson }};
-let submissionsData = [];
+const GRADES_URL = {{ url_for('quiz_bank_grades_api', quiz_bank_id=quiz_bank.id) | tojson }};
+const CSV_URL = {{ url_for('export_submissions_csv', quiz_bank_id=quiz_bank.id) | tojson }};
+const TYPE_NAMES = {{ question_type_names | tojson }};
+let grades = null;
 
 function esc(value) {
     return String(value == null ? '' : value)
@@ -111,14 +147,14 @@ function formatElapsedSeconds(elapsedSeconds) {
     return `${minutes} 分 ${seconds} 秒`;
 }
 
+function pctText(value) {
+    return value == null ? '—' : (Math.round(value * 10) / 10).toString();
+}
+
 function tierOf(pct) {
     if (pct >= 80) return 'hi';
     if (pct >= 60) return 'mid';
     return 'lo';
-}
-
-function sortedSubmissions() {
-    return [...submissionsData].sort((a, b) => b.percentage - a.percentage);
 }
 
 function show(id) {
@@ -127,12 +163,23 @@ function show(id) {
     }
 }
 
+function filterParams(withSearch) {
+    const params = new URLSearchParams();
+    const cs = document.getElementById('cs-filter').value;
+    if (cs) params.set('class_session', cs);
+    const q = document.getElementById('subs-search').value.trim();
+    if (withSearch && q) params.set('q', q);
+    return params;
+}
+
 async function loadSubmissions() {
     show('subs-loading');
+    const params = filterParams(false);
+    history.replaceState(null, '', params.toString() ? `?${params}` : window.location.pathname);
     try {
-        const response = await fetch(`/api/quiz-bank/${QUIZ_BANK_ID}/submissions`);
+        const response = await fetch(`${GRADES_URL}?${params}`);
         if (!response.ok) throw new Error('載入失敗');
-        submissionsData = await response.json();
+        grades = await response.json();
         displaySubmissions();
     } catch (error) {
         show('subs-error');
@@ -140,43 +187,75 @@ async function loadSubmissions() {
 }
 
 function displaySubmissions() {
-    if (submissionsData.length === 0) {
+    if (grades.stats.count === 0 && !document.getElementById('cs-filter').value) {
         show('subs-empty');
         return;
     }
     displayStatistics();
+    displayBands();
+    displayMostMissed();
     displaySubmissionsTable();
     show('subs-body');
 }
 
 function displayStatistics() {
-    const total = submissionsData.length;
-    const pcts = submissionsData.map(s => s.percentage);
-    const average = pcts.reduce((sum, p) => sum + p, 0) / total;
-    const highest = Math.max(...pcts);
-    const lowest = Math.min(...pcts);
-    const passCount = pcts.filter(p => p >= 60).length;
-    const students = new Set(submissionsData.map(s => (s.student_name || '').trim())).size;
+    const s = grades.stats;
+    document.getElementById('kpi-count').textContent = s.count;
+    document.getElementById('kpi-count-d').textContent = `${s.students} 位學生`;
+    document.getElementById('kpi-avg').textContent = pctText(s.average);
+    document.getElementById('kpi-avg-d').textContent = s.median == null ? '' : `中位數 ${pctText(s.median)}%`;
+    document.getElementById('kpi-max').textContent = pctText(s.highest);
+    document.getElementById('kpi-min').textContent = pctText(s.lowest);
+    document.getElementById('kpi-max-d').textContent = s.highest == null ? '' : `差距 ${pctText(s.highest - s.lowest)} 分`;
+    document.getElementById('kpi-pass').textContent = pctText(s.pass_rate);
+    document.getElementById('kpi-pass-d').textContent = `60 分以上：${s.passed} / ${s.count}`;
+}
 
-    document.getElementById('kpi-count').textContent = total;
-    document.getElementById('kpi-count-d').textContent = `${students} 位學生`;
-    document.getElementById('kpi-avg').textContent = average.toFixed(1);
-    document.getElementById('kpi-max').textContent = highest.toFixed(1);
-    document.getElementById('kpi-max-d').textContent = `最低 ${lowest.toFixed(1)}%`;
-    document.getElementById('kpi-pass').textContent = (passCount / total * 100).toFixed(1);
-    document.getElementById('kpi-pass-d').textContent = `60 分以上：${passCount} / ${total}`;
+function displayBands() {
+    const box = document.getElementById('dist');
+    const most = Math.max(1, ...grades.bands.map(b => b.count));
+    const tiers = ['hi', 'hi', 'mid', 'mid', 'lo'];
+    box.innerHTML = '';
+    grades.bands.forEach((band, i) => {
+        const row = document.createElement('div');
+        row.className = 'dist-row';
+        row.innerHTML = `<span>${esc(band.label)}</span><div class="track"><div class="fill bg-${tiers[i]}"></div></div><span class="c num">${band.count}</span>`;
+        row.querySelector('.fill').style.width = (band.count / most * 100) + '%';
+        box.appendChild(row);
+    });
+}
+
+function displayMostMissed() {
+    const tbody = document.getElementById('missed-tbody');
+    tbody.innerHTML = '';
+    for (const m of grades.most_missed) {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><span class="tb t-${esc(m.question_type)}">${esc(TYPE_NAMES[m.question_type] || m.type_name)}</span> 第 ${m.number} 題<div class="t-sub">${esc(m.title)}</div></td>
+            <td class="num r ${tierOf(100 - m.wrong_rate)} nowrap">${Math.round(m.wrong_rate)}% 答錯<div class="t-sub">${m.wrong} / ${m.seen}</div></td>
+        `;
+        tbody.appendChild(row);
+    }
+    document.getElementById('missed-none').hidden = grades.most_missed.length > 0;
+}
+
+function visibleRows() {
+    const q = document.getElementById('subs-search').value.trim().toLowerCase();
+    return grades.submissions.filter(s => !q || (s.student_name || '').toLowerCase().includes(q));
 }
 
 function displaySubmissionsTable() {
     const tbody = document.getElementById('subs-tbody');
     tbody.innerHTML = '';
-    sortedSubmissions().forEach((s, index) => {
+    const rows = visibleRows();
+    rows.forEach((s) => {
         const tier = tierOf(s.percentage);
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td><span class="rank${index < 3 ? ' top' : ''}">${index + 1}</span></td>
-            <td><div class="t-title">${esc(s.student_name)}${s.is_practice ? ' <span class="badge badge-info">練習</span>' : ''}</div></td>
+            <td><span class="rank${s.rank <= 3 ? ' top' : ''}">${s.rank}</span></td>
+            <td><div class="t-title">${esc(s.student_name)}${s.takes > 1 ? ` <span class="times">第 ${s.take} 次</span>` : ''}${s.is_practice ? ' <span class="badge badge-info">練習</span>' : ''}</div></td>
             <td class="t-sub">${s.student_email ? esc(s.student_email) : '—'}</td>
+            <td class="t-sub nowrap">${s.class_session ? esc(s.class_session) : '—'}</td>
             <td class="r">
                 <div class="pct">
                     <b class="num ${tier}">${s.percentage.toFixed(1)}%</b>
@@ -184,7 +263,7 @@ function displaySubmissionsTable() {
                     <span class="pts num">${esc(s.score)} / ${esc(s.total_points)}</span>
                 </div>
             </td>
-            <td class="num t-sub nowrap">${formatElapsedSeconds(s.elapsed_seconds)}</td>
+            <td class="num t-sub nowrap">${formatElapsedSeconds(s.elapsed_seconds)}${s.time_up ? ' <span class="badge badge-warn">時間到</span>' : ''}</td>
             <td class="num t-sub nowrap">${esc(s.submitted_at)}</td>
             <td class="t-actions">
                 <a class="btn" href="${SUBMISSIONS_URL}/${s.id}" target="_blank" rel="noopener">看答卷</a>
@@ -194,40 +273,17 @@ function displaySubmissionsTable() {
         row.querySelector('.fill').style.width = Math.max(0, Math.min(100, s.percentage)) + '%';
         tbody.appendChild(row);
     });
-}
-
-function csvCell(value) {
-    return `"${String(value == null ? '' : value).replace(/"/g, '""')}"`;
+    const none = document.getElementById('subs-none');
+    none.hidden = rows.length > 0;
+    none.textContent = grades.submissions.length ? '沒有符合的姓名。' : '這堂課還沒有作答。';
 }
 
 function exportToCSV() {
-    if (submissionsData.length === 0) {
+    if (!grades || visibleRows().length === 0) {
         UI.toast('沒有資料可以匯出', 'warn');
         return;
     }
-    const headers = ['排名', '學生姓名', '電子郵件', '得分', '總分', '百分比', '所花時間', '完成時間'];
-    let csvContent = headers.join(',') + '\n';
-    sortedSubmissions().forEach((s, index) => {
-        csvContent += [
-            index + 1,
-            csvCell(s.student_name),
-            csvCell(s.student_email || ''),
-            s.score,
-            s.total_points,
-            s.percentage.toFixed(1),
-            csvCell(formatElapsedSeconds(s.elapsed_seconds)),
-            csvCell(s.submitted_at),
-        ].join(',') + '\n';
-    });
-
-    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `${QUIZ_BANK_TITLE}_成績統計.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
+    window.location.href = `${CSV_URL}?${filterParams(true)}`;
 }
 
 async function copyQuizLink(accessCode) {
@@ -240,7 +296,7 @@ async function copyQuizLink(accessCode) {
 }
 
 async function deleteSubmission(submissionId) {
-    const submission = submissionsData.find(s => s.id === submissionId);
+    const submission = grades.submissions.find(s => s.id === submissionId);
     const name = submission ? submission.student_name : '';
     const ok = await UI.ask(`確定要刪除「${name}」的作答嗎？刪除後無法復原。`, {
         title: '刪除作答', okText: '刪除', danger: true,
@@ -267,6 +323,8 @@ async function deleteSubmission(submissionId) {
 document.getElementById('export-csv').addEventListener('click', exportToCSV);
 document.getElementById('subs-retry').addEventListener('click', loadSubmissions);
 document.getElementById('copy-link').addEventListener('click', (event) => copyQuizLink(event.currentTarget.dataset.code));
+document.getElementById('cs-filter').addEventListener('change', loadSubmissions);
+document.getElementById('subs-search').addEventListener('input', () => { if (grades) displaySubmissionsTable(); });
 document.getElementById('subs-tbody').addEventListener('click', (event) => {
     const button = event.target.closest('[data-delete]');
     if (button) deleteSubmission(Number(button.dataset.delete));

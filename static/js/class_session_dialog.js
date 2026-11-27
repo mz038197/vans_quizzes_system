@@ -8,7 +8,7 @@
  *   for its title to be typed and sends confirm: true.
  *
  * Parts that later tickets edit here (keep the names):
- *   renderPicker(state)  — how Quiz Banks are added. #11: a plain <select>. #12: searchable list grouped by Folder.
+ *   renderPicker(state)  — how Quiz Banks are added: a searchable list grouped by Folder, the page's Folder first (#12).
  *   renderChosen(state)  — the picked Quiz Banks with a Time Limit each.
  *   renderSummary(state) — the summary and the warnings under the times.
  *   PRESETS              — the quick time buttons.
@@ -65,12 +65,25 @@
     ];
 
     function renderPicker(state) {
-        const left = state.data.banks.filter((b) => !state.chosen.some((c) => c.id === b.id));
-        state.$('pick').innerHTML = left.length
-            ? '<option value="">＋ 加入題庫…</option>' + left.map((b) =>
-                `<option value="${b.id}">${esc(b.title)}（${esc(b.mode)} · ${b.n_questions} 題）</option>`).join('')
-            : '<option value="">所有題庫都已加入</option>';
-        state.$('pick').disabled = !left.length;
+        const d = state.data;
+        const query = state.$('find').value.trim().toLowerCase();
+        const match = (b) => !query || b.title.toLowerCase().includes(query);
+        const item = (b) => {
+            const added = state.chosen.some((c) => c.id === b.id);
+            return `<button type="button" class="csd-pickrow${added ? ' is-in' : ''}" data-pickbank="${b.id}"${added ? ' aria-disabled="true"' : ''}>
+                <span>${esc(b.title)}</span><span class="muted small">${added ? '已加入' : `${esc(b.mode)} · ${b.n_questions} 題`}</span></button>`;
+        };
+        // Folders come from the server with the page's Folder first; 未分類 is last.
+        const groups = [...d.folders.map((f) => ({ folder: f, id: f.id })), { folder: null, id: null }];
+        const html = groups.map(({ folder, id }) => {
+            const list = d.banks.filter((b) => (b.folder_id == null ? null : b.folder_id) === id && match(b));
+            if (!list.length) return '';
+            const head = folder
+                ? `<div class="csd-grp fc-${esc(folder.color)}"><i class="fas fa-folder" aria-hidden="true"></i>${esc(folder.name)}</div>`
+                : '<div class="csd-grp">未分類</div>';
+            return head + list.map(item).join('');
+        }).join('');
+        state.$('list').innerHTML = html || `<p class="muted small csd-none">${d.banks.length ? '找不到符合的題庫。' : '還沒有題庫。'}</p>`;
     }
 
     function renderChosen(state) {
@@ -132,7 +145,8 @@
             <div class="fld">
                 <span class="csd-label">題庫 <span class="muted small">· 每份可以設自己的時限，空白是不限時</span></span>
                 <div id="csd-chosen"></div>
-                <select class="inp" id="csd-pick" aria-label="加入題庫"></select>
+                <div class="search"><i class="fas fa-search" aria-hidden="true"></i><input class="inp" id="csd-find" type="search" placeholder="搜尋題庫，點一下加入" aria-label="搜尋題庫" autocomplete="off"></div>
+                <div class="csd-list" id="csd-list"></div>
             </div>
             <div class="csd-sum" id="csd-sum" aria-live="polite"></div>
             <p class="err danger-text small" id="csd-err" role="alert"></p>`;
@@ -145,7 +159,7 @@
         const name = $('name').value.trim();
         if (isNew && !$('newcourse').value.trim()) { state.showError('請輸入新課程的名稱。'); $('newcourse').focus(); return; }
         if (!name) { state.showError('請輸入課堂名稱。'); $('name').focus(); return; }
-        if (!state.chosen.length) { state.showError('至少要選一份題庫。'); $('pick').focus(); return; }
+        if (!state.chosen.length) { state.showError('至少要選一份題庫。'); $('find').focus(); return; }
         const okButton = dlg.buttons[dlg.buttons.length - 1];
         okButton.disabled = true;
         const editing = state.editing;
@@ -187,6 +201,7 @@
         const d = data();
         d.courses = d.courses || [];
         d.banks = d.banks || [];
+        d.folders = d.folders || [];
         const byId = (id) => d.banks.find((b) => b.id === Number(id));
         const pick = (bank) => ({ ...bank, limit: bank.last_time_limit == null ? null : bank.last_time_limit });
         const editing = options.session || null;
@@ -235,10 +250,7 @@
         }
         state.$('course').addEventListener('change', () => { courseChanged(); if (state.$('course').value === 'new') state.$('newcourse').focus(); });
         ['start', 'end'].forEach((k) => state.$(k).addEventListener('input', () => renderSummary(state)));
-        state.$('pick').addEventListener('change', (e) => {
-            const bank = byId(e.target.value);
-            if (bank) { state.chosen.push(pick(bank)); renderChosen(state); renderSummary(state); }
-        });
+        state.$('find').addEventListener('input', () => renderPicker(state));
         root.addEventListener('input', (e) => {
             const i = e.target.dataset.lim;
             if (i === undefined) return;
@@ -247,6 +259,14 @@
             renderSummary(state);
         });
         root.addEventListener('click', (e) => {
+            const add = e.target.closest('[data-pickbank]');
+            if (add) {
+                const bank = byId(add.dataset.pickbank);
+                if (bank && !state.chosen.some((c) => c.id === bank.id)) {
+                    state.chosen.push(pick(bank)); renderChosen(state); renderSummary(state);
+                }
+                return;
+            }
             const un = e.target.closest('[data-unpick]');
             if (un) {
                 const index = Number(un.dataset.unpick), c = state.chosen[index];
@@ -287,7 +307,14 @@
             ],
         });
         root.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); submit(state, dlg); }
+            if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+            e.preventDefault();
+            if (e.target === state.$('find')) {  // Enter in the search adds the first match
+                const first = state.$('list').querySelector('[data-pickbank]:not(.is-in)');
+                if (first) first.click();
+                return;
+            }
+            submit(state, dlg);
         });
         state.$('name').focus();
         return dlg.result;

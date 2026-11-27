@@ -207,7 +207,7 @@
                         {% if row.status == 'live' %}<button type="button" class="btn" data-cs-action="end" data-id="{{ cs.id }}">立即結束</button>
                         {% elif row.status == 'soon' %}<button type="button" class="btn" data-cs-action="start-now" data-id="{{ cs.id }}">現在開始</button>
                         {% elif row.course_open %}<button type="button" class="btn" data-cs-action="reopen" data-id="{{ cs.id }}">重新開放</button>{% endif %}
-                        <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) }}">成績</a>
+                        <a class="btn" href="{{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id, class_session=cs.id) }}">成績</a>
                         <button type="button" class="btn btn-icon" data-cs-edit="{{ cs.id }}" title="編輯課堂" aria-label="編輯「{{ cs.name }}」"><i class="fas fa-pen" aria-hidden="true"></i></button>
                         <button type="button" class="btn btn-icon" data-cs-delete="{{ cs.id }}" title="刪除課堂" aria-label="刪除「{{ cs.name }}」"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
                     </td>

@@ -3,11 +3,14 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import base64
 import binascii
+import csv
+import io
 import json
 import logging
 import re
 import secrets
 from datetime import datetime, timedelta
+from urllib.parse import quote
 import os
 import sys
 from md_quiz_parser import parse_md_quiz, parse_md_questions_append
@@ -25,6 +28,7 @@ from time_display import format_wall_clock_utc8
 from page_nav import register_page_nav
 import teacher_stats
 import class_session_rules
+import grade_stats
 from teacher_auth import (
     DEFAULT_SECRET_KEY,
     LOGIN_REQUIRED,
@@ -1011,7 +1015,7 @@ def manage_quiz_bank(quiz_bank_id):
         scoring_total=scoring_total,
         tab=tab,
         class_session_rows=quiz_bank_class_sessions(quiz_bank),
-        cs_dialog=class_session_dialog_data(current_teacher().user_id),
+        cs_dialog=class_session_dialog_data(current_teacher().user_id, current_folder_id=quiz_bank.folder_id),
     )
 
 # Tabs of the Quiz Bank manage page, in order. The first one opens by default.
@@ -1050,6 +1054,13 @@ class StudentEntry:
         """The effective end (UTC) students work against, or None for an old Quiz Bank code."""
         return None if self.class_session is None else class_session_rules.effective_end(self.class_session)
 
+    def ends_in_seconds(self, now=None):
+        """Whole seconds from now to the effective end (0 when past), or None for an old Quiz Bank code.
+        The take page counts the Class Session clock from this, so a wrong device clock does not matter."""
+        if self.ends_at is None:
+            return None
+        return max(0, int((self.ends_at - (now or datetime.utcnow())).total_seconds()))
+
     def page_context(self):
         """Template values shared by the start, play, wait and ended pages."""
         return {
@@ -1059,6 +1070,7 @@ class StudentEntry:
             'take_key': self.take_key,
             'time_limit_minutes': self.time_limit_minutes,
             'session_ends_at': self.ends_at,
+            'session_ends_in': self.ends_in_seconds(),
         }
 
 
@@ -1104,12 +1116,33 @@ def refuse_outside_window(entry):
     return jsonify({'error': message, 'status': status}), 403
 
 
+def render_class_session_hub(entry):
+    """The 課堂清單 page: a Class Session with several Quiz Banks, any order, one Hand-in each (#12)."""
+    items = []
+    for offer in entry.class_session.offers:
+        bank = offer.quiz_bank
+        if bank.quiz_mode == 'practice':
+            size = f'隨機抽 {bank.session_question_count or 10} 題'
+        else:
+            size = f'{Question.query.filter_by(quiz_bank_id=bank.id).count()} 題'
+        limit = f'時限 {offer.time_limit_minutes} 分鐘' if offer.time_limit_minutes else '不限時'
+        items.append({
+            'bank': bank,
+            'facts': f'{size} · {limit}',
+            'url': url_for('take_quiz', access_code=entry.code, bank=bank.id),
+        })
+    return render_template('class_session_hub.html', items=items, **entry.page_context())
+
+
 @app.route('/quiz/<access_code>')
 def take_quiz(access_code):
     entry = find_student_entry(access_code, request.args.get('bank'))
     status = entry.status()
     if status != class_session_rules.LIVE:
         return render_class_session_gate(entry, status)
+    if (entry.class_session is not None and len(entry.class_session.offers) > 1
+            and request.args.get('bank') in (None, '')):
+        return render_class_session_hub(entry)
     quiz_bank = entry.quiz_bank
 
     if quiz_bank.quiz_mode == 'practice':
@@ -1718,7 +1751,9 @@ def view_submissions_page(quiz_bank_id):
     if not is_own_quiz_bank(quiz_bank):
         return redirect(url_for('teacher_dashboard'))
     
-    return render_template('submissions.html', quiz_bank=quiz_bank)
+    return render_template('submissions.html', quiz_bank=quiz_bank,
+                           class_session_options=grade_class_session_options(quiz_bank),
+                           selected_class_session=request.args.get('class_session', ''))
 
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/submissions')
 @teacher_required
@@ -1761,6 +1796,130 @@ def delete_submission(submission_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': '刪除失敗，請稍後再試'}), 500
+
+# ===== Grades page (ticket 15, issue #17). Number rules live in grade_stats.py. =====
+
+CSV_BOM = chr(0xFEFF)  # lets Excel read the UTF-8 CSV
+
+def grade_class_session_options(quiz_bank, now=None):
+    """Class Sessions for the 成績 filter: those offering the Quiz Bank, then any other one
+    that still holds its Submissions. Each: id, name, status, status_label."""
+    now = now or datetime.utcnow()
+    sessions = [row['session'] for row in quiz_bank_class_sessions(quiz_bank, now)]
+    known = {cs.id for cs in sessions}
+    extra_ids = {cs_id for (cs_id,) in db.session.query(Submission.class_session_id)
+                 .filter(Submission.quiz_bank_id == quiz_bank.id,
+                         Submission.class_session_id.isnot(None)).distinct()} - known
+    if extra_ids:
+        sessions += ClassSession.query.filter(ClassSession.id.in_(extra_ids),
+                                              ClassSession.teacher_id == quiz_bank.teacher_id).all()
+    options = []
+    for cs in sessions:
+        status = class_session_rules.status(cs, now)
+        options.append({'id': cs.id, 'name': cs.name, 'course': cs.course.name, 'status': status,
+                        'status_label': class_session_status_label(cs, status, now)})
+    return options
+
+
+def grade_filter_session(quiz_bank):
+    """The Class Session named by ?class_session=, None for all; 404 when it is not the Teacher's."""
+    raw = request.args.get('class_session', '')
+    if raw in ('', 'all'):
+        return None
+    class_session = ClassSession.query.get(int(raw)) if raw.isdigit() else None
+    if class_session is None or class_session.teacher_id != quiz_bank.teacher_id:
+        abort(404)
+    return class_session
+
+
+def quiz_bank_grades(quiz_bank, class_session=None, query=''):
+    """Everything the 成績 page shows: stats, bands and most missed follow the Class Session filter;
+    the name search narrows only the rows. Rows are ranked by percent, highest first."""
+    all_subs = (Submission.query.filter_by(quiz_bank_id=quiz_bank.id)
+                .order_by(Submission.submitted_at, Submission.id).all())
+    takes = grade_stats.take_numbers(
+        (s.id, s.student_name, s.class_session_id, s.quiz_bank_id, s.submitted_at) for s in all_subs)
+    subs = [s for s in all_subs if class_session is None or s.class_session_id == class_session.id]
+    limits = {o.class_session_id: o.time_limit_minutes
+              for o in ClassSessionBank.query.filter_by(quiz_bank_id=quiz_bank.id)}
+    questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
+    by_id = {q.id: q for q in questions}
+    number = {q.id: i for i, q in enumerate(questions, start=1)}
+
+    judgements = []
+    for s in subs:
+        answers = json.loads(s.answers) if s.answers else {}
+        take_order = json.loads(s.session_question_ids) if s.session_question_ids else list(by_id)
+        for qid in take_order:
+            question = by_id.get(qid)
+            if question is not None:  # same judgement as the result page (render_submission_result)
+                judgements.append((qid, grade_question(question, answers.get(str(qid)), points=1) > 0))
+    missed = grade_stats.most_missed(judgements)
+    for row in missed:
+        question = by_id[row['question_id']]
+        row.update(number=number[question.id], title=question.title, question_type=question.question_type,
+                   type_name=get_question_type_name(question.question_type))
+
+    percents = {s.id: grade_stats.percent(s.score, s.total_points) for s in subs}
+    ranked = sorted(subs, key=lambda s: -percents[s.id])  # stable: earlier hand-in first on a tie
+    needle = query.strip().casefold()
+    rows = []
+    for rank, s in enumerate(ranked, start=1):
+        if needle and needle not in (s.student_name or '').casefold():
+            continue
+        limit = limits.get(s.class_session_id) if s.class_session_id else getattr(quiz_bank, 'time_limit_minutes', None)
+        take, n_takes = takes[s.id]
+        rows.append({
+            'id': s.id, 'rank': rank,
+            'student_name': s.student_name, 'student_email': s.student_email,
+            'class_session_id': s.class_session_id,
+            'class_session': s.class_session.name if s.class_session else '',
+            'take': take, 'takes': n_takes,
+            'score': s.score, 'total_points': s.total_points, 'percentage': percents[s.id],
+            'elapsed_seconds': s.elapsed_seconds,
+            'time_up': grade_stats.is_time_up(s.elapsed_seconds, limit),
+            'is_practice': bool(s.is_practice),
+            'submitted_at': format_wall_clock_utc8(s.submitted_at, '%Y-%m-%d %H:%M:%S'),
+        })
+    return {
+        'stats': grade_stats.summary(list(percents.values()), [s.student_name for s in subs]),
+        'bands': grade_stats.bands(percents.values()),
+        'most_missed': missed,
+        'submissions': rows,
+    }
+
+
+@app.route('/api/quiz-bank/<int:quiz_bank_id>/grades')
+@teacher_required
+def quiz_bank_grades_api(quiz_bank_id):
+    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
+    if not is_own_quiz_bank(quiz_bank):
+        return jsonify({'error': '無權限查看'}), 403
+    data = quiz_bank_grades(quiz_bank, grade_filter_session(quiz_bank), request.args.get('q', ''))
+    data['class_sessions'] = grade_class_session_options(quiz_bank)
+    return jsonify(data)
+
+
+@app.route('/quiz-bank/<int:quiz_bank_id>/submissions.csv')
+@teacher_required
+def export_submissions_csv(quiz_bank_id):
+    """The filtered Submissions (Class Session and name search) as CSV, in the table's order."""
+    quiz_bank = QuizBank.query.get_or_404(quiz_bank_id)
+    if not is_own_quiz_bank(quiz_bank):
+        abort(403)
+    data = quiz_bank_grades(quiz_bank, grade_filter_session(quiz_bank), request.args.get('q', ''))
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(['名次', '姓名', 'Email', '課堂', '第幾次', '得分', '總分', '百分比', '用時', '時間到', '交卷時間'])
+    for r in data['submissions']:
+        writer.writerow([r['rank'], r['student_name'], r['student_email'] or '', r['class_session'], r['take'],
+                         f"{r['score']:g}", f"{r['total_points']:g}", f"{r['percentage']:.1f}",
+                         grade_stats.elapsed_text(r['elapsed_seconds']), '時間到' if r['time_up'] else '',
+                         r['submitted_at']])
+    response = app.response_class(CSV_BOM + out.getvalue(), mimetype='text/csv')
+    response.headers['Content-Disposition'] = "attachment; filename*=UTF-8''" + quote(f'{quiz_bank.title}_成績.csv')
+    return response
+
 
 # ===== Courses and Class Sessions (ticket 09, issue #11) =====
 # Later tickets add their routes and helpers to this section (append; do not reorder).
@@ -1807,9 +1966,14 @@ def last_time_limits(teacher_id):
     return limits
 
 
-def class_session_dialog_data(teacher_id):
-    """Data for templates/_class_session_dialog.html: the open Courses and the pickable Quiz Banks."""
+def class_session_dialog_data(teacher_id, current_folder_id=None):
+    """Data for templates/_class_session_dialog.html: the open Courses and the pickable Quiz Banks.
+
+    `current_folder_id` is the Folder the page shows (#12): it comes first in the bank list.
+    """
     courses = open_courses(teacher_id)
+    folders = teacher_folders(teacher_id)
+    folders.sort(key=lambda f: f.id != current_folder_id)  # stable: the rest keep Folder page order
     limits = last_time_limits(teacher_id)
     banks = (QuizBank.query.filter_by(teacher_id=teacher_id)
              .order_by(QuizBank.created_at.desc(), QuizBank.id.desc()).all())
@@ -1823,11 +1987,14 @@ def class_session_dialog_data(teacher_id):
             'ends_at': class_session_rules.to_wall_clock(c.ends_at) if c.ends_at else None,
         } for c in courses],
         'default_course_id': courses[0].id if courses else None,
+        'folders': [folder_json(f) for f in folders],
+        'current_folder_id': current_folder_id if any(f.id == current_folder_id for f in folders) else None,
         'banks': [{
             'id': b.id, 'title': b.title,
             'mode': '隨機練習' if b.quiz_mode == 'practice' else '固定測驗',
             'n_questions': question_counts.get(b.id, 0),
             'last_time_limit': limits.get(b.id),
+            'folder_id': b.folder_id,
         } for b in banks],
     }
 
