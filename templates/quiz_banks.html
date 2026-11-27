@@ -13,7 +13,7 @@
 
 {% block content %}
 {% if folder %}
-{% call ui.page_head(folder.name, sub='這個資料夾裡的題庫。') %}
+{% call ui.page_head(folder.name, sub='這個資料夾裡的題庫。把題庫拖到上方的「題庫」就會移回未分類，拖到其他資料夾的標籤就會移過去。') %}
 <button type="button" class="btn" data-folder-edit><i class="fas fa-pen" aria-hidden="true"></i> 編輯資料夾</button>
 <button type="button" class="btn btn-danger" data-folder-delete><i class="fas fa-trash" aria-hidden="true"></i> 刪除資料夾</button>
 <a class="btn btn-primary" href="{{ url_for('create_quiz_bank', folder=folder.id) }}"><i class="fas fa-plus" aria-hidden="true"></i> 在這裡建立題庫</a>
@@ -23,12 +23,12 @@
 <nav class="folder-chips" aria-label="其他資料夾">
     <span class="muted small">其他資料夾：</span>
     {% for c in folder_cards if c.folder.id != folder.id %}
-    <a class="chip fc-{{ c.folder.color }}" href="{{ url_for('quiz_banks', folder=c.folder.id) }}">{{ ui.folder_dot(c.folder.color) }} {{ c.folder.name }}</a>
+    <a class="chip fc-{{ c.folder.color }}" data-drop="{{ c.folder.id }}" href="{{ url_for('quiz_banks', folder=c.folder.id) }}">{{ ui.folder_dot(c.folder.color) }} {{ c.folder.name }}</a>
     {% endfor %}
 </nav>
 {% endif %}
 {% else %}
-{% call ui.page_head('題庫', sub='備課時看這裡：整理題庫、管理題目、查看成績。') %}
+{% call ui.page_head('題庫', sub='備課時看這裡：整理題庫、管理題目、查看成績。把題庫拖到資料夾卡片上就能移進去。') %}
 <button type="button" class="btn" data-folder-new><i class="fas fa-folder-plus" aria-hidden="true"></i> 新增資料夾</button>
 <a class="btn btn-primary" href="{{ url_for('create_quiz_bank') }}"><i class="fas fa-plus" aria-hidden="true"></i> 建立題庫</a>
 {% endcall %}
@@ -38,10 +38,10 @@
     <a href="{{ url_for('quiz_banks', filter='attention') }}"{% if attention_only %} aria-current="page"{% endif %}>需要注意 <span class="cnt">{{ attention_count }}</span></a>
 </nav>
 
-{% if not attention_only %}
+{% if not attention_only and not query %}
 <section class="fgrid" aria-label="資料夾">
     {% for c in folder_cards %}
-    <a class="fcard fc-{{ c.folder.color }}" data-folder="{{ c.folder.id }}" href="{{ url_for('quiz_banks', folder=c.folder.id) }}">
+    <a class="fcard fc-{{ c.folder.color }}" data-folder="{{ c.folder.id }}" data-drop="{{ c.folder.id }}" href="{{ url_for('quiz_banks', folder=c.folder.id) }}">
         <span class="fcard-name"><i class="fas fa-folder" aria-hidden="true"></i> {{ c.folder.name }}</span>
         <span class="fcard-meta">{{ c.n_banks }} 個題庫</span>
         {% if c.n_attention %}<span class="fcard-attn"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> {{ c.n_attention }} 個需要注意</span>{% endif %}
@@ -56,25 +56,50 @@
 {% endif %}
 {% endif %}
 
+{% set show_folder = query or attention_only %}
+{% if query %}
+<h2 class="section-title">搜尋「{{ query }}」：{{ banks|length }} 個題庫 <a class="small" href="{{ url_for('quiz_banks', folder=folder.id) if folder else url_for('quiz_banks') }}">清除搜尋</a></h2>
+{% endif %}
 <section class="panel" aria-label="題庫列表">
+    <div class="panel-h">
+        <form class="search" role="search" method="get" action="{{ url_for('quiz_banks') }}">
+            <i class="fas fa-search" aria-hidden="true"></i>
+            <input class="inp" type="search" name="q" value="{{ query }}" placeholder="搜尋所有資料夾的題庫" aria-label="搜尋所有資料夾的題庫">
+        </form>
+        {% if banks %}<span class="muted small hint-drag">拖拉左邊的把手，或勾選後按「移動到…」</span>{% endif %}
+    </div>
     {% if banks %}
+    <div class="bulk" id="bulk-bar" hidden>
+        <span>已選 <b id="bulk-n">0</b> 個題庫</span>
+        <div class="row">
+            <button type="button" class="btn btn-primary" id="bulk-move"><i class="fas fa-folder-open" aria-hidden="true"></i> 移動到…</button>
+            <button type="button" class="btn" id="bulk-clear">取消選取</button>
+        </div>
+    </div>
     <div class="table-wrap">
         <table class="table bank-table">
             <thead>
                 <tr>
-                    <th>題庫</th><th>模式</th><th>題數</th><th>作答</th><th>平均</th><th>狀態</th><th>代碼</th>
+                    <th class="chk"><input type="checkbox" data-pick-all aria-label="全選"></th>
+                    <th>題庫</th>{% if show_folder %}<th>資料夾</th>{% endif %}<th>模式</th><th>題數</th><th>作答</th><th>平均</th><th>狀態</th><th>代碼</th>
                     <th><span class="sr-only">操作</span></th>
                 </tr>
             </thead>
             <tbody>
             {% for b in banks %}
-                <tr{% if b.attention %} class="is-attn"{% endif %} data-bank="{{ b.bank.id }}">
+                <tr{% if b.attention %} class="is-attn"{% endif %} data-bank="{{ b.bank.id }}" data-in-folder="{{ b.bank.folder_id or '' }}" data-title="{{ b.bank.title }}" draggable="true">
+                    <td class="chk">
+                        <span class="grip" title="拖到資料夾" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                        <input type="checkbox" data-pick value="{{ b.bank.id }}" aria-label="選取 {{ b.bank.title }}">
+                    </td>
                     <td>
-                        <a class="t-title" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}">{{ b.bank.title }}</a>
+                        <a class="t-title" href="{{ url_for('manage_quiz_bank', quiz_bank_id=b.bank.id) }}" draggable="false">{{ b.bank.title }}</a>
                         <div class="t-sub">{{ b.bank.description or '沒有描述' }}</div>
-                        {% if attention_only %}<div class="t-sub">{% if b.folder %}{{ ui.folder_dot(b.folder.color) }} {{ b.folder.name }}{% else %}未分類{% endif %}</div>{% endif %}
                         {% if b.attention %}<div class="attn-note"><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> {{ b.attention }}</div>{% endif %}
                     </td>
+                    {% if show_folder %}
+                    <td>{% if b.folder %}<a class="fname fc-{{ b.folder.color }}" href="{{ url_for('quiz_banks', folder=b.folder.id) }}" draggable="false">{{ ui.folder_dot(b.folder.color) }} {{ b.folder.name }}</a>{% else %}<span class="muted">未分類</span>{% endif %}</td>
+                    {% endif %}
                     <td>{{ b.mode }}</td>
                     <td class="num">{{ b.n_questions }}</td>
                     <td class="num">{{ b.n_subs }}</td>
@@ -95,6 +120,8 @@
             </tbody>
         </table>
     </div>
+    {% elif query %}
+    {{ ui.empty('找不到符合的題庫。換個關鍵字試試。', icon='fa-search') }}
     {% elif attention_only %}
     {% call ui.empty('目前沒有需要注意的題庫。', icon='fa-check-circle') %}
     <a class="btn" href="{{ url_for('quiz_banks') }}">看全部題庫</a>

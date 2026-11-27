@@ -708,7 +708,10 @@ def quiz_banks():
             return redirect(url_for('quiz_banks'))
     attention_count = sum(1 for b in banks if b['attention'])
     attention_only = request.args.get('filter') == 'attention'
-    if attention_only:
+    query = (request.args.get('q') or '').strip()
+    if query:
+        shown = [b for b in banks if bank_matches(b['bank'], query)]
+    elif attention_only:
         shown = [b for b in banks if b['attention']]
     else:
         here = folder.id if folder else None
@@ -719,9 +722,15 @@ def quiz_banks():
         cards.append({'folder': f, 'n_banks': len(inside),
                       'n_attention': sum(1 for b in inside if b['attention'])})
     return render_template('quiz_banks.html', banks=shown, total=len(banks),
-                           attention_count=attention_count, attention_only=attention_only,
+                           attention_count=attention_count, attention_only=attention_only, query=query,
                            folder=folder, folder_cards=cards, folder_colors=FOLDER_COLORS,
                            folders_json=[folder_json(f) for f in folders])
+
+
+def bank_matches(bank, query):
+    """True when the search text is in the Quiz Bank title or description, ignoring case."""
+    needle = query.casefold()
+    return needle in (bank.title or '').casefold() or needle in (bank.description or '').casefold()
 
 
 def teacher_bank_overview(teacher_id):
@@ -860,12 +869,13 @@ def move_quiz_banks():
         return jsonify({'error': '找不到題庫'}), 404
     if not all(is_own_quiz_bank(b) for b in banks):
         return jsonify({'error': '無權限操作'}), 403
+    previous = [{'id': bank.id, 'folder_id': bank.folder_id} for bank in banks]
     for bank in banks:
         bank.folder_id = folder.id if folder else None
     db.session.commit()
     where = f'「{folder.name}」' if folder else '未分類'
     return jsonify({'message': f'已移動 {len(banks)} 個題庫到{where}', 'moved': len(banks),
-                    'folder': folder_json(folder) if folder else None})
+                    'folder': folder_json(folder) if folder else None, 'previous': previous})
 
 @app.route('/create-quiz-bank', methods=['GET', 'POST'])
 @teacher_required

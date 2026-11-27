@@ -1,5 +1,7 @@
-// 題庫 page: the ⋯ menu on each Quiz Bank row (move, copy link, open/close, delete)
-// and the Folder dialogs (new, edit, delete). Folder data comes from #folder-data.
+// 題庫 page: the ⋯ menu on each Quiz Bank row (move, copy link, open/close, delete),
+// the Folder dialogs (new, edit, delete), ticking rows for a bulk move, drag and drop
+// onto Folder cards / chips / the 題庫 breadcrumb, and the 復原 toast after a move.
+// Folder data comes from #folder-data.
 (() => {
   const DATA = JSON.parse(document.getElementById('folder-data').textContent);
   const COLOR_NAMES = { blue: '藍', green: '綠', purple: '紫', amber: '橘', pink: '粉紅', cyan: '青' };
@@ -110,17 +112,49 @@
     location.href = '/quiz-banks';
   }
 
-  async function moveTo(bankId, folderId) {
-    const { ok, result } = await send('POST', '/api/quiz-banks/move', { quiz_bank_ids: [bankId], folder_id: folderId });
+  /* Moves survive the page reload: the toast with 復原 shows on the next page. */
+  const UNDO_KEY = 'quiz_banks.undo';
+
+  async function moveBanks(ids, folderId) {
+    const { ok, result } = await send('POST', '/api/quiz-banks/move', { quiz_bank_ids: ids, folder_id: folderId });
     if (!ok) { UI.toast(result.error || '移動失敗，請稍後再試', 'error'); return; }
-    UI.flash(result.message, 'ok');
+    try {
+      sessionStorage.setItem(UNDO_KEY, JSON.stringify({ message: result.message, previous: result.previous }));
+    } catch (err) {
+      UI.flash(result.message, 'ok');
+    }
     location.reload();
   }
 
-  /* 移動到…: every Folder and 未分類, the current place marked, and 新增資料夾並移進去. */
-  function moveDialog(bank) {
-    const bankId = Number(bank.id);
-    const here = bank.inFolder ? Number(bank.inFolder) : null;
+  async function undoMove(previous) {
+    const groups = new Map();
+    previous.forEach((p) => {
+      const key = p.folder_id === null ? '' : String(p.folder_id);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(p.id);
+    });
+    for (const [key, ids] of groups) {
+      const { ok, result } = await send('POST', '/api/quiz-banks/move', { quiz_bank_ids: ids, folder_id: key === '' ? null : Number(key) });
+      if (!ok) { UI.toast(result.error || '復原失敗，請稍後再試', 'error'); return; }
+    }
+    UI.flash('已復原', 'ok');
+    location.reload();
+  }
+
+  (function showUndo() {
+    let pending = null;
+    try {
+      pending = JSON.parse(sessionStorage.getItem(UNDO_KEY) || 'null');
+      sessionStorage.removeItem(UNDO_KEY);
+    } catch (err) { pending = null; }
+    if (!pending || !Array.isArray(pending.previous)) return;
+    UI.toast(pending.message, 'ok', { action: { label: '復原', onClick: () => undoMove(pending.previous) }, duration: 8000 });
+  })();
+
+  /* 移動到…: every Folder and 未分類, the current place marked, and 新增資料夾並移進去.
+     what = { ids: [Number], title, here: folder id | null | undefined (mixed places) }. */
+  function moveDialog(what) {
+    const { ids, title, here } = what;
     const list = make('div', { class: 'move-list', role: 'list' });
     let dlg = null;
     function choice(label, folderId, color, icon) {
@@ -134,7 +168,7 @@
         button.setAttribute('aria-current', 'true');
         button.append(make('span', { class: 'muted small', text: '目前位置' }));
       }
-      button.addEventListener('click', () => { dlg.close(true); moveTo(bankId, folderId); });
+      button.addEventListener('click', () => { dlg.close(true); moveBanks(ids, folderId); });
       return button;
     }
     list.append(choice('未分類', null, null, 'fa-inbox'));
@@ -145,14 +179,107 @@
     create.addEventListener('click', async () => {
       dlg.close(true);
       const folder = await folderDialog(null);
-      if (folder) moveTo(bankId, folder.id);
+      if (folder) moveBanks(ids, folder.id);
     });
     list.append(create);
     dlg = UI.dialog({
-      title: `移動「${bank.title}」`, body: list, cancelValue: null,
+      title: `移動${title}`, body: list, cancelValue: null,
       actions: [{ label: '取消', value: null }],
     });
   }
+
+  function folderOfRow(row) {
+    return row.dataset.inFolder ? Number(row.dataset.inFolder) : null;
+  }
+
+  function moveWhat(rowList) {
+    const places = new Set(rowList.map(folderOfRow));
+    return {
+      ids: rowList.map((r) => Number(r.dataset.bank)),
+      title: rowList.length === 1 ? `「${rowList[0].dataset.title}」` : ` ${rowList.length} 個題庫`,
+      here: places.size === 1 ? [...places][0] : undefined,
+    };
+  }
+
+  /* ---- ticking rows and the bulk bar (the keyboard and touch way to move many) ---- */
+  const rows = [...document.querySelectorAll('tr[data-bank]')];
+  const pickAll = document.querySelector('[data-pick-all]');
+  const bulkBar = document.getElementById('bulk-bar');
+  const isPicked = (r) => r.querySelector('[data-pick]').checked;
+
+  function pickedRows() {
+    return rows.filter(isPicked);
+  }
+
+  function refreshPicks() {
+    const picked = pickedRows();
+    rows.forEach((r) => r.classList.toggle('is-picked', isPicked(r)));
+    if (bulkBar) {
+      bulkBar.hidden = picked.length === 0;
+      document.getElementById('bulk-n').textContent = String(picked.length);
+    }
+    if (pickAll) {
+      pickAll.checked = picked.length > 0 && picked.length === rows.length;
+      pickAll.indeterminate = picked.length > 0 && picked.length < rows.length;
+    }
+  }
+
+  document.addEventListener('change', (e) => {
+    if (e.target.matches('[data-pick]')) refreshPicks();
+    if (e.target.matches('[data-pick-all]')) {
+      rows.forEach((r) => { r.querySelector('[data-pick]').checked = e.target.checked; });
+      refreshPicks();
+    }
+  });
+  if (bulkBar) {
+    document.getElementById('bulk-move').addEventListener('click', () => moveDialog(moveWhat(pickedRows())));
+    document.getElementById('bulk-clear').addEventListener('click', () => {
+      rows.forEach((r) => { r.querySelector('[data-pick]').checked = false; });
+      refreshPicks();
+    });
+  }
+  refreshPicks();
+
+  /* ---- drag and drop (native events). A target has data-drop="<Folder id>", or "" for 未分類. ---- */
+  const rootCrumb = document.querySelector('nav.crumbs a');
+  if (rootCrumb) rootCrumb.dataset.drop = '';
+  let dragged = [];
+
+  const dropTarget = (e) => (e.target.closest ? e.target.closest('[data-drop]') : null);
+
+  document.addEventListener('dragstart', (e) => {
+    const row = e.target.closest ? e.target.closest('tr[data-bank]') : null;
+    if (!row) return;
+    const picked = pickedRows();
+    dragged = picked.includes(row) ? picked : [row];
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragged.map((r) => r.dataset.bank).join(','));
+    dragged.forEach((r) => r.classList.add('is-dragging'));
+  });
+  document.addEventListener('dragend', () => {
+    document.querySelectorAll('.is-dragging, .drop-ok').forEach((el) => el.classList.remove('is-dragging', 'drop-ok'));
+    dragged = [];
+  });
+  document.addEventListener('dragover', (e) => {
+    const target = dropTarget(e);
+    if (!target || !dragged.length) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    target.classList.add('drop-ok');
+  });
+  document.addEventListener('dragleave', (e) => {
+    const target = dropTarget(e);
+    if (target && !target.contains(e.relatedTarget)) target.classList.remove('drop-ok');
+  });
+  document.addEventListener('drop', (e) => {
+    const target = dropTarget(e);
+    if (!target || !dragged.length) return;
+    e.preventDefault();
+    target.classList.remove('drop-ok');
+    const folderId = target.dataset.drop === '' ? null : Number(target.dataset.drop);
+    const moving = dragged.filter((r) => folderOfRow(r) !== folderId);
+    if (moving.length) moveBanks(moving.map((r) => Number(r.dataset.bank)), folderId);
+  });
 
   document.querySelectorAll('[data-folder-new]').forEach((b) => b.addEventListener('click', newFolder));
   document.querySelectorAll('[data-folder-edit]').forEach((b) => b.addEventListener('click', editFolder));
@@ -194,7 +321,7 @@
     menu.className = 'menu';
     menu.setAttribute('role', 'menu');
     menu.append(
-      item('fa-folder-open', '移動到…', () => moveDialog(bank)),
+      item('fa-folder-open', '移動到…', () => moveDialog(moveWhat([button.closest('tr[data-bank]')]))),
       item('fa-link', '複製連結', () => copyLink(bank.code)),
       item(active ? 'fa-lock' : 'fa-lock-open', active ? '停用題庫' : '啟用題庫', () => toggleBank(bank.id, active)),
       document.createElement('hr'),

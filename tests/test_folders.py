@@ -307,3 +307,94 @@ def test_create_page_keeps_the_folder(auth_client):
 
     assert '七年級' in page
     assert f'data-folder-id="{folder_id}"' in page
+
+
+# --- search across all Folders (issue #10) ------------------------------------
+
+def _rows(page):
+    """The Quiz Bank rows of the 題庫 table, as {bank id: row html}."""
+    body = page[page.index('<tbody'):page.index('</tbody>')] if '<tbody' in page else ''
+    rows = {}
+    for chunk in body.split('<tr')[1:]:
+        if 'data-bank="' in chunk:
+            bank_id = int(chunk.split('data-bank="', 1)[1].split('"', 1)[0])
+            rows[bank_id] = chunk
+    return rows
+
+
+def test_search_finds_quiz_banks_inside_folders_and_shows_their_folder(auth_client):
+    inside = _bank('分數加法')
+    unsorted = _bank('分數乘法')
+    _bank('幾何圖形')
+    folder_id = _folder_id(auth_client, '七年級', 'green')
+    _move(auth_client, [inside], folder_id)
+
+    page = auth_client.get('/quiz-banks?q=分數').get_data(as_text=True)
+
+    rows = _rows(page)
+    assert set(rows) == {inside, unsorted}
+    assert '七年級' in rows[inside]
+    assert '未分類' in rows[unsorted]
+    assert '資料夾</th>' in page
+
+
+def test_search_matches_the_description_and_ignores_case(auth_client):
+    by_title = auth_client._ids['quiz_bank_id']  # 'Timed Bank'
+    by_description = _bank('第三章')
+    _bank('第四章')
+    with app_module.app.app_context():
+        app_module.db.session.get(app_module.QuizBank, by_description).description = 'TIMED review'
+        app_module.db.session.commit()
+
+    page = auth_client.get('/quiz-banks?q=timed').get_data(as_text=True)
+
+    assert set(_rows(page)) == {by_title, by_description}
+
+
+def test_search_does_not_show_another_teachers_quiz_banks(auth_client):
+    _bank('分數別人的', teacher_id=TEACHER_ROUTER_ID + 1)
+
+    page = auth_client.get('/quiz-banks?q=分數').get_data(as_text=True)
+
+    assert _rows(page) == {}
+    assert '找不到' in page
+
+
+def test_search_inside_a_folder_view_still_searches_every_folder(auth_client):
+    first = _bank('分數加法')
+    second = _bank('分數乘法')
+    seventh = _folder_id(auth_client, '七年級')
+    eighth = _folder_id(auth_client, '八年級')
+    _move(auth_client, [first], seventh)
+    _move(auth_client, [second], eighth)
+
+    page = auth_client.get(f'/quiz-banks?folder={seventh}&q=分數').get_data(as_text=True)
+
+    assert set(_rows(page)) == {first, second}
+
+
+# --- move answers what moved, for 復原 (issue #10) -----------------------------
+
+def test_move_answers_where_each_quiz_bank_was_so_it_can_be_undone(auth_client):
+    first = auth_client._ids['quiz_bank_id']
+    second = _bank('Second')
+    seventh = _folder_id(auth_client, '七年級')
+    eighth = _folder_id(auth_client, '八年級')
+    _move(auth_client, [second], seventh)
+
+    response = _move(auth_client, [first, second], eighth)
+
+    previous = {p['id']: p['folder_id'] for p in response.get_json()['previous']}
+    assert previous == {first: None, second: seventh}
+    for folder_id in {None, seventh}:
+        ids = [i for i, f in previous.items() if f == folder_id]
+        assert _move(auth_client, ids, folder_id).status_code == 200
+    assert _bank_folder(first) is None and _bank_folder(second) == seventh
+
+
+def test_move_with_an_unknown_quiz_bank_moves_nothing(auth_client):
+    mine = auth_client._ids['quiz_bank_id']
+    folder_id = _folder_id(auth_client, '七年級')
+
+    assert _move(auth_client, [mine, 999999], folder_id).status_code == 404
+    assert _bank_folder(mine) is None
