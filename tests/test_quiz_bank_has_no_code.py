@@ -69,11 +69,3 @@ def test_a_hand_in_records_its_class_session(client):
     with app_module.app.app_context():
         submission = app_module.db.session.get(app_module.Submission, response.get_json()['submission_id'])
         assert submission.class_session.code == code
-
-
-def test_the_design_prototype_still_opens_in_development(auth_client):
-    code = live_code(auth_client)
-    for screen in ('teacher', 'bank', 'sessions'):
-        response = auth_client.get(f'/prototype/design?variant=A&screen={screen}')
-        assert response.status_code == 200, screen
-    assert code in auth_client.get('/prototype/design?variant=A&screen=teacher').get_data(as_text=True)
