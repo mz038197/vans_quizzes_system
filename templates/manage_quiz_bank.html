@@ -118,6 +118,7 @@
                 </div>
                 <div class="acts">
                     <button type="button" class="btn btn-icon" onclick="editQuestion({{ question.id }})" title="編輯" aria-label="編輯第 {{ loop.index }} 題"><i class="fas fa-pen" aria-hidden="true"></i></button>
+                    <button type="button" class="btn btn-icon" onclick="copyQuestion({{ question.id }})" title="複製" aria-label="複製第 {{ loop.index }} 題"><i class="far fa-copy" aria-hidden="true"></i></button>
                     <button type="button" class="btn btn-icon" onclick="deleteQuestion({{ question.id }})" title="刪除" aria-label="刪除第 {{ loop.index }} 題"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
                 </div>
             </article>
@@ -1562,6 +1563,21 @@ async function editQuestion(questionId) {
     } catch (error) {
         console.error('獲取題目數據失敗', error);
         UI.toast('獲取題目數據失敗，請稍後再試', 'error');
+    }
+}
+
+async function copyQuestion(questionId) {
+    try {
+        const response = await fetch(`/api/question/${questionId}/copy`, { method: 'POST' });
+        const result = await response.json();
+        if (response.ok) {
+            UI.flash(result.message, 'ok');
+            location.reload();
+        } else {
+            UI.toast(result.error || '複製失敗', 'error');
+        }
+    } catch (error) {
+        UI.toast('網路錯誤，請稍後再試', 'error');
     }
 }
 

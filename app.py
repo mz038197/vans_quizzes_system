@@ -976,6 +976,34 @@ def manage_question(question_id):
         db.session.commit()
         return jsonify({'message': '題目刪除成功'})
 
+@app.route('/api/question/<int:question_id>/copy', methods=['POST'])
+@teacher_required
+def copy_question(question_id):
+    """Add a new Question with the same content right after the source."""
+    source = Question.query.get_or_404(question_id)
+    if not is_own_quiz_bank(source.quiz_bank):
+        return jsonify({'error': '無權限操作'}), 403
+
+    position = source.order_index or 0
+    Question.query.filter(
+        Question.quiz_bank_id == source.quiz_bank_id,
+        Question.order_index > position,
+    ).update({Question.order_index: Question.order_index + 1}, synchronize_session=False)
+
+    copy = Question(
+        title=source.title,
+        question_text=source.question_text,
+        question_type=source.question_type,
+        question_data=source.question_data,
+        points=source.points,
+        order_index=position + 1,
+        category=source.category,
+        quiz_bank_id=source.quiz_bank_id,
+    )
+    db.session.add(copy)
+    db.session.commit()
+    return jsonify({'message': '題目已複製', 'question_id': copy.id})
+
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/practice-config', methods=['PUT'])
 @teacher_required
 def update_practice_config(quiz_bank_id):
