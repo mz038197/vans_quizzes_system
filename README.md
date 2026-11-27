@@ -156,7 +156,6 @@ gunicorn app:app
 | `ROUTER_URL` | 選填 | 預設 `https://ai.vanscoding.com`。開發環境沒設定時，改用本機的假 router 登入頁。 |
 | `PUBLIC_URL` | 選填 | 預設 `https://quizzes.vanscoding.com`。用來組 callback 網址與檢查 `Origin`。 |
 | `QUIZZES_OAUTH_CLIENT_ID` | 選填 | 預設 `quizzes` |
-| `QUIZZES_OWNER_ROUTER_USER_ID` | 只在一次性搬移時 | 把所有舊題庫指定給這個 router 使用者編號，再刪掉舊的 `user` 資料表（ADR 0007）。搬移完成後刪掉這個變數。 |
 | `QUIZZES_DEV_DATABASE_URL` | 選填（開發、測試） | 預設 `sqlite:///quiz_platform.db` |
 
 ### 教師登入

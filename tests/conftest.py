@@ -7,7 +7,6 @@ import pytest
 # chosen before that import. Without this, tests ran on (and dropped) instance/quiz_platform.db.
 _TEST_DB_DIR = tempfile.mkdtemp(prefix='vans-quizzes-tests-')
 os.environ['QUIZZES_DEV_DATABASE_URL'] = 'sqlite:///' + os.path.join(_TEST_DB_DIR, 'test.db').replace('\\', '/')
-os.environ.pop('QUIZZES_OWNER_ROUTER_USER_ID', None)
 os.environ.pop('ROUTER_URL', None)
 os.environ['FLASK_ENV'] = 'development'
 
