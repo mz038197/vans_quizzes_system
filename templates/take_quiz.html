@@ -806,6 +806,7 @@ async function submitQuiz(options) {
         if (response.ok) {
             clearTakeStart();
             clearReviewFlags();
+            if (window.StudentHub) StudentHub.markDone(studentCode, quizBankId, result.percentage, result.result_url);
             if (fromTimeUp) {
                 await UI.tell('時間到，已自動交卷。按「查看成績單」看結果和正確答案。', { title: '時間到', okText: '查看成績單' });
             }

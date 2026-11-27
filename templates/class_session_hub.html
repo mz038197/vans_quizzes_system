@@ -1,0 +1,56 @@
+{% extends "quiz_base.html" %}
+{#
+  課堂清單 (ticket 10, #12): a live Class Session with more than one Quiz Bank.
+  Rendered by render_class_session_hub() in app.py. items = [{bank, facts, url}] in offer order.
+  The name is typed once and kept in this browser per code; 「✓ 已交卷」 marks come from this browser
+  (static/js/student_hub.js, written by take_quiz.html after a Hand-in).
+#}
+
+{% block title %}{{ class_session.name }} - 課堂{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/quiz.css') }}">
+{% endblock %}
+
+{% block content %}
+<section class="qz-entry" id="class-session-hub" data-hub-code="{{ student_code }}">
+  <div class="form-card">
+    <div>
+      <div class="muted small"><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i> {{ class_session.course.name }}</div>
+      <h1>{{ class_session.name }}</h1>
+    </div>
+    {% if session_ends_at %}
+    <div class="qz-window" role="status">
+      <i class="far fa-clock" aria-hidden="true"></i>
+      <span>開放到 {{ session_ends_at | utc8('%m/%d %H:%M') }}。請在這之前交卷。</span>
+    </div>
+    {% endif %}
+    <div class="fld">
+      <label for="hub-name">你的姓名 *</label>
+      <input id="hub-name" class="inp" type="text" required autocomplete="name"
+             placeholder="請輸入真實姓名，老師用這個找你的成績">
+      <span class="help">只要輸入一次，這堂課的每份題庫都會用這個名字。</span>
+    </div>
+    <div class="stack">
+      <p class="muted small">這堂課有 {{ items|length }} 份題庫，順序自己決定，每份分開交卷。</p>
+      <div class="hub-list">
+        {% for item in items %}
+        <a class="hub-item" data-bank="{{ item.bank.id }}" href="{{ item.url }}">
+          <span class="hub-ic" aria-hidden="true"><i class="fas fa-pen"></i></span>
+          <span class="hub-t"><b>{{ item.bank.title }}</b><span class="muted small">{{ item.facts }}</span></span>
+          <span class="hub-r">
+            <span class="btn btn-primary hub-go">開始 <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
+            <span class="hub-done" hidden><span class="ok-text">✓ 已交卷</span> <b class="hub-pct num"></b></span>
+          </span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    <p class="muted small">「✓ 已交卷」只記在這台裝置上。換裝置作答，老師那邊仍然收得到。</p>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/student_hub.js') }}"></script>
+{% endblock %}
