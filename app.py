@@ -100,39 +100,6 @@ def new_result_token():
     """The secret part of a Result Link (ADR 0008)."""
     return secrets.token_urlsafe(24)
 
-def parse_owner_router_user_id(raw):
-    """QUIZZES_OWNER_ROUTER_USER_ID as a router user id, or None. Never guesses (ADR 0007)."""
-    raw = (raw or '').strip()
-    if raw.isdigit() and int(raw) > 0:
-        return int(raw)
-    if raw:
-        logger.error('QUIZZES_OWNER_ROUTER_USER_ID must be a positive integer; the owner move did not run.')
-    else:
-        logger.warning('The "user" table still exists. Set QUIZZES_OWNER_ROUTER_USER_ID to move Quiz Banks.')
-    return None
-
-def sqlite_owner_move_statements(owner_id, col_defs, col_names):
-    """The SQLite owner move (ADR 0007) as one ordered list of (statement, params).
-
-    The first statement is DML, so SQLite opens the transaction there and every later DDL
-    statement stays inside it. Rebuilding quiz_bank drops its foreign key to "user"; the
-    rebuild keeps columns and foreign keys only, so the indexes come back. Delete together with
-    the owner move in ensure_schema_updates.
-    """
-    tmp_table = 'quiz_bank__owner_mig'
-    cols_csv = ', '.join(col_names)
-    return [
-        ('UPDATE quiz_bank SET teacher_id = :owner', {'owner': owner_id}),
-        (f'DROP TABLE IF EXISTS {tmp_table}', None),
-        (f'CREATE TABLE {tmp_table} ({", ".join(col_defs)})', None),
-        (f'INSERT INTO {tmp_table} ({cols_csv}) SELECT {cols_csv} FROM quiz_bank', None),
-        ('DROP TABLE quiz_bank', None),
-        (f'ALTER TABLE {tmp_table} RENAME TO quiz_bank', None),
-        ('CREATE UNIQUE INDEX IF NOT EXISTS ix_quiz_bank_access_code ON quiz_bank (access_code)', None),
-        ('CREATE INDEX IF NOT EXISTS ix_quiz_bank_teacher_id ON quiz_bank (teacher_id)', None),
-        ('DROP TABLE "user"', None),
-    ]
-
 # 資料庫模型
 class QuizBank(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -208,11 +175,8 @@ def parse_points(value, default=1.0):
     return points, None
 
 
-def ensure_schema_updates(owner_router_user_id=None):
-    """為既有資料庫補上新欄位（SQLite / PostgreSQL 簡易 migration）。
-
-    `owner_router_user_id` is QUIZZES_OWNER_ROUTER_USER_ID for the one-time owner move (ADR 0007).
-    """
+def ensure_schema_updates():
+    """為既有資料庫補上新欄位（SQLite / PostgreSQL 簡易 migration）。"""
     from sqlalchemy import inspect, text
 
     inspector = inspect(db.engine)
@@ -262,14 +226,12 @@ def ensure_schema_updates(owner_router_user_id=None):
         }],
     }
 
-    def sqlite_foreign_key_defs(table_name, exclude_referred_table=None):
+    def sqlite_foreign_key_defs(table_name):
         fks = inspector.get_foreign_keys(table_name)
         if not fks:
             fks = expected_sqlite_foreign_keys.get(table_name, [])
         defs = []
         for fk in fks:
-            if fk['referred_table'] == exclude_referred_table:
-                continue
             constrained = ', '.join(fk['constrained_columns'])
             referred_table = fk['referred_table']
             referred = ', '.join(fk['referred_columns'])
@@ -300,8 +262,8 @@ def ensure_schema_updates(owner_router_user_id=None):
                 return True
         return False
 
-    def sqlite_table_definition(table_name, type_overrides=None, exclude_referred_table=None):
-        """Column and foreign key definitions of a SQLite table, for a rebuild."""
+    def rebuild_sqlite_table(table_name, type_overrides=None):
+        """Rebuild a SQLite table, optionally overriding column types, preserving FKs."""
         type_overrides = type_overrides or {}
         columns = inspector.get_columns(table_name)
         col_names = [column['name'] for column in columns]
@@ -316,12 +278,8 @@ def ensure_schema_updates(owner_router_user_id=None):
                 pieces.append('NOT NULL')
             col_defs.append(' '.join(pieces))
 
-        col_defs.extend(sqlite_foreign_key_defs(table_name, exclude_referred_table))
-        return col_defs, col_names
+        col_defs.extend(sqlite_foreign_key_defs(table_name))
 
-    def rebuild_sqlite_table(table_name, type_overrides=None):
-        """Rebuild a SQLite table, optionally overriding column types, preserving FKs."""
-        col_defs, col_names = sqlite_table_definition(table_name, type_overrides)
         tmp_table = f'{table_name}__float_mig'
         cols_csv = ', '.join(col_names)
         db.session.execute(text('PRAGMA foreign_keys=OFF'))
@@ -420,72 +378,6 @@ def ensure_schema_updates(owner_router_user_id=None):
 
     for statement in statements:
         apply_statement(statement)
-
-    # ADR 0008: every Submission gets a Result Link token. Delete once production and the
-    # owner's local database have run it (move result_token into the model's CREATE TABLE).
-    def ensure_result_tokens():
-        inspector.clear_cache()
-        if 'submission' not in inspector.get_table_names():
-            return
-        if 'result_token' not in column_names('submission'):
-            db.session.execute(text('ALTER TABLE submission ADD COLUMN result_token VARCHAR(64)'))
-        missing = db.session.execute(text('SELECT id FROM submission WHERE result_token IS NULL')).fetchall()
-        for (submission_id,) in missing:
-            db.session.execute(
-                text('UPDATE submission SET result_token = :token WHERE id = :id'),
-                {'token': new_result_token(), 'id': submission_id},
-            )
-        db.session.execute(text(
-            'CREATE UNIQUE INDEX IF NOT EXISTS ix_submission_result_token ON submission (result_token)'
-        ))
-        db.session.commit()
-
-    run_migration('submission.result_token', ensure_result_tokens)
-
-    # ADR 0007: the one-time owner move. Every Quiz Bank goes to the router user id in
-    # QUIZZES_OWNER_ROUTER_USER_ID, then the old "user" table is dropped. With the table
-    # present and no value set, nothing changes and Teacher pages stay closed. The move is one
-    # transaction, so a failure leaves the old state and the next start tries again.
-    # Delete once production and the owner's local database have both run it.
-    def move_quiz_banks_to_router_owner(owner_id):
-        if is_postgres:
-            for fk in inspector.get_foreign_keys('quiz_bank'):
-                if fk['referred_table'] == 'user' and fk.get('name'):
-                    db.session.execute(text(f'ALTER TABLE quiz_bank DROP CONSTRAINT "{fk["name"]}"'))
-            db.session.execute(text('UPDATE quiz_bank SET teacher_id = :owner'), {'owner': owner_id})
-            db.session.execute(text('DROP TABLE "user"'))
-            db.session.commit()
-        elif is_sqlite:
-            col_defs, col_names = sqlite_table_definition('quiz_bank', exclude_referred_table='user')
-            statements = sqlite_owner_move_statements(owner_id, col_defs, col_names)
-            db.session.commit()  # release the session's connection before using our own
-            with db.engine.connect() as connection:
-                # PRAGMA foreign_keys has no effect inside a transaction, so set it around it.
-                foreign_keys_were_on = connection.exec_driver_sql('PRAGMA foreign_keys').scalar()
-                connection.exec_driver_sql('PRAGMA foreign_keys=OFF')
-                connection.commit()
-                try:
-                    with connection.begin():
-                        for statement, params in statements:
-                            connection.execute(text(statement), params or {})
-                finally:
-                    if foreign_keys_were_on:
-                        connection.exec_driver_sql('PRAGMA foreign_keys=ON')
-                        connection.commit()
-
-    inspector.clear_cache()
-    if 'user' in inspector.get_table_names():
-        owner_id = parse_owner_router_user_id(owner_router_user_id)
-        if owner_id is not None:
-            run_migration('move Quiz Banks to the router owner', lambda: move_quiz_banks_to_router_owner(owner_id))
-        inspector.clear_cache()
-
-    # ADR 0007: teacher_id now names a router user and every Teacher page filters on it.
-    # create_all adds this index on a new database only.
-    if 'quiz_bank' in inspector.get_table_names():
-        apply_statement('CREATE INDEX IF NOT EXISTS ix_quiz_bank_teacher_id ON quiz_bank (teacher_id)')
-
-    app.config['QUIZZES_OWNER_MOVE_PENDING'] = 'user' in inspector.get_table_names()
 
 def get_bank_scoring(quiz_bank):
     mode = (getattr(quiz_bank, 'scoring_mode', None) or 'explicit').strip().lower()
@@ -1446,7 +1338,7 @@ def export_quiz_bank_pdf(quiz_bank_id):
 def initialize_database():
     with app.app_context():
         db.create_all()
-        ensure_schema_updates(os.environ.get('QUIZZES_OWNER_ROUTER_USER_ID'))
+        ensure_schema_updates()
 
 initialize_database()
 

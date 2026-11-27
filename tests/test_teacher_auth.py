@@ -74,18 +74,6 @@ def test_cookie_older_than_twelve_hours_is_not_a_teacher(client, monkeypatch):
     assert client.get('/teacher-dashboard').status_code == 302
 
 
-def test_owner_move_pending_closes_teacher_pages_and_shows_router_id(auth_client):
-    app_module.app.config['QUIZZES_OWNER_MOVE_PENDING'] = True
-    try:
-        page = auth_client.get('/teacher-dashboard')
-        assert page.status_code == 503
-        assert f'QUIZZES_OWNER_ROUTER_USER_ID={TEACHER_ROUTER_ID}' in page.get_data(as_text=True)
-        api = auth_client.get(f"/api/quiz-bank/{auth_client._ids['quiz_bank_id']}/submissions")
-        assert api.status_code == 503
-    finally:
-        app_module.app.config['QUIZZES_OWNER_MOVE_PENDING'] = False
-
-
 # --- sign-in flow (development fake router) -------------------------------
 
 def test_full_sign_in_with_the_fake_router(client):

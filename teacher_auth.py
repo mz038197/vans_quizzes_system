@@ -55,7 +55,6 @@ ROUTER_UNAVAILABLE_NOTICE = '驗證服務暫時無法使用，請稍後再試'
 LOGIN_FAILED_NOTICE = '登入失敗，請再試一次'
 LOGIN_REQUIRED_NOTICE = '請先登入教師後台'
 BAD_ORIGIN_NOTICE = '請求來源不符，已拒絕'
-OWNER_MOVE_PENDING_NOTICE = '題庫資料搬移尚未完成'
 
 # Salts keep each signed value to its own purpose, so one cannot stand in for another.
 TEACHER_COOKIE_SALT = 'quizzes-teacher-cookie'
@@ -433,17 +432,6 @@ def current_teacher() -> Optional[Teacher]:
     return teacher
 
 
-def owner_move_pending() -> bool:
-    return bool(current_app.config.get('QUIZZES_OWNER_MOVE_PENDING'))
-
-
-def _refuse(notice: str, status: int, page):
-    """An API call gets the notice as JSON; a page gets what `page()` returns."""
-    if request.path.startswith('/api/'):
-        return jsonify({'error': notice}), status
-    return page()
-
-
 def teacher_required(view):
     """Pages and APIs for a signed-in Teacher. A write must come from this site's own origin."""
 
@@ -451,13 +439,10 @@ def teacher_required(view):
     def wrapper(*args, **kwargs):
         if request.method not in SAFE_METHODS and not origin_is_own():
             return refuse_bad_origin()
-        teacher = current_teacher()
-        if teacher is None:
-            return _refuse(LOGIN_REQUIRED_NOTICE, 401,
-                           lambda: redirect(url_for('teacher_auth.login', next=request.full_path.rstrip('?'))))
-        if owner_move_pending():
-            return _refuse(OWNER_MOVE_PENDING_NOTICE, 503,
-                           lambda: (render_template('owner_move_pending.html', teacher=teacher), 503))
+        if current_teacher() is None:
+            if request.path.startswith('/api/'):
+                return jsonify({'error': LOGIN_REQUIRED_NOTICE}), 401
+            return redirect(url_for('teacher_auth.login', next=request.full_path.rstrip('?')))
         return view(*args, **kwargs)
 
     return wrapper

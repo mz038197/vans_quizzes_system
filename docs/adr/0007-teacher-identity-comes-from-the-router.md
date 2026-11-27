@@ -16,6 +16,6 @@ An admin is a Teacher like any other and sees only the Quiz Banks they own. This
 ## Consequences
 
 - To give another person access, give that person the teacher role on the router.
-- The one-time move reads `QUIZZES_OWNER_ROUTER_USER_ID`. While the `user` table exists and that value is unset, the move does nothing. When it is set, every Quiz Bank goes to that router user id and the `user` table is dropped. Remove the value after the move.
+- A one-time startup move gave every Quiz Bank to the router user id in `QUIZZES_OWNER_ROUTER_USER_ID` and dropped the `user` table. Production ran it on 2026-11-27, and its code was then removed. A database from before PR #1 must run that move and the `result_token` backfill (ADR 0008) from git history first.
 - A `SECRET_KEY` that is missing, left at the default, or shorter than 32 characters stops the app from starting in production, because that key signs the Teacher cookie.
 - Teacher writes are refused unless `Origin` is this site's own origin. `SameSite=Lax` alone does not stop a request from another `*.vanscoding.com` site.
