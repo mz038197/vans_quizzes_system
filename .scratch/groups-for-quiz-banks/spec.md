@@ -1,4 +1,5 @@
-Status: ready-for-agent
+Status: wontfix
+Superseded: by ADR 0009 and .scratch/redesign-with-class-sessions/spec.md (a Quiz Bank sits in at most one Folder). Not built.
 Slug: groups-for-quiz-banks
 
 # Spec: Group Quiz Banks
