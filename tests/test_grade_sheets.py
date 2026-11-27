@@ -207,3 +207,39 @@ def test_course_sheet_csv_matches_the_screen(auth_client):
     ]
     screen = _rows(_html(auth_client.get(f'/courses/{course}')))
     assert [[c.replace('%', '') for c in r] for r in screen] == rows[1:]
+
+
+# ---- review fix 3: Class Session and Course actions on the sheets (prototype) ----
+
+def test_class_session_sheet_has_edit_and_end_now_with_the_shared_dialog(auth_client):
+    course = _course()
+    cs = _session(course, '第 12 週 · 小考', [(auth_client._ids['quiz_bank_id'], 20)])
+    html = auth_client.get(f'/class-sessions/{cs}').get_data(as_text=True)
+    assert f'data-cs-edit="{cs}"' in html
+    assert f'data-cs-action="end" data-id="{cs}"' in html  # it is live
+    assert 'id="cs-dialog-data"' in html
+    assert 'js/class_session_actions.js' in html
+
+
+def test_an_ended_class_session_sheet_offers_reopen_not_end_now(auth_client):
+    course = _course()
+    cs = _session(course, '上週', [(auth_client._ids['quiz_bank_id'], None)], starts_in_days=-7)
+    html = auth_client.get(f'/class-sessions/{cs}').get_data(as_text=True)
+    assert 'data-cs-action="end"' not in html
+    assert f'data-cs-action="reopen" data-id="{cs}"' in html
+
+
+def test_course_sheet_has_the_course_actions(auth_client):
+    course = _course()
+    _session(course, '第 12 週 · 小考', [(auth_client._ids['quiz_bank_id'], None)])
+    html = auth_client.get(f'/courses/{course}').get_data(as_text=True)
+    block = re.search(r'<[^>]+data-course="%d"[^>]*>' % course, html)
+    assert block, 'the actions need the Course data'
+    assert 'data-name="高一 3 班 · 115 上"' in block.group(0) and 'data-active="1"' in block.group(0)
+    assert 'data-course-action="end"' in html and 'data-course-action="edit"' in html
+    assert 'data-course-action="reopen"' not in html
+    assert 'js/course_actions.js' in html
+
+    assert auth_client.post(f'/api/courses/{course}/end', json={}).status_code == 200
+    html = auth_client.get(f'/courses/{course}').get_data(as_text=True)
+    assert 'data-course-action="reopen"' in html and 'data-course-action="end"' not in html

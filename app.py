@@ -2135,11 +2135,14 @@ def sheet_csv(filename, header, sheet, with_summary):
 @teacher_required
 def class_session_sheet(class_session_id):
     class_session = owned_or_404(ClassSession, class_session_id)
-    status = class_session_rules.status(class_session, datetime.utcnow())
+    now = datetime.utcnow()
+    status = class_session_rules.status(class_session, now)
     return render_template('grade_sheet.html', kind='session', class_session=class_session,
                            course=class_session.course, status=status,
                            status_label=class_session_status_label(class_session, status),
-                           sheet=grade_sheet([class_session]))
+                           course_open=class_session_rules.course_is_open(class_session.course, now),
+                           sheet=grade_sheet([class_session]),
+                           cs_dialog=class_session_dialog_data(current_teacher().user_id))
 
 
 @app.route('/class-sessions/<int:class_session_id>/sheet.csv')
@@ -2155,11 +2158,15 @@ def class_session_sheet_csv(class_session_id):
 @teacher_required
 def course_sheet(course_id):
     course = owned_or_404(Course, course_id)
+    now = datetime.utcnow()
     sessions = course_sessions_in_start_order(course)
     groups = [{'session': cs, 'span': len(cs.offers)} for cs in sessions if cs.offers]
+    n_active, n_sessions, n_subs = course_numbers(course, now)
+    course_info = {'ends_on': course_json(course, now)['ends_on'],  # what the Course actions need
+                   'n_active': n_active, 'n_sessions': n_sessions, 'n_subs': n_subs}
     return render_template('grade_sheet.html', kind='course', course=course, groups=groups,
-                           course_open=class_session_rules.course_is_open(course, datetime.utcnow()),
-                           sheet=grade_sheet(sessions))
+                           course_open=class_session_rules.course_is_open(course, now),
+                           course_info=course_info, sheet=grade_sheet(sessions))
 
 
 @app.route('/courses/<int:course_id>/sheet.csv')

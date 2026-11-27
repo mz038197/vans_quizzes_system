@@ -4,6 +4,8 @@
   Grade sheets (ticket 16, #18). kind == 'session': 課堂總表 (/class-sessions/<id>), one column per
   offered Quiz Bank. kind == 'course': 課程總表 (/courses/<id>), one column per Class Session × Quiz Bank,
   Class Sessions in start order, then 平均 and 寫了. Data: `sheet` from grade_sheet() in app.py.
+  Actions (review fix 3): the 課堂總表 has 編輯課堂 and the status action (static/js/class_session_actions.js,
+  shared dialog); the 課程總表 has the Course actions (static/js/course_actions.js) on `.page-head[data-course]`.
 #}
 
 {% macro pct(value) %}{{ grade_whole_percent(value) }}%{% endmacro %}
@@ -35,7 +37,9 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-head">
+{% if kind == 'session' %}<div class="page-head">{% else %}
+<div class="page-head" data-course="{{ course.id }}" data-name="{{ course.name }}" data-ends-on="{{ course_info.ends_on or '' }}"
+     data-active="{{ course_info.n_active }}" data-sessions="{{ course_info.n_sessions }}" data-subs="{{ course_info.n_subs }}">{% endif %}
   <div>
     {% if kind == 'session' %}
     <h1>{{ class_session.name }} {{ ui.status_pill(status, status_label) }}</h1>
@@ -49,6 +53,23 @@
   <div class="actions">
     {% set csv_url = url_for('class_session_sheet_csv', class_session_id=class_session.id) if kind == 'session' else url_for('course_sheet_csv', course_id=course.id) %}
     <a class="btn" id="export-csv" href="{{ csv_url }}"><i class="fas fa-file-csv" aria-hidden="true"></i> 匯出 CSV</a>
+    {% if kind == 'session' %}
+    {% if status == 'live' %}
+    <button type="button" class="btn" data-cs-action="end" data-id="{{ class_session.id }}">立即結束</button>
+    {% elif status == 'soon' %}
+    <button type="button" class="btn" data-cs-action="start-now" data-id="{{ class_session.id }}">現在開始</button>
+    {% elif course_open %}
+    <button type="button" class="btn" data-cs-action="reopen" data-id="{{ class_session.id }}">重新開放</button>
+    {% endif %}
+    <button type="button" class="btn" data-cs-edit="{{ class_session.id }}"><i class="fas fa-pen" aria-hidden="true"></i> 編輯課堂</button>
+    {% else %}
+    <button type="button" class="btn" data-course-action="edit"><i class="fas fa-pen" aria-hidden="true"></i> 編輯課程</button>
+    {% if course_open %}
+    <button type="button" class="btn" data-course-action="end">結束課程</button>
+    {% else %}
+    <button type="button" class="btn" data-course-action="reopen">重新開啟課程</button>
+    {% endif %}
+    {% endif %}
   </div>
 </div>
 
@@ -108,4 +129,13 @@
   依姓名把同一位學生排在同一列（會先去掉頭尾空白），跨這個課程所有的課堂。每格顯示<b>最後一次</b>的分數；「平均」只算有作答的格子，「寫了」是有作答的格子數。點課堂名稱看那個課堂的總表。
   {% endif %}
 </p>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/class_session_actions.js') }}"></script>
+{% if kind == 'session' %}
+{% include "_class_session_dialog.html" %}
+{% else %}
+<script src="{{ url_for('static', filename='js/course_actions.js') }}"></script>
+{% endif %}
 {% endblock %}
