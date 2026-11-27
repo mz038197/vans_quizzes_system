@@ -151,3 +151,17 @@ def test_ui_script_offers_dialog_and_toast(client):
     js = _text(client.get('/static/js/ui.js'))
     for name in ['toast', 'dialog', 'ask', 'tell', 'askText', 'setStudentName']:
         assert re.search(r'window\.UI = \{[^}]*\b' + name + r'\b', js), name
+
+
+def test_one_js_escape_helper(client):
+    """Review fix 16: UI.escape in static/js/ui.js is the only HTML escape function."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    files = [p for p in list((root / 'templates').glob('*.html')) + list((root / 'static' / 'js').rglob('*.js'))
+             if 'vendor' not in p.parts]
+    defining = [p.name for p in files if "'&amp;'" in p.read_text(encoding='utf-8')]
+    assert defining == ['ui.js']
+    for name in ('class_session_dialog.js', 'md_preview.js'):
+        assert 'UI.escape(' in (root / 'static' / 'js' / name).read_text(encoding='utf-8')
+    for name in ('create_quiz_bank.html', 'manage_quiz_bank.html', 'submissions.html'):
+        assert 'UI.escape' in (root / 'templates' / name).read_text(encoding='utf-8')

@@ -1860,10 +1860,6 @@ window.addEventListener('beforeunload', function(event) {
 let appendPreviewReady = false;
 let appendFile = null;
 
-function escapeHtml(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
-}
-
 function showAppendAlert(messageHtml, kind) {
     const icons = { ok: 'fa-check-circle', danger: 'fa-times-circle', warn: 'fa-exclamation-triangle' };
     document.getElementById('append-alert').innerHTML =
@@ -1894,7 +1890,7 @@ async function previewAppendImport(file) {
         const rows = data.questions || [];
 
         if (!rows.length) {
-            const errors = (data.errors || [data.error || '預覽失敗']).map(escapeHtml).join('<br>');
+            const errors = (data.errors || [data.error || '預覽失敗']).map(UI.escape).join('<br>');
             showAppendAlert(errors, 'danger');
             MdDrop.setInfo('append-drop', '這個檔案有問題，請修正後再選一次');
             document.getElementById('append-preview').hidden = true;
@@ -1903,9 +1899,9 @@ async function previewAppendImport(file) {
 
         const fileErrors = data.file_errors || [];
         if (fileErrors.length) {
-            showAppendAlert(fileErrors.map(escapeHtml).join('<br>'), 'danger');
+            showAppendAlert(fileErrors.map(UI.escape).join('<br>'), 'danger');
         } else if (data.warnings && data.warnings.length) {
-            showAppendAlert(data.warnings.map(escapeHtml).join('<br>'), 'warn');
+            showAppendAlert(data.warnings.map(UI.escape).join('<br>'), 'warn');
         }
         const start = BANK_QUESTION_COUNT;
         const bad = MdPreview.render('append', data, QUESTION_TYPE_NAMES, start);
@@ -1935,7 +1931,7 @@ async function confirmAppendImport() {
         const data = await response.json();
 
         if (!response.ok || !data.success) {
-            const errors = (data.errors || [data.error || '追加失敗']).map(escapeHtml).join('<br>');
+            const errors = (data.errors || [data.error || '追加失敗']).map(UI.escape).join('<br>');
             showAppendAlert(errors, 'danger');
             setButtonLoading(button, false);
             return;

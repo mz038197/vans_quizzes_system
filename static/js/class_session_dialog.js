@@ -23,9 +23,6 @@
         try { return JSON.parse(node ? node.textContent : '{}'); } catch (e) { return {}; }
     }
 
-    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
-        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
     // ---- UTC+8 wall clock <-> epoch ms (independent of the computer's time zone) ----
     const toWall = (ms) => new Date(ms + UTC8).toISOString().slice(0, 16);
     const fromWall = (value) => {
@@ -71,7 +68,7 @@
         const item = (b) => {
             const added = state.chosen.some((c) => c.id === b.id);
             return `<button type="button" class="csd-pickrow${added ? ' is-in' : ''}" data-pickbank="${b.id}"${added ? ' aria-disabled="true"' : ''}>
-                <span>${esc(b.title)}</span><span class="muted small">${added ? '已加入' : `${esc(b.mode)} · ${b.n_questions} 題`}</span></button>`;
+                <span>${UI.escape(b.title)}</span><span class="muted small">${added ? '已加入' : `${UI.escape(b.mode)} · ${b.n_questions} 題`}</span></button>`;
         };
         // Folders come from the server with the page's Folder first; 未分類 is last.
         const groups = [...d.folders.map((f) => ({ folder: f, id: f.id })), { folder: null, id: null }];
@@ -79,7 +76,7 @@
             const list = d.banks.filter((b) => (b.folder_id == null ? null : b.folder_id) === id && match(b));
             if (!list.length) return '';
             const head = folder
-                ? `<div class="csd-grp fc-${esc(folder.color)}"><i class="fas fa-folder" aria-hidden="true"></i>${esc(folder.name)}</div>`
+                ? `<div class="csd-grp fc-${UI.escape(folder.color)}"><i class="fas fa-folder" aria-hidden="true"></i>${UI.escape(folder.name)}</div>`
                 : '<div class="csd-grp">未分類</div>';
             return head + list.map(item).join('');
         }).join('');
@@ -91,11 +88,11 @@
         box.innerHTML = state.chosen.length ? state.chosen.map((c, i) => `
             <div class="csd-row">
                 <span class="n num">${i + 1}</span>
-                <div><b>${esc(c.title)}</b><span class="muted small">${c.n_subs ? `已有 ${c.n_subs} 份作答` : `${esc(c.mode)} · ${c.n_questions} 題`}</span></div>
+                <div><b>${UI.escape(c.title)}</b><span class="muted small">${c.n_subs ? `已有 ${c.n_subs} 份作答` : `${UI.escape(c.mode)} · ${c.n_questions} 題`}</span></div>
                 <label class="csd-lim">時限 <input class="inp" type="number" min="1" step="1" inputmode="numeric"
                     placeholder="不限" value="${c.limit == null ? '' : c.limit}" data-lim="${i}"${c.locked ? ' disabled title="課堂已開始，時限不能改"' : ''}
-                    aria-label="「${esc(c.title)}」的時限（分鐘，空白是不限時）"> 分</label>
-                <button type="button" class="btn btn-icon" data-unpick="${i}" aria-label="移除「${esc(c.title)}」"><i class="fas fa-times" aria-hidden="true"></i></button>
+                    aria-label="「${UI.escape(c.title)}」的時限（分鐘，空白是不限時）"> 分</label>
+                <button type="button" class="btn btn-icon" data-unpick="${i}" aria-label="移除「${UI.escape(c.title)}」"><i class="fas fa-times" aria-hidden="true"></i></button>
             </div>`).join('')
             : '<p class="muted small">還沒有選題庫。</p>';
         if (state.chosen.some((c) => c.locked)) {
@@ -121,7 +118,7 @@
 
     function body(state) {
         const d = state.data;
-        const courses = d.courses.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+        const courses = d.courses.map((c) => `<option value="${c.id}">${UI.escape(c.name)}</option>`).join('');
         const wrap = document.createElement('div');
         wrap.className = 'csd stack';
         wrap.innerHTML = `
@@ -229,7 +226,7 @@
         state.$('end').value = toWall(Date.now() + 50 * MINUTE);
         if (editing) {
             // The Course is fixed after creation; show only that one.
-            state.$('course').innerHTML = `<option value="${editing.course_id}">${esc(editing.course_name)}${editing.course_open ? '' : '（已結束）'}</option>`;
+            state.$('course').innerHTML = `<option value="${editing.course_id}">${UI.escape(editing.course_name)}${editing.course_open ? '' : '（已結束）'}</option>`;
             state.$('course').disabled = true;
             state.$('course').insertAdjacentHTML('afterend', '<span class="help muted small">課堂建立後不能換課程。</span>');
             state.$('name').value = editing.name;
