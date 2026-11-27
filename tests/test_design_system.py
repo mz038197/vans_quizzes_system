@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from conftest import sign_in, TEACHER_ROUTER_ID
+from conftest import live_code, sign_in, TEACHER_ROUTER_ID
 
 REQUIRED_TOKENS = [
     # colours (clean spec)
@@ -38,7 +38,7 @@ def _text(response):
 def _submission_token(client):
     ids = client._ids
     response = client.post(
-        f'/api/quiz/{ids["access_code"]}/submit',
+        f'/api/quiz/{live_code(client)}/submit',
         json={'student_name': '學生甲', 'student_email': '', 'answers': {str(ids['question_id']): 'A'}},
     )
     assert response.status_code == 200
@@ -87,7 +87,7 @@ def test_quiz_bank_pages_mark_quiz_banks_as_the_active_area(auth_client):
 
 def test_student_pages_use_the_shared_layout_without_teacher_nav(client):
     token = _submission_token(client)
-    for path in [f'/quiz/{client._ids["access_code"]}', f'/result/{token}']:
+    for path in [f'/quiz/{live_code(client)}', f'/result/{token}']:
         html = _text(client.get(path))
         assert '/static/css/tokens.css' in html, path
         assert '/static/css/app.css' in html, path
@@ -128,7 +128,7 @@ def _all_pages(auth_client):
     pages = [
         '/', '/teacher-dashboard', '/quiz-banks', '/create-quiz-bank', f'/quiz-bank/{qb}',
         f'/quiz-bank/{qb}/submissions', f'/quiz-bank/{qb}/export-pdf',
-        f'/quiz/{auth_client._ids["access_code"]}', f'/result/{token}',
+        f'/quiz/{live_code(auth_client)}', f'/result/{token}',
     ]
     return pages
 

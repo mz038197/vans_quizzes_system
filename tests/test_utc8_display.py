@@ -3,6 +3,7 @@
 from datetime import datetime
 
 import app as app_module
+from conftest import ended_class_session_id
 from time_display import format_wall_clock_utc8
 
 
@@ -30,6 +31,7 @@ def test_submissions_list_submitted_at_is_utc8(auth_client):
             total_points=1,
             submitted_at=utc_hand_in,
             quiz_bank_id=quiz_bank_id,
+            class_session_id=ended_class_session_id(quiz_bank_id),
         )
         app_module.db.session.add(submission)
         app_module.db.session.commit()

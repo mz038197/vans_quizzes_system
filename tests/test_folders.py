@@ -3,7 +3,7 @@
 import io
 
 import app as app_module
-from conftest import OWN_ORIGIN, TEACHER_ROUTER_ID, sign_in
+from conftest import OWN_ORIGIN, TEACHER_ROUTER_ID, ended_class_session_id, sign_in
 
 
 def _create_folder(client, name, color='blue'):
@@ -32,7 +32,7 @@ def _other_teacher(client):
 
 def _bank(title, teacher_id=TEACHER_ROUTER_ID):
     with app_module.app.app_context():
-        bank = app_module.QuizBank(title=title, description='', access_code=title[:6].upper().ljust(6, 'X'),
+        bank = app_module.QuizBank(title=title, description='',
                                    teacher_id=teacher_id, quiz_mode='fixed')
         app_module.db.session.add(bank)
         app_module.db.session.commit()
@@ -122,7 +122,8 @@ def test_delete_folder_moves_its_quiz_banks_to_unsorted_and_keeps_them(auth_clie
     assert _move(auth_client, [bank_id], folder_id).status_code == 200
     with app_module.app.app_context():
         app_module.db.session.add(app_module.Submission(
-            student_name='學生甲', answers='{}', score=1, total_points=1, quiz_bank_id=bank_id))
+            student_name='學生甲', answers='{}', score=1, total_points=1, quiz_bank_id=bank_id,
+            class_session_id=ended_class_session_id(bank_id)))
         app_module.db.session.commit()
 
     response = auth_client.delete(f'/api/folders/{folder_id}')
@@ -214,7 +215,8 @@ def test_folder_card_shows_count_and_attention(auth_client):
     _move(auth_client, [bank_id], folder_id)
     with app_module.app.app_context():
         app_module.db.session.add(app_module.Submission(
-            student_name='學生甲', answers='{}', score=0, total_points=1, quiz_bank_id=bank_id))
+            student_name='學生甲', answers='{}', score=0, total_points=1, quiz_bank_id=bank_id,
+            class_session_id=ended_class_session_id(bank_id)))
         app_module.db.session.commit()
 
     page = auth_client.get('/quiz-banks').get_data(as_text=True)

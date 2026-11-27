@@ -2,13 +2,13 @@
 from sqlalchemy import inspect
 
 import app as app_module
-from conftest import TEACHER_ROUTER_ID, sign_in
+from conftest import live_code, TEACHER_ROUTER_ID, sign_in
 
 
 def _submit(client):
     ids = client._ids
     response = client.post(
-        f"/api/quiz/{ids['access_code']}/submit",
+        f"/api/quiz/{live_code(client)}/submit",
         json={'student_name': 'Alice', 'answers': {str(ids['question_id']): 'A'}},
     )
     assert response.status_code == 200
@@ -57,7 +57,7 @@ def test_teacher_view_needs_sign_in_and_ownership(client):
 def test_teacher_view_refuses_a_submission_of_another_bank(auth_client):
     body = _submit(auth_client)
     with app_module.app.app_context():
-        other = app_module.QuizBank(title='Other', access_code='OTH999', teacher_id=TEACHER_ROUTER_ID)
+        other = app_module.QuizBank(title='Other', teacher_id=TEACHER_ROUTER_ID)
         app_module.db.session.add(other)
         app_module.db.session.commit()
         other_id = other.id

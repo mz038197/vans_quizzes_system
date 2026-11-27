@@ -30,7 +30,6 @@ def client(tmp_path):
         quiz_bank = app_module.QuizBank(
             title='Timed Bank',
             description='',
-            access_code='ABC123',
             teacher_id=TEACHER_ROUTER_ID,
             quiz_mode='fixed',
         )
@@ -52,7 +51,6 @@ def client(tmp_path):
         ids = {
             'teacher_id': TEACHER_ROUTER_ID,
             'quiz_bank_id': quiz_bank.id,
-            'access_code': quiz_bank.access_code,
             'question_id': question.id,
         }
 
@@ -117,3 +115,36 @@ def make_class_session(ids, starts_in=-60, ends_in=3000, time_limit=None, course
         ))
         app_module.db.session.commit()
         return class_session.code
+
+
+def live_code(client, **kwargs):
+    """The code of a live Class Session offering the fixture Quiz Bank (made on first use, then reused)."""
+    if 'code' not in client._ids:
+        client._ids['code'] = make_class_session(client._ids, **kwargs)
+    return client._ids['code']
+
+
+def ended_class_session_id(quiz_bank_id, teacher_id=TEACHER_ROUTER_ID):
+    """An ended Class Session (in an ended Course) offering `quiz_bank_id`, for Submissions inserted directly.
+    Made once per Quiz Bank, then reused."""
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    with app_module.app.app_context():
+        existing = (app_module.ClassSession.query.join(app_module.ClassSessionBank)
+                    .filter(app_module.ClassSession.name == '過去的課堂',
+                            app_module.ClassSessionBank.quiz_bank_id == quiz_bank_id).first())
+        if existing is not None:
+            return existing.id
+        course = app_module.Course(teacher_id=teacher_id, name='過去的課程', ended_at=now - timedelta(days=30))
+        app_module.db.session.add(course)
+        app_module.db.session.flush()
+        class_session = app_module.ClassSession(
+            teacher_id=teacher_id, course_id=course.id, name='過去的課堂', code=app_module.new_class_session_code(),
+            starts_at=now - timedelta(days=60), ends_at=now - timedelta(days=59),
+        )
+        app_module.db.session.add(class_session)
+        app_module.db.session.flush()
+        app_module.db.session.add(app_module.ClassSessionBank(
+            class_session_id=class_session.id, quiz_bank_id=quiz_bank_id, position=0))
+        app_module.db.session.commit()
+        return class_session.id

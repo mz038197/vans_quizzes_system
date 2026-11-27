@@ -18,7 +18,7 @@
 
 {% block content %}
 {% set mode_label = '隨機練習' if quiz_bank.quiz_mode == 'practice' else '固定測驗' %}
-{% call ui.page_head('成績', sub=quiz_bank.title ~ ' · ' ~ mode_label ~ ' · 題庫代碼 ' ~ quiz_bank.access_code) %}
+{% call ui.page_head('成績', sub=quiz_bank.title ~ ' · ' ~ mode_label) %}
 <button type="button" id="export-csv" class="btn"><i class="fas fa-file-csv" aria-hidden="true"></i> 匯出 CSV</button>
 {% endcall %}
 
@@ -34,12 +34,8 @@
 </div>
 
 <div id="subs-empty" hidden>
-    {% call ui.empty('還沒有學生作答。學生用題庫代碼進入測驗後，成績會出現在這裡。', icon='fa-inbox') %}
-    <div class="subs-empty-code">
-        <span class="muted">題庫代碼</span>
-        <span class="code">{{ quiz_bank.access_code }}</span>
-        <button type="button" id="copy-link" class="btn" data-code="{{ quiz_bank.access_code }}"><i class="far fa-copy" aria-hidden="true"></i> 複製連結</button>
-    </div>
+    {% call ui.empty('還沒有學生作答。學生用課堂的連結或 QR 碼進入測驗後，成績會出現在這裡。', icon='fa-inbox') %}
+    <a class="btn" href="{{ url_for('manage_quiz_bank', quiz_bank_id=quiz_bank.id, tab='sessions') }}"><i class="fas fa-chalkboard-teacher" aria-hidden="true"></i> 看這個題庫的課堂</a>
     {% endcall %}
 </div>
 
@@ -286,15 +282,6 @@ function exportToCSV() {
     window.location.href = `${CSV_URL}?${filterParams(true)}`;
 }
 
-async function copyQuizLink(accessCode) {
-    const link = window.location.origin + '/quiz/' + accessCode;
-    if (await copyToClipboard(link)) {
-        UI.toast('題庫連結已複製到剪貼簿', 'ok');
-    } else {
-        UI.tell('無法複製連結，請手動複製：\n' + link, { title: '複製連結' });
-    }
-}
-
 async function deleteSubmission(submissionId) {
     const submission = grades.submissions.find(s => s.id === submissionId);
     const name = submission ? submission.student_name : '';
@@ -322,7 +309,6 @@ async function deleteSubmission(submissionId) {
 
 document.getElementById('export-csv').addEventListener('click', exportToCSV);
 document.getElementById('subs-retry').addEventListener('click', loadSubmissions);
-document.getElementById('copy-link').addEventListener('click', (event) => copyQuizLink(event.currentTarget.dataset.code));
 document.getElementById('cs-filter').addEventListener('change', loadSubmissions);
 document.getElementById('subs-search').addEventListener('input', () => { if (grades) displaySubmissionsTable(); });
 document.getElementById('subs-tbody').addEventListener('click', (event) => {

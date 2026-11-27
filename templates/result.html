@@ -141,12 +141,12 @@
         {% if teacher_view %}
         <a href="{{ url_for('view_submissions_page', quiz_bank_id=submission.quiz_bank_id) }}" class="btn btn-primary">返回成績</a>
         {% else %}
-        {# Back to the Class Session the Take ran in; old Submissions without one use the old Quiz Bank code (ticket 14 removes it). #}
-        {% set back_code = submission.class_session.code if submission.class_session else submission.quiz_bank.access_code %}
+        {# Back to the Class Session the Take ran in. #}
+        {% set back_code = submission.class_session.code %}
         {% if submission.is_practice %}
-        <a href="/quiz/{{ back_code }}" class="btn btn-primary"><i class="fas fa-redo" aria-hidden="true"></i> 再練一次</a>
+        <a href="{{ url_for('take_quiz', code=back_code, bank=submission.quiz_bank_id) }}" class="btn btn-primary"><i class="fas fa-redo" aria-hidden="true"></i> 再練一次</a>
         {% else %}
-        <a href="/quiz/{{ back_code }}" class="btn btn-primary">返回測驗</a>
+        <a href="{{ url_for('take_quiz', code=back_code) }}" class="btn btn-primary">返回測驗</a>
         {% endif %}
         {% endif %}
     </div>

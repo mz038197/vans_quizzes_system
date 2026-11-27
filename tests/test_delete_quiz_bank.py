@@ -1,12 +1,13 @@
 """API seam: DELETE /api/quiz-bank/<id> — hard-delete with Submission confirm gate."""
 
 from app import QuizBank, Question, Submission
+from conftest import live_code
 
 
 def _submit(auth_client, student_name='Alice'):
     ids = auth_client._ids
     response = auth_client.post(
-        f'/api/quiz/{ids["access_code"]}/submit',
+        f'/api/quiz/{live_code(auth_client)}/submit',
         json={
             'student_name': student_name,
             'student_email': '',

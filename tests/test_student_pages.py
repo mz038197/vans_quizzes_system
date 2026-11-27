@@ -7,6 +7,7 @@ import json
 import re
 
 import app as app_module
+from conftest import live_code
 
 
 def _html(response):
@@ -50,9 +51,9 @@ def _fact(html, label):
 def test_start_page_shows_question_count_time_limit_and_total_points(client):
     ids = client._ids
     _add_question(ids['quiz_bank_id'], 'Second?', 'B', points=4)
-    _set_bank(ids['quiz_bank_id'], time_limit_minutes=20)
+    live_code(client, time_limit=20)  # the Time Limit belongs to the Class Session
 
-    html = _html(client.get(f'/quiz/{ids["access_code"]}'))
+    html = _html(client.get(f'/quiz/{live_code(client)}'))
 
     assert 'Timed Bank' in html
     assert _fact(html, '題') == '2'
@@ -61,12 +62,12 @@ def test_start_page_shows_question_count_time_limit_and_total_points(client):
 
 
 def test_start_page_without_time_limit_says_no_limit(client):
-    html = _html(client.get(f'/quiz/{client._ids["access_code"]}'))
+    html = _html(client.get(f'/quiz/{live_code(client)}'))
     assert _fact(html, '時限') == '不限'
 
 
 def test_start_page_lists_the_three_rules_and_the_name_fields(client):
-    html = _html(client.get(f'/quiz/{client._ids["access_code"]}'))
+    html = _html(client.get(f'/quiz/{live_code(client)}'))
     assert '稍後再看' in html
     assert '成績連結' in html
     assert 'id="student-name"' in html
@@ -80,7 +81,7 @@ def test_practice_start_page_uses_the_same_layout(client):
     _add_question(ids['quiz_bank_id'], 'Second?', 'B')
     _set_bank(ids['quiz_bank_id'], quiz_mode='practice', session_question_count=1)
 
-    html = _html(client.get(f'/quiz/{ids["access_code"]}'))
+    html = _html(client.get(f'/quiz/{live_code(client)}'))
 
     assert _fact(html, '題') == '1'
     assert 'id="student-name"' in html
@@ -93,7 +94,7 @@ def test_take_page_has_timer_question_pad_with_legend_and_phone_pad_button(clien
     ids = client._ids
     _add_question(ids['quiz_bank_id'], 'Second?', 'B')
 
-    html = _html(client.get(f'/quiz/{ids["access_code"]}'))
+    html = _html(client.get(f'/quiz/{live_code(client)}'))
 
     assert 'id="quiz-countdown"' in html
     assert 'id="question-pad"' in html
@@ -134,20 +135,20 @@ def _submit_two(client, **extra):
     """Q1 right, Q2 wrong and flagged; returns the Result Link path."""
     ids = client._ids
     second = _add_question(ids['quiz_bank_id'], 'Second?', 'B', points=3)
-    client.get(f'/quiz/{ids["access_code"]}')  # fixes the Take Order
+    client.get(f'/quiz/{live_code(client)}')  # fixes the Take Order
     payload = {
         'student_name': '學生甲',
         'answers': {str(ids['question_id']): 'A', str(second): 'A'},
         'review_flag_question_ids': [second],
     }
     payload.update(extra)
-    response = client.post(f'/api/quiz/{ids["access_code"]}/submit', json=payload)
+    response = client.post(f'/api/quiz/{live_code(client)}/submit', json=payload)
     assert response.status_code == 200
     return response.get_json()['result_url'], second
 
 
 def test_result_page_shows_score_ring_and_stats(client):
-    _set_bank(client._ids['quiz_bank_id'], time_limit_minutes=20)
+    live_code(client, time_limit=20)
     url, _ = _submit_two(client, elapsed_seconds=65)
 
     html = _html(client.get(url))
@@ -214,11 +215,11 @@ def test_every_question_type_shows_on_the_take_page_and_the_result_page(client):
             ))
         app_module.db.session.commit()
 
-    take = _html(client.get(f'/quiz/{ids["access_code"]}'))
+    take = _html(client.get(f'/quiz/{live_code(client)}'))
     for question_type in ['single_choice', *ALL_TYPES]:
         assert f'tb t-{question_type}' in take, question_type
 
-    response = client.post(f'/api/quiz/{ids["access_code"]}/submit', json={
+    response = client.post(f'/api/quiz/{live_code(client)}/submit', json={
         'student_name': '學生甲', 'answers': {str(ids['question_id']): 'A'},
     })
     result = _html(client.get(response.get_json()['result_url']))

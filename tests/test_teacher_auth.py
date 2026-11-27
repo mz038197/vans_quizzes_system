@@ -55,10 +55,10 @@ def test_other_teacher_cannot_touch_the_bank(client):
 def test_teacher_write_from_another_origin_is_refused(client, origin):
     sign_in(client, TEACHER_ROUTER_ID)
     headers = {'Origin': origin} if origin else {}
-    response = client.post(f"/api/quiz-bank/{client._ids['quiz_bank_id']}/toggle", headers=headers)
+    response = client.delete(f"/api/quiz-bank/{client._ids['quiz_bank_id']}", headers=headers)
     assert response.status_code == 403
     with app_module.app.app_context():
-        assert app_module.db.session.get(app_module.QuizBank, client._ids['quiz_bank_id']).is_active
+        assert app_module.db.session.get(app_module.QuizBank, client._ids['quiz_bank_id']) is not None
 
 
 def test_forged_cookie_is_not_a_teacher(client):

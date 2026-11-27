@@ -15,7 +15,7 @@ from conftest import TEACHER_ROUTER_ID, sign_in, OWN_ORIGIN
 
 def _bank(title, teacher_id=TEACHER_ROUTER_ID):
     with app_module.app.app_context():
-        bank = app_module.QuizBank(title=title, description='', access_code=app_module.generate_access_code(),
+        bank = app_module.QuizBank(title=title, description='',
                                    teacher_id=teacher_id, quiz_mode='fixed')
         app_module.db.session.add(bank)
         app_module.db.session.commit()
