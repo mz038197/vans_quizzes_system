@@ -15,7 +15,7 @@
 {% set start_label = '開始作答' if is_practice else '開始測驗' %}
 
 <!-- 開始頁 -->
-{% call entry(quiz_bank, questions|length, total_points, start_label, 'startQuiz()', mode_label='隨機練習' if is_practice else '固定測驗') %}{% endcall %}
+{% call entry(quiz_bank, questions|length, total_points, start_label, 'startQuiz()', mode_label='隨機練習' if is_practice else '固定測驗', time_limit=time_limit_minutes, class_session=class_session, ends_at=session_ends_at) %}{% endcall %}
 
 <!-- 作答頁：左邊計時和題號格，右邊題目 -->
 <div class="qz-take" id="quiz-take" hidden>
@@ -23,9 +23,9 @@
         <div class="qz-timer" id="qz-timer" role="timer" aria-live="off">
             <div class="k" id="qz-timer-label">
                 <i class="far fa-clock" aria-hidden="true"></i>
-                {% if quiz_bank.time_limit_minutes %}剩餘時間{% else %}已作答時間{% endif %}
+                {% if time_limit_minutes %}剩餘時間{% else %}已作答時間{% endif %}
             </div>
-            <div class="sub">{% if quiz_bank.time_limit_minutes %}時限 {{ quiz_bank.time_limit_minutes }} 分鐘{% else %}這份題庫不限時{% endif %}</div>
+            <div class="sub">{% if time_limit_minutes %}時限 {{ time_limit_minutes }} 分鐘{% else %}這份題庫不限時{% endif %}</div>
             <div class="v" id="quiz-countdown">00:00</div>
             <div class="qz-mprog" aria-hidden="true">第 <span data-current-question>1</span> / {{ questions|length }} 題 · 已答 <span data-answered-count>0</span></div>
             <button type="button" class="btn qz-padbtn" id="qz-padbtn" aria-expanded="false" aria-controls="qz-sheet">
@@ -192,10 +192,14 @@ let quizStarted = false;
 let quizSubmitted = false;
 let countdownTimerId = null;
 const isPractice = {{ 'true' if is_practice else 'false' }};
-const accessCode = {{ quiz_bank.access_code | tojson }};
-const timeLimitMinutes = {{ quiz_bank.time_limit_minutes if quiz_bank.time_limit_minutes is not none else 'null' }};
-const takeStartStorageKey = 'take_start_' + accessCode;
-const reviewFlagsStorageKey = 'review_flags_' + accessCode;
+// The student code (Class Session code) and the Quiz Bank; takeKey keeps one Take per code and Quiz Bank.
+const studentCode = {{ student_code | tojson }};
+const quizBankId = {{ quiz_bank.id }};
+const takeKey = {{ take_key | tojson }};
+// The Time Limit this Class Session set for this Quiz Bank (null = no Time Limit).
+const timeLimitMinutes = {{ time_limit_minutes if time_limit_minutes is not none else 'null' }};
+const takeStartStorageKey = 'take_start_' + takeKey;
+const reviewFlagsStorageKey = 'review_flags_' + takeKey;
 
 window.studentAnswers = studentAnswers;
 window.questionsData = {{ questions | tojson | safe }};
@@ -786,13 +790,13 @@ async function submitQuiz(options) {
         student_email: document.getElementById('student-email').value.trim(),
         answers: studentAnswers,
         review_flag_question_ids: Array.from(reviewFlagIds),
+        quiz_bank_id: quizBankId,
+        // Elapsed Time is stored for every Take, with or without a Time Limit.
+        elapsed_seconds: getElapsedSeconds(),
     };
-    if (timeLimitMinutes) {
-        payload.elapsed_seconds = getElapsedSeconds();
-    }
 
     try {
-        const response = await fetch('/api/quiz/' + accessCode + '/submit', {
+        const response = await fetch('/api/quiz/' + encodeURIComponent(studentCode) + '/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)

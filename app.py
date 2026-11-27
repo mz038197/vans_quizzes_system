@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_from_directory
+from flask import Flask, abort, render_template, request, jsonify, redirect, url_for, session, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import base64
@@ -24,6 +24,7 @@ from practice_utils import (
 from time_display import format_wall_clock_utc8
 from page_nav import register_page_nav
 import teacher_stats
+import class_session_rules
 from teacher_auth import (
     DEFAULT_SECRET_KEY,
     LOGIN_REQUIRED,
@@ -158,10 +159,68 @@ class Submission(db.Model):
     submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     quiz_bank_id = db.Column(db.Integer, db.ForeignKey('quiz_bank.id'), nullable=False)
     result_token = db.Column(db.String(64), unique=True, index=True, default=new_result_token)  # Result Link (ADR 0008)
+    # The Class Session this Take ran in. Nullable while old Quiz Bank codes still work (ticket 14 makes it required).
+    class_session_id = db.Column(db.Integer, db.ForeignKey('class_session.id'), index=True)
+
+# ---- Courses and Class Sessions (ADR 0010, ADR 0011). Time rules live in class_session_rules.py. ----
+
+class Course(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    ends_at = db.Column(db.DateTime)  # UTC; 23:59 UTC+8 of the chosen day; null = no end date
+    ended_at = db.Column(db.DateTime)  # UTC; set by 結束課程, cleared by reopen
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    class_sessions = db.relationship('ClassSession', backref='course', lazy=True, cascade='all, delete-orphan')
+
+class ClassSession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, nullable=False, index=True)
+    course_id = db.Column(db.Integer, db.ForeignKey('course.id'), nullable=False, index=True)
+    name = db.Column(db.String(200), nullable=False)
+    code = db.Column(db.String(12), unique=True, nullable=False, index=True)
+    starts_at = db.Column(db.DateTime, nullable=False)  # UTC
+    ends_at = db.Column(db.DateTime, nullable=False)  # UTC
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    offers = db.relationship('ClassSessionBank', backref='class_session', lazy=True,
+                             order_by='ClassSessionBank.position', cascade='all, delete-orphan')
+    submissions = db.relationship('Submission', backref='class_session', lazy=True, cascade='all, delete')
+
+class ClassSessionBank(db.Model):
+    """One Quiz Bank offered by a Class Session, with its own optional Time Limit."""
+    __table_args__ = (db.UniqueConstraint('class_session_id', 'quiz_bank_id'),)
+    id = db.Column(db.Integer, primary_key=True)
+    class_session_id = db.Column(db.Integer, db.ForeignKey('class_session.id'), nullable=False, index=True)
+    quiz_bank_id = db.Column(db.Integer, db.ForeignKey('quiz_bank.id'), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    time_limit_minutes = db.Column(db.Integer)  # null = no Time Limit
+
+    quiz_bank = db.relationship('QuizBank', backref=db.backref('offers', lazy=True, cascade='all, delete-orphan'))
 
 def is_own_quiz_bank(quiz_bank):
     """A Teacher manages only the Quiz Banks they own; an admin is no exception (ADR 0007)."""
     return quiz_bank.teacher_id == current_teacher().user_id
+
+LATE_HAND_IN_ERROR = '課堂已結束，這份作答沒有被收下'
+
+@app.template_global()
+def class_session_window(class_session):
+    """The window as shown (UTC+8), e.g. '11/27 10:00–10:50'."""
+    return class_session_rules.window_text(class_session.starts_at, class_session.ends_at)
+
+def is_own(record):
+    """Ownership check for a Course or Class Session (same rule as is_own_quiz_bank)."""
+    return record is not None and record.teacher_id == current_teacher().user_id
+
+def new_class_session_code():
+    """An unguessable 6-character Class Session code that no Class Session or old Quiz Bank code uses."""
+    while True:
+        code = class_session_rules.random_code()
+        if (not ClassSession.query.filter_by(code=code).first()
+                and not QuizBank.query.filter_by(access_code=code).first()):
+            return code
 
 def generate_access_code():
     """生成6位數的存取代碼"""
@@ -368,6 +427,8 @@ def ensure_schema_updates():
             statements.append('ALTER TABLE submission ADD COLUMN elapsed_seconds INTEGER')
         if 'review_flag_question_ids' not in cols:
             statements.append('ALTER TABLE submission ADD COLUMN review_flag_question_ids TEXT')
+        if 'class_session_id' not in cols:
+            statements.append('ALTER TABLE submission ADD COLUMN class_session_id INTEGER REFERENCES class_session (id)')
         if 'total_points' in cols and needs_float_migration('submission', 'total_points'):
             if is_postgres:
                 statements.append('ALTER TABLE submission ALTER COLUMN total_points TYPE DOUBLE PRECISION')
@@ -800,37 +861,131 @@ def manage_quiz_bank(quiz_bank_id):
 # Tabs of the Quiz Bank manage page, in order. The first one opens by default.
 MANAGE_TABS = ('questions', 'settings', 'import')
 
+class StudentEntry:
+    """What a student code opens: one Quiz Bank, through a Class Session (or an old Quiz Bank code).
+
+    Old Quiz Bank codes still work until ticket 14 removes them; for them `class_session` is None.
+    """
+
+    def __init__(self, code, quiz_bank, class_session=None, offer=None):
+        self.code = code
+        self.quiz_bank = quiz_bank
+        self.class_session = class_session
+        self.offer = offer
+
+    @property
+    def take_key(self):
+        """Key for Take continuity (Flask session and browser storage): one per code and Quiz Bank."""
+        return self.code if self.class_session is None else f'{self.code}-{self.quiz_bank.id}'
+
+    @property
+    def time_limit_minutes(self):
+        if self.offer is not None:
+            return self.offer.time_limit_minutes
+        return self.quiz_bank.time_limit_minutes
+
+    def status(self, now=None):
+        if self.class_session is None:
+            return class_session_rules.LIVE
+        return class_session_rules.status(self.class_session, now or datetime.utcnow())
+
+    @property
+    def ends_at(self):
+        """The effective end (UTC) students work against, or None for an old Quiz Bank code."""
+        return None if self.class_session is None else class_session_rules.effective_end(self.class_session)
+
+    def page_context(self):
+        """Template values shared by the start, play, wait and ended pages."""
+        return {
+            'quiz_bank': self.quiz_bank,
+            'class_session': self.class_session,
+            'student_code': self.code,
+            'take_key': self.take_key,
+            'time_limit_minutes': self.time_limit_minutes,
+            'session_ends_at': self.ends_at,
+        }
+
+
+def find_student_entry(code, quiz_bank_id=None):
+    """Resolve a student code to a StudentEntry, or 404. `quiz_bank_id` picks one offered Quiz Bank
+    (default: the first one by position)."""
+    class_session = ClassSession.query.filter_by(code=code).first()
+    if class_session is not None:
+        offers = class_session.offers
+        if quiz_bank_id not in (None, ''):
+            try:
+                wanted = int(quiz_bank_id)
+            except (TypeError, ValueError):
+                abort(404)
+            offers = [o for o in offers if o.quiz_bank_id == wanted]
+        if not offers:
+            abort(404)
+        return StudentEntry(code, offers[0].quiz_bank, class_session, offers[0])
+    quiz_bank = QuizBank.query.filter_by(access_code=code, is_active=True).first_or_404()
+    return StudentEntry(code, quiz_bank)
+
+
+def render_class_session_gate(entry, status):
+    """The 這堂課還沒開始 (status SOON) or 這堂課已經結束 page. Refused, so 403."""
+    now = datetime.utcnow()
+    class_session = entry.class_session
+    starts_in = max(0, int((class_session.starts_at - now).total_seconds())) if status == class_session_rules.SOON else None
+    return render_template(
+        'class_session_gate.html',
+        status=status,
+        starts_in=starts_in,
+        course_open=class_session_rules.course_is_open(class_session.course, now),
+        **entry.page_context(),
+    ), 403
+
+
+def refuse_outside_window(entry):
+    """JSON refusal for draw/start when the Class Session is not live, else None."""
+    status = entry.status()
+    if status == class_session_rules.LIVE:
+        return None
+    message = '這堂課還沒開始' if status == class_session_rules.SOON else '這堂課已經結束'
+    return jsonify({'error': message, 'status': status}), 403
+
+
 @app.route('/quiz/<access_code>')
 def take_quiz(access_code):
-    quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
+    entry = find_student_entry(access_code, request.args.get('bank'))
+    status = entry.status()
+    if status != class_session_rules.LIVE:
+        return render_class_session_gate(entry, status)
+    quiz_bank = entry.quiz_bank
 
     if quiz_bank.quiz_mode == 'practice':
         practice_mode, practice_total = get_bank_scoring(quiz_bank)
         return render_template(
             'practice_landing.html',
-            quiz_bank=quiz_bank,
             category_ratios=get_category_ratios(quiz_bank),
             question_count=quiz_bank.session_question_count or 10,
             # Explicit points depend on the draw, so the start page cannot know the total yet.
             total_points=practice_total if practice_mode == 'average' else None,
+            **entry.page_context(),
         )
 
-    questions, _take_order = load_fixed_take_questions(access_code, quiz_bank.id)
+    questions, _take_order = load_fixed_take_questions(entry.take_key, quiz_bank.id)
     scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
     points_map = effective_points_map(questions, scoring_mode, scoring_total)
     questions_data = build_questions_data(questions, points_map)
-    return render_template('take_quiz.html', quiz_bank=quiz_bank, questions=questions_data, is_practice=False)
+    return render_template('take_quiz.html', questions=questions_data, is_practice=False, **entry.page_context())
 
 @app.route('/quiz/<access_code>/play')
 def play_quiz(access_code):
-    quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
-    session_key = get_practice_session_key(access_code)
-    session_data = session.get(session_key)
+    entry = find_student_entry(access_code, request.args.get('bank'))
+    status = entry.status()
+    if status != class_session_rules.LIVE:
+        return render_class_session_gate(entry, status)
+    quiz_bank = entry.quiz_bank
+    session_data = session.get(get_practice_session_key(entry.take_key))
     scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
 
     if quiz_bank.quiz_mode == 'practice':
         if not session_data or not session_data.get('question_ids'):
-            return redirect(url_for('take_quiz', access_code=access_code))
+            return redirect(url_for('take_quiz', access_code=access_code, bank=request.args.get('bank')))
 
         loaded = Question.query.filter(Question.id.in_(session_data['question_ids'])).all()
         questions = questions_in_id_order(loaded, session_data['question_ids'])
@@ -838,16 +993,16 @@ def play_quiz(access_code):
         questions_data = build_questions_data(questions, points_map)
         return render_template(
             'take_quiz.html',
-            quiz_bank=quiz_bank,
             questions=questions_data,
             is_practice=True,
             draw_warnings=session_data.get('warnings', []),
+            **entry.page_context(),
         )
 
-    questions, _take_order = load_fixed_take_questions(access_code, quiz_bank.id)
+    questions, _take_order = load_fixed_take_questions(entry.take_key, quiz_bank.id)
     points_map = effective_points_map(questions, scoring_mode, scoring_total)
     questions_data = build_questions_data(questions, points_map)
-    return render_template('take_quiz.html', quiz_bank=quiz_bank, questions=questions_data, is_practice=False)
+    return render_template('take_quiz.html', questions=questions_data, is_practice=False, **entry.page_context())
 
 # API 路由
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/toggle', methods=['POST'])
@@ -1042,7 +1197,12 @@ def update_practice_config(quiz_bank_id):
 
 @app.route('/api/quiz/<access_code>/draw', methods=['POST'])
 def draw_practice_quiz(access_code):
-    quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
+    data = request.get_json(silent=True) or {}
+    entry = find_student_entry(access_code, data.get('quiz_bank_id'))
+    refusal = refuse_outside_window(entry)
+    if refusal:
+        return refusal
+    quiz_bank = entry.quiz_bank
     if quiz_bank.quiz_mode != 'practice':
         return jsonify({'error': '此題庫不是練習模式'}), 400
 
@@ -1052,7 +1212,7 @@ def draw_practice_quiz(access_code):
         return jsonify({'error': warnings[0] if warnings else '無法抽題', 'warnings': warnings}), 400
 
     question_ids = [q.id for q in selected]
-    session[get_practice_session_key(access_code)] = {
+    session[get_practice_session_key(entry.take_key)] = {
         'question_ids': question_ids,
         'warnings': warnings,
     }
@@ -1061,7 +1221,8 @@ def draw_practice_quiz(access_code):
         'message': '抽題成功',
         'question_count': len(question_ids),
         'warnings': warnings,
-        'redirect': url_for('play_quiz', access_code=access_code),
+        'redirect': url_for('play_quiz', access_code=access_code,
+                            bank=quiz_bank.id if entry.class_session is not None else None),
     })
 
 @app.route('/api/import-quiz-md/preview', methods=['POST'])
@@ -1220,8 +1381,16 @@ def confirm_append_quiz_md(quiz_bank_id):
 
 @app.route('/api/quiz/<access_code>/submit', methods=['POST'])
 def submit_quiz(access_code):
-    quiz_bank = QuizBank.query.filter_by(access_code=access_code, is_active=True).first_or_404()
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
+    entry = find_student_entry(access_code, data.get('quiz_bank_id'))
+    if entry.class_session is not None:
+        now = datetime.utcnow()
+        if now < entry.class_session.starts_at:
+            return jsonify({'error': '這堂課還沒開始，不能交卷', 'status': class_session_rules.SOON}), 403
+        if not class_session_rules.accepts_hand_in(entry.class_session, now):
+            # Nothing is stored (spec #2 "Window check").
+            return jsonify({'error': LATE_HAND_IN_ERROR, 'status': class_session_rules.DONE}), 403
+    quiz_bank = entry.quiz_bank
 
     student_name = data.get('student_name')
     student_email = data.get('student_email', '')
@@ -1231,8 +1400,8 @@ def submit_quiz(access_code):
         return jsonify({'error': '請輸入姓名'}), 400
 
     is_practice = quiz_bank.quiz_mode == 'practice'
-    practice_session_key = get_practice_session_key(access_code)
-    take_session_key = get_take_session_key(access_code)
+    practice_session_key = get_practice_session_key(entry.take_key)
+    take_session_key = get_take_session_key(entry.take_key)
     practice_session = session.get(practice_session_key) if is_practice else None
 
     if is_practice:
@@ -1244,7 +1413,7 @@ def submit_quiz(access_code):
     else:
         bank_questions = Question.query.filter_by(quiz_bank_id=quiz_bank.id).order_by(Question.order_index).all()
         bank_ids = [q.id for q in bank_questions]
-        take_order = resolve_fixed_take_order_for_submit(access_code, bank_ids)
+        take_order = resolve_fixed_take_order_for_submit(entry.take_key, bank_ids)
         questions = questions_in_id_order(bank_questions, take_order)
 
     scoring_mode, scoring_total = get_bank_scoring(quiz_bank)
@@ -1255,10 +1424,10 @@ def submit_quiz(access_code):
         user_answer = answers.get(str(question.id))
         score += grade_question(question, user_answer, points=points_map.get(question.id))
 
+    # Elapsed Time is stored for every Submission, with or without a Time Limit (spec #2 "Schema").
     elapsed_seconds = None
-    bank_time_limit = getattr(quiz_bank, 'time_limit_minutes', None)
     raw_elapsed = data.get('elapsed_seconds')
-    if bank_time_limit and raw_elapsed is not None and raw_elapsed != '':
+    if raw_elapsed is not None and raw_elapsed != '':
         try:
             elapsed_seconds = int(raw_elapsed)
         except (TypeError, ValueError):
@@ -1284,6 +1453,7 @@ def submit_quiz(access_code):
         scoring_mode=scoring_mode,
         scoring_total_points=scoring_total,
         elapsed_seconds=elapsed_seconds,
+        class_session_id=entry.class_session.id if entry.class_session is not None else None,
     )
 
     db.session.add(submission)
@@ -1301,7 +1471,8 @@ def submit_quiz(access_code):
         'submission_id': submission.id,
         'result_url': url_for('view_result', result_token=submission.result_token),
         'is_practice': is_practice,
-        'retry_url': url_for('take_quiz', access_code=access_code) if is_practice else None,
+        'retry_url': url_for('take_quiz', access_code=access_code,
+                             bank=quiz_bank.id if entry.class_session is not None else None) if is_practice else None,
         'elapsed_seconds': submission.elapsed_seconds,
     })
 
@@ -1403,6 +1574,187 @@ def delete_submission(submission_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': '刪除失敗，請稍後再試'}), 500
+
+# ===== Courses and Class Sessions (ticket 09, issue #11) =====
+# Later tickets add their routes and helpers to this section (append; do not reorder).
+
+def _field_error(message, field, status=400):
+    return jsonify({'error': message, 'field': field}), status
+
+
+def parse_time_limit(value):
+    """Time Limit in whole minutes from a form value. Returns (minutes or None, error or None)."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None, None
+    text = str(value).strip()
+    try:
+        minutes = int(text)
+    except (TypeError, ValueError):
+        return None, '時限要是大於 0 的整數分鐘'
+    if minutes <= 0:
+        return None, '時限要是大於 0 的整數分鐘'
+    return minutes, None
+
+
+def open_courses(teacher_id, now=None):
+    """The Teacher's open Courses, the last-used one (newest Class Session) first, then newest first."""
+    now = now or datetime.utcnow()
+    courses = Course.query.filter_by(teacher_id=teacher_id).all()
+    last_used = dict(
+        db.session.query(ClassSession.course_id, db.func.max(ClassSession.created_at))
+        .filter(ClassSession.teacher_id == teacher_id).group_by(ClassSession.course_id).all()
+    )
+    open_ones = [c for c in courses if class_session_rules.course_is_open(c, now)]
+    return sorted(open_ones, key=lambda c: (last_used.get(c.id) or datetime.min, c.created_at or datetime.min, c.id),
+                  reverse=True)
+
+
+def last_time_limits(teacher_id):
+    """{quiz_bank_id: the Time Limit that Quiz Bank had in its latest Class Session (by start)}."""
+    rows = (db.session.query(ClassSessionBank.quiz_bank_id, ClassSessionBank.time_limit_minutes)
+            .join(ClassSession).filter(ClassSession.teacher_id == teacher_id)
+            .order_by(ClassSession.starts_at.asc(), ClassSession.id.asc()).all())
+    limits = {}
+    for bank_id, minutes in rows:
+        limits[bank_id] = minutes  # later rows win
+    return limits
+
+
+def class_session_dialog_data(teacher_id):
+    """Data for templates/_class_session_dialog.html: the open Courses and the pickable Quiz Banks."""
+    courses = open_courses(teacher_id)
+    limits = last_time_limits(teacher_id)
+    banks = (QuizBank.query.filter_by(teacher_id=teacher_id)
+             .order_by(QuizBank.created_at.desc(), QuizBank.id.desc()).all())
+    question_counts = dict(
+        db.session.query(Question.quiz_bank_id, db.func.count(Question.id))
+        .join(QuizBank).filter(QuizBank.teacher_id == teacher_id).group_by(Question.quiz_bank_id).all()
+    )
+    return {
+        'courses': [{
+            'id': c.id, 'name': c.name,
+            'ends_at': class_session_rules.to_wall_clock(c.ends_at) if c.ends_at else None,
+        } for c in courses],
+        'default_course_id': courses[0].id if courses else None,
+        'banks': [{
+            'id': b.id, 'title': b.title,
+            'mode': '隨機練習' if b.quiz_mode == 'practice' else '固定測驗',
+            'n_questions': question_counts.get(b.id, 0),
+            'last_time_limit': limits.get(b.id),
+        } for b in banks],
+    }
+
+
+def class_session_json(class_session):
+    return {
+        'id': class_session.id,
+        'code': class_session.code,
+        'name': class_session.name,
+        'course_id': class_session.course_id,
+        'course_name': class_session.course.name,
+        'url': url_for('take_quiz', access_code=class_session.code, _external=True),
+        'starts_at': class_session_rules.to_wall_clock(class_session.starts_at),
+        'ends_at': class_session_rules.to_wall_clock(class_session.ends_at),
+        'banks': [{'quiz_bank_id': o.quiz_bank_id, 'time_limit_minutes': o.time_limit_minutes}
+                  for o in class_session.offers],
+    }
+
+
+@app.route('/api/courses', methods=['POST'])
+@teacher_required
+def create_course():
+    """Create a Course with a name (ticket 13 adds the end date, end, reopen and delete)."""
+    data = request.get_json(silent=True) or {}
+    name = (data.get('name') or '').strip()
+    if not name:
+        return _field_error('請輸入課程名稱', 'name')
+    course = Course(teacher_id=current_teacher().user_id, name=name)
+    db.session.add(course)
+    db.session.commit()
+    return jsonify({'id': course.id, 'name': course.name}), 201
+
+
+@app.route('/api/class-sessions', methods=['POST'])
+@teacher_required
+def create_class_session():
+    """Open a Class Session.
+
+    Body: course_id (an open Course) or new_course_name, name, starts_at, ends_at
+    (ISO 8601; without an offset it is a UTC+8 wall clock), banks: [{quiz_bank_id, time_limit_minutes}].
+    Errors: 400/403/404 with {error, field}.
+    """
+    data = request.get_json(silent=True) or {}
+    teacher_id = current_teacher().user_id
+    now = datetime.utcnow()
+
+    course = None
+    new_course_name = (data.get('new_course_name') or '').strip()
+    if data.get('course_id') not in (None, '', 'new'):
+        try:
+            course = db.session.get(Course, int(data['course_id']))
+        except (TypeError, ValueError):
+            course = None
+        if course is None:
+            return _field_error('找不到這個課程', 'course', 404)
+        if not is_own(course):
+            return jsonify({'error': '無權限操作'}), 403
+        if not class_session_rules.course_is_open(course, now):
+            return _field_error('這個課程已經結束，不能再開課堂。請先重新開啟課程。', 'course')
+    elif not new_course_name:
+        return _field_error('請選擇課程，或輸入新課程的名稱', 'course')
+
+    name = (data.get('name') or '').strip()
+    if not name:
+        return _field_error('請輸入課堂名稱', 'name')
+
+    starts_at = class_session_rules.parse_wall_clock(data.get('starts_at'))
+    ends_at = class_session_rules.parse_wall_clock(data.get('ends_at'))
+    if starts_at is None or ends_at is None:
+        return _field_error('請選好開始和結束時間', 'starts_at' if starts_at is None else 'ends_at')
+    if ends_at <= starts_at:
+        return _field_error('結束時間要晚於開始時間', 'ends_at')
+    if ends_at <= now:
+        return _field_error('結束時間已經過了，學生會打不開', 'ends_at')
+
+    offers = []
+    seen = set()
+    for item in data.get('banks') or []:
+        item = item if isinstance(item, dict) else {'quiz_bank_id': item}
+        try:
+            bank_id = int(item.get('quiz_bank_id'))
+        except (TypeError, ValueError):
+            return _field_error('找不到這份題庫', 'banks', 404)
+        if bank_id in seen:
+            continue
+        quiz_bank = db.session.get(QuizBank, bank_id)
+        if quiz_bank is None:
+            return _field_error('找不到這份題庫', 'banks', 404)
+        if not is_own_quiz_bank(quiz_bank):
+            return jsonify({'error': '無權限操作'}), 403
+        minutes, error = parse_time_limit(item.get('time_limit_minutes'))
+        if error:
+            return _field_error(error, 'banks')
+        seen.add(bank_id)
+        offers.append((bank_id, minutes))
+    if not offers:
+        return _field_error('至少要選一份題庫', 'banks')
+
+    if course is None:
+        course = Course(teacher_id=teacher_id, name=new_course_name)
+        db.session.add(course)
+        db.session.flush()
+    class_session = ClassSession(
+        teacher_id=teacher_id, course_id=course.id, name=name,
+        code=new_class_session_code(), starts_at=starts_at, ends_at=ends_at,
+    )
+    db.session.add(class_session)
+    db.session.flush()
+    for position, (bank_id, minutes) in enumerate(offers):
+        db.session.add(ClassSessionBank(class_session_id=class_session.id, quiz_bank_id=bank_id,
+                                        position=position, time_limit_minutes=minutes))
+    db.session.commit()
+    return jsonify(class_session_json(class_session)), 201
+
 
 # 獲取當前環境
 @app.route('/api/environment')

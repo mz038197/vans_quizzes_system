@@ -78,3 +78,42 @@ def sign_in(client, user_id, name='測試老師'):
     with app_module.app.test_request_context():
         value = teacher_auth.sign_teacher_cookie(teacher_auth.Teacher(user_id=user_id, display_name=name))
     client.set_cookie(teacher_auth.TEACHER_COOKIE, value)
+
+
+# ---- Class Sessions (ticket 09, issue #11) ----
+
+def utc8_local(utc_dt):
+    """A naive UTC time as the 'YYYY-MM-DDTHH:MM:SS' wall clock in UTC+8 that the open-session dialog sends."""
+    from datetime import timedelta
+    return (utc_dt + timedelta(hours=8)).strftime('%Y-%m-%dT%H:%M:%S')
+
+
+def make_class_session(ids, starts_in=-60, ends_in=3000, time_limit=None, course_ends_in=None,
+                       course_ended=False, name='測試課堂', teacher_id=TEACHER_ROUTER_ID):
+    """Insert a Course and a Class Session offering the fixture Quiz Bank; times are seconds from now (UTC).
+
+    Returns the Class Session code. Use it for windows the API cannot make (an end in the past).
+    """
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    with app_module.app.app_context():
+        course = app_module.Course(
+            teacher_id=teacher_id, name=f'{name} 的課程',
+            ends_at=None if course_ends_in is None else now + timedelta(seconds=course_ends_in),
+            ended_at=now - timedelta(minutes=5) if course_ended else None,  # past the hand-in grace
+        )
+        app_module.db.session.add(course)
+        app_module.db.session.flush()
+        class_session = app_module.ClassSession(
+            teacher_id=teacher_id, course_id=course.id, name=name,
+            code=app_module.new_class_session_code(),
+            starts_at=now + timedelta(seconds=starts_in), ends_at=now + timedelta(seconds=ends_in),
+        )
+        app_module.db.session.add(class_session)
+        app_module.db.session.flush()
+        app_module.db.session.add(app_module.ClassSessionBank(
+            class_session_id=class_session.id, quiz_bank_id=ids['quiz_bank_id'],
+            position=0, time_limit_minutes=time_limit,
+        ))
+        app_module.db.session.commit()
+        return class_session.code
