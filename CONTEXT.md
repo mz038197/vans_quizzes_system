@@ -1,6 +1,6 @@
 # Vans Quizzes
 
-Teachers publish quiz banks that students take via a shareable access code; timed and untimed attempts are both first-class.
+Teachers open Class Sessions that offer one or more of their quiz banks; students open a Class Session through its code and take its quiz banks one by one, only inside its time window.
 
 ## Language
 
@@ -9,15 +9,15 @@ A person with the teacher or admin role on vans_coding_router who signed in here
 _Avoid_: Account, user, admin (as a separate role here)
 
 **Quiz Bank**:
-A teacher-owned collection of questions that students open with an access code. Modes are fixed (all questions) or practice (drawn subset). Deleting a Quiz Bank permanently removes it with its questions and Submissions; deactivating leaves Submissions intact. After deletion its access code may be reused.
+A teacher-owned collection of questions. Students reach it only through a Class Session that offers it; the Quiz Bank itself has no code. Modes are fixed (all questions) or practice (drawn subset). A Quiz Bank sits in at most one Folder. Deleting a Quiz Bank permanently removes it with its questions, Class Sessions and Submissions.
 _Avoid_: Exam, test paper, quiz set
 
 **Time Limit**:
-An optional duration, in minutes, on a Quiz Bank. When set, it applies to both fixed and practice takes; when unset, the take has no countdown and no auto-submit.
-_Avoid_: Exam duration, deadline, timeout (as the bank setting name)
+An optional duration, in minutes, that a Class Session sets for one Quiz Bank it offers: how long one Take of that Quiz Bank may last. A Quiz Bank on its own has no Time Limit; it is only the questions. When set, it applies to both fixed and practice Takes. It is separate from the Class Session's start and end, which decide when a Take may happen at all. It can change only before the Class Session starts. When unset, the Take shows Elapsed Time counting up instead of a countdown.
+_Avoid_: Exam duration, deadline, timeout (as the setting name)
 
 **Take**:
-One in-progress answering of a Quiz Bank, from the moment the student can answer on screen until hand-in. The Time Limit countdown starts at the beginning of a Take; continuity across refresh is kept in the student's browser only (clearing site data may start a fresh countdown). Each Take has a Take Order fixed when the Take begins.
+One in-progress answering of a Quiz Bank in one Class Session, from the moment the student can answer on screen until hand-in. The Time Limit countdown starts at the beginning of a Take; continuity across refresh is kept in the student's browser only (clearing site data may start a fresh countdown). Each Take has a Take Order fixed when the Take begins.
 _Avoid_: Attempt, session (for the answering period), exam sitting
 
 **Take Order**:
@@ -29,7 +29,7 @@ A student-set toggle on a question during a Take meaning “come back to this la
 _Avoid_: Bookmark, deferred, mark for grading, difficult tag (as the concept name)
 
 **Submission**:
-A student's completed set of answers for one Take of a Quiz Bank, including score, when it was handed in, Elapsed Time when the Quiz Bank had a Time Limit, the Take Order for that Take, and which questions still had a Review Flag at hand-in. Hand-in time is shown in UTC+8.
+A student's completed set of answers for one Take of one Quiz Bank in one Class Session, including score, when it was handed in, Elapsed Time, the Take Order for that Take, and which questions still had a Review Flag at hand-in. Hand-in time is shown in UTC+8.
 _Avoid_: Attempt, result record (for the persisted hand-in itself)
 
 **Result Link**:
@@ -45,9 +45,13 @@ The fixed product timezone for every wall-clock time shown to users (teachers an
 _Avoid_: Taiwan time, local time, browser timezone
 
 **Time-up Hand-in**:
-When the Time Limit expires, the Take is submitted immediately with answers so far (blank items score as unanswered), then the student is told time is up; confirming that message opens the result. The Submission records Elapsed Time only — not a separate “timed out” reason.
+When the Time Limit expires or the Class Session ends, whichever comes first, the Take is submitted immediately with answers so far (blank items score as unanswered), then the student is told which one happened; confirming that message opens the result. The Submission records Elapsed Time only — not a separate “timed out” reason.
 _Avoid_: Forced submit (as the user-facing name)
 
-**Group**:
-A teacher-owned, named collection used to organise Quiz Banks on the dashboard. A Quiz Bank can belong to many Groups and a Group can contain many Quiz Banks; a Quiz Bank with no Group is shown under the virtual “未分組” entry on the dashboard, not stored as a Group. Deleting a Group removes only its links to Quiz Banks — the Quiz Banks themselves stay and fall back to “未分組”.
-_Avoid_: Folder, tag, category (as the persisted concept name)
+**Class Session**:
+One run of one or more Quiz Banks for students, with a name (such as a class), a start and an end, and its own code. Students open it with its code and take each Quiz Bank it offers as a separate Take, each with its own Submission, only between the start and the end. A Quiz Bank can be offered by many Class Sessions, also at the same time, and each Class Session keeps its own Submissions. Deleting a Class Session permanently deletes its Submissions too.
+_Avoid_: 教室, Classroom, session (alone), access code (as a Quiz Bank property)
+
+**Folder**:
+A teacher-owned, named place for Quiz Banks, shown as 資料夾. A Quiz Bank sits in at most one Folder; one with no Folder is shown under “未分類”, which is not a Folder. Folders do not nest. Deleting a Folder moves its Quiz Banks back to “未分類” and deletes no Quiz Bank.
+_Avoid_: Group, 分組, tag, category (as the concept name)
