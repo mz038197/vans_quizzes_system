@@ -741,15 +741,18 @@ def index():
 @teacher_required
 def teacher_dashboard():
     teacher_id = current_teacher().user_id
-    banks = teacher_bank_overview(teacher_id)
-    since = datetime.utcnow() - 2 * teacher_stats.WEEK
+    now = datetime.utcnow()
+    sessions = teacher_class_session_overview(teacher_id, now)
+    banks = teacher_bank_overview(teacher_id, now, sessions)
+    since = now - 2 * teacher_stats.WEEK
     hand_ins = (db.session.query(Submission.student_name, Submission.submitted_at)
                 .join(QuizBank).filter(QuizBank.teacher_id == teacher_id,
                                        Submission.submitted_at >= since).all())
-    numbers = teacher_stats.week_numbers(hand_ins, datetime.utcnow())
+    numbers = teacher_stats.week_numbers(hand_ins, now)
     numbers['week_delta_text'] = teacher_stats.delta_text(numbers['week_delta'])
-    numbers['banks'] = len(banks)
-    numbers['open_banks'] = sum(1 for b in banks if b['bank'].is_active)
+    shown = [row for row in sessions if row['status'] != class_session_rules.DONE]
+    numbers['live_sessions'] = sum(1 for row in shown if row['status'] == class_session_rules.LIVE)
+    numbers['soon_sessions'] = len(shown) - numbers['live_sessions']
     numbers['attention'] = sum(1 for b in banks if b['attention'])
     recent = (db.session.query(Submission, QuizBank.title)
               .join(QuizBank).filter(QuizBank.teacher_id == teacher_id)
@@ -758,14 +761,18 @@ def teacher_dashboard():
         'submission': s, 'bank_title': title,
         'percent': teacher_stats.submission_percent(s.score, s.total_points),
     } for s, title in recent]
-    return render_template('teacher_dashboard.html', banks=banks, numbers=numbers, recent=recent)
+    return render_template('teacher_dashboard.html', banks=banks, numbers=numbers, recent=recent,
+                           sessions=shown, cs_dialog=class_session_dialog_data(teacher_id),
+                           has_session_sheet='class_session_sheet' in app.view_functions)
 
 
 @app.route('/quiz-banks')
 @teacher_required
 def quiz_banks():
     teacher_id = current_teacher().user_id
-    banks = teacher_bank_overview(teacher_id)
+    now = datetime.utcnow()
+    sessions = teacher_class_session_overview(teacher_id, now)
+    banks = teacher_bank_overview(teacher_id, now, sessions)
     folders = teacher_folders(teacher_id)
     folder = None
     if request.args.get('folder'):
@@ -785,12 +792,16 @@ def quiz_banks():
     cards = []
     for f in folders:
         inside = [b for b in banks if b['bank'].folder_id == f.id]
-        cards.append({'folder': f, 'n_banks': len(inside),
+        inside_ids = {b['bank'].id for b in inside}
+        n_live = sum(1 for row in sessions if row['status'] == class_session_rules.LIVE
+                     and any(o.quiz_bank_id in inside_ids for o in row['session'].offers))
+        cards.append({'folder': f, 'n_banks': len(inside), 'n_live': n_live,
                       'n_attention': sum(1 for b in inside if b['attention'])})
     return render_template('quiz_banks.html', banks=shown, total=len(banks),
                            attention_count=attention_count, attention_only=attention_only, query=query,
                            folder=folder, folder_cards=cards, folder_colors=FOLDER_COLORS,
-                           folders_json=[folder_json(f) for f in folders])
+                           folders_json=[folder_json(f) for f in folders],
+                           cs_dialog=class_session_dialog_data(teacher_id, folder.id if folder else None))
 
 
 def bank_matches(bank, query):
@@ -799,8 +810,50 @@ def bank_matches(bank, query):
     return needle in (bank.title or '').casefold() or needle in (bank.description or '').casefold()
 
 
-def teacher_bank_overview(teacher_id):
-    """The Teacher's Quiz Banks, newest first, with question count, Submission count, average and 需要注意."""
+def teacher_class_session_overview(teacher_id, now=None):
+    """Every Class Session of the Teacher with its status, Submission count and distinct trimmed names.
+
+    Sorted live first, then upcoming, then ended; soonest start first in each group.
+    An ended Course makes its Class Sessions DONE (class_session_rules.status).
+    """
+    now = now or datetime.utcnow()
+    class_sessions = ClassSession.query.filter_by(teacher_id=teacher_id).all()
+    names = {}
+    for session_id, name in (db.session.query(Submission.class_session_id, Submission.student_name)
+                             .join(ClassSession).filter(ClassSession.teacher_id == teacher_id).all()):
+        names.setdefault(session_id, []).append((name or '').strip())
+    rows = []
+    for class_session in class_sessions:
+        status = class_session_rules.status(class_session, now)
+        handed = names.get(class_session.id, [])
+        row = {'session': class_session, 'status': status, 'n_subs': len(handed),
+               'n_students': len(set(handed)), 'progress': None, 'when_text': None}
+        if status == class_session_rules.LIVE:
+            end = class_session_rules.effective_end(class_session)
+            span = (end - class_session.starts_at).total_seconds() or 1
+            done = (now - class_session.starts_at).total_seconds() / span * 100
+            row['progress'] = max(0, min(100, round(done)))
+            row['when_text'] = f'剩 {teacher_stats.duration_text(end - now)}'
+        elif status == class_session_rules.SOON:
+            row['when_text'] = f'{teacher_stats.duration_text(class_session.starts_at - now)}後'
+        rows.append(row)
+    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}
+    return sorted(rows, key=lambda r: (rank[r['status']], r['session'].starts_at))
+
+
+def teacher_bank_overview(teacher_id, now=None, sessions=None):
+    """The Teacher's Quiz Banks, newest first, with question count, Submission count, average,
+    Class Session status (session_kind, session_text) and 需要注意.
+
+    `sessions` is teacher_class_session_overview(...) when the caller already has it.
+    """
+    now = now or datetime.utcnow()
+    if sessions is None:
+        sessions = teacher_class_session_overview(teacher_id, now)
+    sessions_of = {}
+    for row in sessions:
+        for offer in row['session'].offers:
+            sessions_of.setdefault(offer.quiz_bank_id, []).append(row)
     banks = (QuizBank.query.filter_by(teacher_id=teacher_id)
              .order_by(QuizBank.created_at.desc(), QuizBank.id.desc()).all())
     question_counts = dict(
@@ -816,6 +869,11 @@ def teacher_bank_overview(teacher_id):
     overview = []
     for bank in banks:
         average = teacher_stats.average_percent(scores.get(bank.id, []))
+        own = sessions_of.get(bank.id, [])
+        session_kind, session_text = teacher_stats.bank_session_status(
+            (r['status'], r['session'].starts_at) for r in own)
+        attention = teacher_stats.attention_reason(
+            average, [(r['session'].name, r['status'], r['session'].starts_at, r['n_subs']) for r in own], now)
         overview.append({
             'bank': bank,
             'mode': '隨機練習' if bank.quiz_mode == 'practice' else '固定測驗',
@@ -823,7 +881,9 @@ def teacher_bank_overview(teacher_id):
             'n_subs': len(scores.get(bank.id, [])),
             'average': average,
             'average_text': None if average is None else teacher_stats.percent_text(average),
-            'attention': teacher_stats.attention_reason(average),
+            'attention': attention,
+            'session_kind': session_kind,
+            'session_text': session_text,
             'folder': folder_by_id.get(bank.folder_id),
         })
     return overview

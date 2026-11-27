@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timedelta
 
 import app as app_module
-from conftest import TEACHER_ROUTER_ID, sign_in
+from conftest import TEACHER_ROUTER_ID, make_class_session, sign_in
 
 _code_seq = iter(range(100000, 999999))
 
@@ -36,10 +36,15 @@ def _kpi(html, label):
     return match.group(1).strip(), (match.group(2) or '').strip()
 
 
+def _without_dialog_data(html):
+    """The page without the open-session dialog data, which lists every Quiz Bank of the Teacher."""
+    return re.sub(r'<script type="application/json" id="cs-dialog-data">.*?</script>', '', html, flags=re.S)
+
+
 def _dashboard(client):
     response = client.get('/teacher-dashboard')
     assert response.status_code == 200
-    return response.get_data(as_text=True)
+    return _without_dialog_data(response.get_data(as_text=True))
 
 
 def test_week_submissions_compare_with_last_week(auth_client):
@@ -78,13 +83,6 @@ def test_week_students_count_trimmed_distinct_names(auth_client):
     assert value == '2'
 
 
-def test_open_banks_out_of_all(auth_client):
-    _bank('Closed Bank', is_active=False)
-    _bank('Open Bank')
-    value, _ = _kpi(_dashboard(auth_client), '開放中的題庫')
-    assert value == '2 / 3'
-
-
 def test_attention_counts_banks_with_average_below_60(auth_client):
     low = _bank('Low Bank')
     _sub(low, 'A', score=5, total=10)   # 50%
@@ -110,11 +108,12 @@ def test_dashboard_lists_recent_submissions(auth_client):
 
 
 def test_dashboard_qr_panel_uses_local_library(auth_client):
+    code = make_class_session(auth_client._ids)
     html = _dashboard(auth_client)
     assert '/static/js/vendor/qrcode.js' in html
     assert 'qrcode-generator' not in html  # not from a CDN
     assert '全螢幕投影' in html
-    assert auth_client._ids['access_code'] in html  # open Quiz Bank offered in 上課發題
+    assert code in html  # the live Class Session is offered in 上課發題
     assert auth_client.get('/static/js/vendor/qrcode.js').status_code == 200
 
 
@@ -123,7 +122,7 @@ def test_quiz_banks_page_lists_banks_with_columns(auth_client):
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert 'Timed Bank' in html
-    for column in ('模式', '題數', '作答', '平均', '狀態', '代碼'):
+    for column in ('模式', '題數', '作答', '平均', '課堂', '代碼'):
         assert f'>{column}<' in html
     assert '建立題庫' in html
 
@@ -138,7 +137,7 @@ def test_quiz_banks_attention_filter_lists_only_low_average(auth_client):
     assert 'Low Bank' in html and 'Good Bank' in html and 'Timed Bank' in html
     assert '平均 10%，低於 60%' in html  # reason under the title of the row
 
-    html = auth_client.get('/quiz-banks?filter=attention').get_data(as_text=True)
+    html = _without_dialog_data(auth_client.get('/quiz-banks?filter=attention').get_data(as_text=True))
     assert 'Low Bank' in html
     assert 'Good Bank' not in html
     assert 'Timed Bank' not in html
@@ -150,13 +149,13 @@ def test_teacher_sees_only_own_quiz_banks(client):
 
     sign_in(client, TEACHER_ROUTER_ID)
     for path in ('/teacher-dashboard', '/quiz-banks', '/quiz-banks?filter=attention'):
-        html = client.get(path).get_data(as_text=True)
+        html = _without_dialog_data(client.get(path).get_data(as_text=True))
         assert 'Other Teacher Bank' not in html, path
         assert 'Other Student' not in html, path
     html = _dashboard(client)
     assert _kpi(html, '本週作答')[0] == '0'
     assert _kpi(html, '需要注意')[0] == '0'
-    assert _kpi(html, '開放中的題庫')[0] == '1 / 1'
+    assert _kpi(html, '進行中的課堂')[0] == '0'
 
 
 def test_quiz_banks_page_needs_sign_in(client):
