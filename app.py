@@ -937,7 +937,7 @@ def bank_matches(bank, query):
 def teacher_class_session_overview(teacher_id, now=None):
     """Every Class Session of the Teacher with its status, Submission count and distinct trimmed names.
 
-    Sorted live first, then upcoming, then ended; soonest start first in each group.
+    Sorted by class_session_rules.list_order (live, upcoming by start, ended by latest end).
     An ended Course makes its Class Sessions DONE (class_session_rules.status).
     """
     now = now or datetime.utcnow()
@@ -961,8 +961,7 @@ def teacher_class_session_overview(teacher_id, now=None):
         elif status == class_session_rules.SOON:
             row['when_text'] = f'{teacher_stats.duration_text(class_session.starts_at - now)}後'
         rows.append(row)
-    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}
-    return sorted(rows, key=lambda r: (rank[r['status']], r['session'].starts_at))
+    return sorted(rows, key=lambda r: class_session_rules.list_order(r['session'], r['status']))
 
 
 def teacher_bank_overview(teacher_id, now=None, sessions=None):
@@ -2297,15 +2296,7 @@ def quiz_bank_class_sessions(quiz_bank, now=None):
             'n_other_banks': len(class_session.offers) - 1,
             'course_open': class_session_rules.course_is_open(class_session.course, now),
         })
-    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}
-
-    def order(row):
-        class_session = row['session']
-        if row['status'] == class_session_rules.DONE:
-            return (rank[row['status']], -class_session_rules.effective_end(class_session).timestamp())
-        return (rank[row['status']], class_session.starts_at.timestamp())
-
-    return sorted(rows, key=order)
+    return sorted(rows, key=lambda r: class_session_rules.list_order(r['session'], r['status']))
 
 
 def class_session_status_label(class_session, status, now=None):
@@ -2328,7 +2319,7 @@ def create_course():
     name = (data.get('name') or '').strip()
     if not name:
         return _field_error('請輸入課程名稱', 'name')
-    ends_at, error = parse_course_end(data.get('ends_on'))
+    ends_at, error = class_session_rules.parse_course_end(data.get('ends_on'), datetime.utcnow())
     if error:
         return _field_error(error, 'ends_on')
     course = Course(teacher_id=current_teacher().user_id, name=name, ends_at=ends_at)
@@ -2449,7 +2440,7 @@ def class_session_edit_json(class_session, now=None):
     counts = submission_counts_by_bank(class_session)
     data = class_session_json(class_session)
     data.update({
-        'started': now >= class_session.starts_at,
+        'started': class_session_rules.has_started(class_session, now),
         'course_open': class_session_rules.course_is_open(class_session.course, now),
         'status': class_session_rules.status(class_session, now),
         'n_subs': sum(counts.values()),
@@ -2491,7 +2482,7 @@ def manage_class_session(class_session_id):
 
 
 def edit_class_session(class_session, data, now):
-    started = now >= class_session.starts_at
+    started = class_session_rules.has_started(class_session, now)
     if data.get('course_id') not in (None, '') and str(data.get('course_id')) != str(class_session.course_id):
         return _field_error('課堂建立後不能換課程', 'course')
 
@@ -2626,21 +2617,6 @@ def class_session_action(class_session_id, action):
     return jsonify(data)
 
 
-def parse_course_end(value, now=None):
-    """A Course end date ('YYYY-MM-DD', a UTC+8 day) → naive UTC of 23:59 that day.
-    Returns (ends_at or None, error or None). A day already past is refused (spec #2)."""
-    if value is None or not str(value).strip():
-        return None, None
-    try:
-        day = datetime.strptime(str(value).strip()[:10], '%Y-%m-%d')
-    except ValueError:
-        return None, '結束日期的格式不對'
-    ends_at = class_session_rules.parse_wall_clock(day.replace(hour=23, minute=59).isoformat())
-    if ends_at < (now or datetime.utcnow()):
-        return None, '結束日期已經過了。要結束課程，請按「結束課程」。'
-    return ends_at, None
-
-
 def course_json(course, now=None):
     now = now or datetime.utcnow()
     return {
@@ -2687,7 +2663,7 @@ def manage_course(course_id):
     if 'ends_on' in data:
         same_day = course.ends_at is not None and str(data.get('ends_on') or '')[:10] == course_json(course)['ends_on']
         if not same_day:
-            ends_at, error_text = parse_course_end(data.get('ends_on'), now)
+            ends_at, error_text = class_session_rules.parse_course_end(data.get('ends_on'), now)
             if error_text:
                 return _field_error(error_text, 'ends_on')
             course.ends_at = ends_at
@@ -2733,15 +2709,6 @@ def course_action(course_id, action):
 SESSION_TABS = (('all', '全部'), ('live', '進行中'), ('soon', '即將開始'), ('done', '已結束'))
 
 
-def class_session_order(row):
-    """Live first, then upcoming (soonest first), then ended (latest end first)."""
-    rank = {class_session_rules.LIVE: 0, class_session_rules.SOON: 1, class_session_rules.DONE: 2}[row['status']]
-    class_session = row['session']
-    if row['status'] == class_session_rules.DONE:
-        return (rank, -class_session_rules.effective_end(class_session).timestamp())
-    return (rank, class_session.starts_at.timestamp())
-
-
 def class_sessions_page_data(teacher_id, status_filter='all', query='', now=None):
     """The 課堂 page: open and ended Courses, each with its matching Class Session rows, and tab counts."""
     now = now or datetime.utcnow()
@@ -2771,7 +2738,7 @@ def class_sessions_page_data(teacher_id, status_filter='all', query='', now=None
             if is_open:
                 tab_counts['all'] += 1
                 tab_counts[status] += 1
-        rows.sort(key=class_session_order)
+        rows.sort(key=lambda r: class_session_rules.list_order(r['session'], r['status']))
         text = lambda row: ' '.join([course.name, row['session'].name, row['session'].code]
                                     + [b['title'] for b in row['banks']]).casefold()
         shown = [r for r in rows if (status_filter == 'all' or r['status'] == status_filter)
@@ -2793,17 +2760,7 @@ def class_sessions_page_data(teacher_id, status_filter='all', query='', now=None
 @app.template_global()
 def course_end_text(course):
     """到 12/31 23:59 / 已在 11/27 結束 / 沒有結束日期 (UTC+8)."""
-    def md(utc):
-        local = utc + timedelta(hours=8)
-        return f'{local.month}/{local.day}'
-
-    if course.ended_at is not None:
-        return f'已在 {md(course.ended_at)} 結束'
-    if course.ends_at is not None:
-        if course.ends_at < datetime.utcnow():
-            return f'已在 {md(course.ends_at)} 結束'
-        return f'到 {md(course.ends_at)} 23:59'
-    return '沒有結束日期'
+    return class_session_rules.course_end_text(course, datetime.utcnow())
 
 
 @app.route('/class-sessions')
