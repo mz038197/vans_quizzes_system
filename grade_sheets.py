@@ -63,9 +63,17 @@ def build_sheet(columns, hand_ins):
     return {'columns': column_stats, 'rows': rows}
 
 
-def cell_text(cell):
-    """The text of one cell in the CSV, as on the screen: '85' or '85 ×2', or 未作答."""
+TAKES_SUFFIX = ' 次數'
+
+
+def csv_header(column_titles):
+    """Two CSV columns for each sheet column: the score, then its number of Takes."""
+    return [h for title in column_titles for h in (title, title + TAKES_SUFFIX)]
+
+
+def csv_cells(cell):
+    """The two CSV values of one cell: the latest score as a plain number ('' when not answered)
+    and the number of Takes, so a spreadsheet can calculate with the scores."""
     if cell is None:
-        return NOT_ANSWERED
-    text = str(whole_percent(cell['percent']))
-    return f"{text} ×{cell['takes']}" if cell['takes'] > 1 else text
+        return ['', 0]
+    return [whole_percent(cell['percent']), cell['takes']]

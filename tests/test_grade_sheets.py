@@ -134,7 +134,7 @@ def test_session_sheet_links_to_its_course_sheet(auth_client):
     assert '/static/css/tokens.css' in html and 'class="top"' in html
 
 
-def test_session_sheet_csv_matches_the_screen(auth_client):
+def test_session_sheet_csv_has_a_number_and_a_take_count_per_column(auth_client):
     first = auth_client._ids['quiz_bank_id']
     second = _bank('迴圈與串列練習')
     cs = _session(_course(), '第 12 週 · 小考', [(first, 20), (second, None)])
@@ -143,11 +143,11 @@ def test_session_sheet_csv_matches_the_screen(auth_client):
     _hand_in(cs, second, '陳怡君', 9, total=10)
 
     rows = _csv(auth_client.get(f'/class-sessions/{cs}/sheet.csv'))
-    assert rows == [['學生', 'Timed Bank', '迴圈與串列練習'],
-                    ['李佳穎', '76 ×2', '未作答'],
-                    ['陳怡君', '未作答', '90']]
-    screen = _rows(_html(auth_client.get(f'/class-sessions/{cs}')))
-    assert [[c.replace('%', '') for c in r] for r in screen] == rows[1:]
+    # Each column is two CSV columns: the latest score as a plain number (blank when not answered)
+    # and the number of Takes, so a spreadsheet can calculate with the scores.
+    assert rows == [['學生', 'Timed Bank', 'Timed Bank 次數', '迴圈與串列練習', '迴圈與串列練習 次數'],
+                    ['李佳穎', '76', '2', '', '0'],
+                    ['陳怡君', '', '0', '90', '1']]
 
 
 def test_teacher_sees_only_own_sheets(client):
@@ -193,7 +193,7 @@ def test_course_sheet_rows_cells_average_and_answered_count(auth_client):
     ]
 
 
-def test_course_sheet_csv_matches_the_screen(auth_client):
+def test_course_sheet_csv_has_a_number_and_a_take_count_per_column(auth_client):
     course, a, b, week10, week12, term = _course_with_three_sessions(auth_client)
     _hand_in(week10, a, '王小明', 70)
     _hand_in(week12, b, '王小明', 85)
@@ -201,12 +201,12 @@ def test_course_sheet_csv_matches_the_screen(auth_client):
 
     rows = _csv(auth_client.get(f'/courses/{course}/sheet.csv'))
     assert rows == [
-        ['學生', '第 10 週 · 小考 · Timed Bank', '第 12 週 · 小考 · Timed Bank',
-         '第 12 週 · 小考 · 迴圈與串列練習', '整學期練習 · 迴圈與串列練習', '平均', '寫了'],
-        ['王小明', '70', '未作答', '90 ×2', '未作答', '80', '2 / 4'],
+        ['學生', '第 10 週 · 小考 · Timed Bank', '第 10 週 · 小考 · Timed Bank 次數',
+         '第 12 週 · 小考 · Timed Bank', '第 12 週 · 小考 · Timed Bank 次數',
+         '第 12 週 · 小考 · 迴圈與串列練習', '第 12 週 · 小考 · 迴圈與串列練習 次數',
+         '整學期練習 · 迴圈與串列練習', '整學期練習 · 迴圈與串列練習 次數', '平均', '寫了'],
+        ['王小明', '70', '1', '', '0', '90', '2', '', '0', '80', '2 / 4'],
     ]
-    screen = _rows(_html(auth_client.get(f'/courses/{course}')))
-    assert [[c.replace('%', '') for c in r] for r in screen] == rows[1:]
 
 
 # ---- review fix 3: Class Session and Course actions on the sheets (prototype) ----

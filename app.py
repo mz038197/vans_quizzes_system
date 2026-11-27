@@ -2113,7 +2113,7 @@ def sheet_csv(filename, header, sheet, with_summary):
     writer = csv.writer(out)
     writer.writerow(header)
     for row in sheet['rows']:
-        line = [row['name']] + [grade_sheets.cell_text(c) for c in row['cells']]
+        line = [row['name']] + [v for c in row['cells'] for v in grade_sheets.csv_cells(c)]
         if with_summary:
             line += ['' if row['average'] is None else grade_sheets.whole_percent(row['average']),
                      f"{row['answered']} / {len(row['cells'])}"]
@@ -2142,7 +2142,7 @@ def class_session_sheet(class_session_id):
 def class_session_sheet_csv(class_session_id):
     class_session = owned_or_404(ClassSession, class_session_id)
     sheet = grade_sheet([class_session])
-    header = ['學生'] + [c['quiz_bank'].title for c in sheet['columns']]
+    header = ['學生'] + grade_sheets.csv_header(c['quiz_bank'].title for c in sheet['columns'])
     return sheet_csv(f'{class_session.name}_課堂總表.csv', header, sheet, with_summary=False)
 
 
@@ -2166,7 +2166,8 @@ def course_sheet(course_id):
 def course_sheet_csv(course_id):
     course = owned_or_404(Course, course_id)
     sheet = grade_sheet(course_sessions_in_start_order(course))
-    header = (['學生'] + [f"{c['session'].name} · {c['quiz_bank'].title}" for c in sheet['columns']]
+    header = (['學生'] + grade_sheets.csv_header(f"{c['session'].name} · {c['quiz_bank'].title}"
+                                                 for c in sheet['columns'])
               + ['平均', '寫了'])
     return sheet_csv(f'{course.name}_課程總表.csv', header, sheet, with_summary=True)
 
