@@ -1,349 +1,178 @@
 {% extends "quiz_base.html" %}
+{% import "_ui.html" as ui %}
+{% from "_quiz_entry.html" import num %}
 
-{% block title %}測驗結果 - {{ submission.quiz_bank.title }}{% endblock %}
+{% block title %}成績單 - {{ submission.quiz_bank.title }}{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/quiz.css') }}">
+{% endblock %}
+
+{% block student_name %}{{ submission.student_name }}{% endblock %}
 
 {% block content %}
-<div style="max-width: 800px; margin: 0 auto;">
-    <div class="card">
-        <div class="card-header">
-            <h1 style="margin: 0; font-family: Consolas, monospace;">🎉 測驗結果</h1>
-        </div>
-        <div class="card-body">
-            <div style="text-align: center; margin-bottom: 2rem;">
-                <h2 style="color: #333; margin-bottom: 1rem; font-family: Consolas, monospace;">{{ submission.quiz_bank.title }}</h2>
-                
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; border-radius: 15px; margin: 2rem 0;">
-                    <div style="font-size: 4rem; font-weight: bold; margin-bottom: 0.5rem; font-family: Consolas, monospace;">
-                        {{ "%.1f"|format((submission.score / submission.total_points * 100) if submission.total_points > 0 else 0) }}%
-                    </div>
-                    <div style="font-size: 1.3rem; font-family: Consolas, monospace;">
-                        得分：{{ submission.score }} / {{ submission.total_points }} 分
-                    </div>
-                </div>
-                
-                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 10px; margin-bottom: 2rem;">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; text-align: center;">
-                        <div>
-                            <div style="font-size: 1.1rem; color: #666; font-family: Consolas, monospace;">學生姓名</div>
-                            <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">{{ submission.student_name }}</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 1.1rem; color: #666; font-family: Consolas, monospace;">完成時間</div>
-                            <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">{{ submission.submitted_at|utc8('%Y-%m-%d %H:%M') }}</div>
-                        </div>
-                        {% if submission.elapsed_seconds is not none %}
-                        <div>
-                            <div style="font-size: 1.1rem; color: #666; font-family: Consolas, monospace;">所花時間</div>
-                            <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">
-                                {{ (submission.elapsed_seconds // 60) }} 分 {{ (submission.elapsed_seconds % 60) }} 秒
-                            </div>
-                        </div>
-                        {% endif %}
-                        <div>
-                            <div style="font-size: 1.1rem; color: #666; font-family: Consolas, monospace;">題目數量</div>
-                            <div style="font-size: 1.3rem; font-weight: bold; color: #333; font-family: Consolas, monospace;">{{ questions|length }} 題</div>
-                        </div>
-                    </div>
-                </div>
-                
-                {% set percentage = (submission.score / submission.total_points * 100) if submission.total_points > 0 else 0 %}
-                {% if percentage >= 80 %}
-                <div style="background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; font-family: Consolas, monospace;">
-                    <strong style="font-family: Consolas, monospace;">🎉 優秀！</strong> 您的表現非常出色！
-                </div>
-                {% elif percentage >= 60 %}
-                <div style="background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; font-family: Consolas, monospace;">
-                    <strong style="font-family: Consolas, monospace;">👍 良好！</strong> 繼續努力，您會做得更好！
-                </div>
-                {% else %}
-                <div style="background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; font-family: Consolas, monospace;">
-                    <strong style="font-family: Consolas, monospace;">💪 加油！</strong> 多練習就會進步的！
-                </div>
-                {% endif %}
-            </div>
-            
-            <!-- 答題詳情 -->
-            <div style="margin-top: 2rem;">
-                <h3 style="margin-bottom: 1.5rem; color: #333; font-family: Consolas, monospace;">📋 答題詳情</h3>
-                
-                {% set student_answers = student_answers if student_answers is defined else submission.answers | from_json %}
-                {% for question in questions %}
-                {% set question_data = question.question_data | from_json %}
-                {% set user_answer = student_answers.get(question.id|string) %}
-                {% set is_correct = false %}
-                
-                <!-- 判斷答案是否正確 -->
-                {% if question.question_type in ['single_choice', 'dropdown'] %}
-                    {% set correct_answer = question_data.get('correct_answer') %}
-                    
-                    <!-- 多行文本比較邏輯 -->
-                    {% set is_correct = false %}
-                    
-                    <!-- 1. 直接比較 -->
-                    {% if user_answer == correct_answer %}
-                        {% set is_correct = true %}
-                    
-                    <!-- 2. 字符串化後比較 -->
-                    {% elif (user_answer|string) == (correct_answer|string) %}
-                        {% set is_correct = true %}
-                    
-                    <!-- 3. 標準化比較（去除前後空白） -->
-                    {% elif (user_answer|string).strip() == (correct_answer|string).strip() %}
-                        {% set is_correct = true %}
-                    
-                    <!-- 4. 換行符標準化比較 -->
-                    {% else %}
-                        {% set user_normalized = (user_answer|string).replace('\r\n', '\n').replace('\r', '\n').strip() if user_answer else "" %}
-                        {% set correct_normalized = (correct_answer|string).replace('\r\n', '\n').replace('\r', '\n').strip() if correct_answer else "" %}
-                        {% if user_normalized == correct_normalized %}
-                            {% set is_correct = true %}
-                        {% endif %}
-                    {% endif %}
-                    
-                    <!-- 調試信息 (隱藏顯示) -->
-                    <!-- Question {{ question.id }}: User={{ user_answer|tojson }}, Correct={{ correct_answer|tojson }}, Match={{ is_correct }} -->
-                {% elif question.question_type == 'multiple_choice' %}
-                    {% set correct_answers = question_data.get('correct_answers', []) %}
-                    {% set user_answers_set = user_answer if user_answer is iterable and user_answer is not string else [] %}
-                    {% set is_correct = (user_answers_set|sort == correct_answers|sort) %}
-                {% elif question.question_type == 'fill_blank' %}
-                    {% set correct_answer = question_data.get('correct_answer', '').lower().strip() %}
-                    {% set user_answer_clean = (user_answer or '').lower().strip() %}
-                    {% set is_correct = (user_answer_clean == correct_answer) %}
-                {% elif question.question_type == 'parsons' %}
-                    {% set correct_slot_answers = question_data.get('slot_answers', {}) %}
-                    {% set user_slot_answers = user_answer.get('slot_answers', {}) if user_answer is mapping else {} %}
-                    
-                    {# 檢查每個空格的答案是否正確 #}
-                    {% set is_correct = true %}
-                    {% for slot_num, correct_label in correct_slot_answers.items() %}
-                        {% if user_slot_answers.get(slot_num) != correct_label %}
-                            {% set is_correct = false %}
-                        {% endif %}
-                    {% endfor %}
-                    
-                    {# 確保所有空格都有答案 #}
-                    {% if user_slot_answers|length != correct_slot_answers|length %}
-                        {% set is_correct = false %}
-                    {% endif %}
-                {% endif %}
-                
-                <div class="question-result" style="border: 1px solid {{ '#c3e6cb' if is_correct else '#f5c6cb' }}; border-radius: 8px; margin-bottom: 1.5rem; overflow: hidden;">
-                    <div style="background: {{ '#d4edda' if is_correct else '#f8d7da' }}; padding: 1rem; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong style="font-family: Consolas, monospace;">題目 {{ loop.index }}</strong>
-                            <span style="margin-left: 1rem; color: #666; font-family: Consolas, monospace;">({{ (question_points or {}).get(question.id, question.points) }} 分)</span>
-                            {% if question.id in (review_flag_ids or []) %}
-                            <span style="margin-left: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 4px; background: #fff3e0; color: #e67e22; font-size: 0.85rem; font-family: Consolas, monospace;">Review Flag</span>
-                            {% endif %}
-                        </div>
-                        <div style="font-weight: bold; color: {{ '#155724' if is_correct else '#721c24' }}; font-family: Consolas, monospace;">
-                            {{ '✓ 正確' if is_correct else '✗ 錯誤' }}
-                        </div>
-                    </div>
-                    <div style="padding: 1rem;">
-                        <div style="margin-bottom: 1rem;">
-                            <strong style="font-family: Consolas, monospace;">題目：</strong><span style="white-space: pre-wrap; font-family: Consolas, monospace;">{{ question.question_text | trim }}</span>
-                        </div>
-                        {% if question_data.image and question_data.image.data_url %}
-                        <div style="margin-bottom: 1rem;">
-                            <img src="{{ question_data.image.data_url }}" alt="題目附圖" class="question-image">
-                        </div>
-                        {% endif %}
-                        
-                        {% if question.question_type in ['single_choice', 'multiple_choice'] %}
-                        <div style="margin-bottom: 1rem;">
-                            <strong style="font-family: Consolas, monospace;">選項：</strong>
-                            <div style="margin-top: 0.5rem;">
-                                {% for option in question_data.options %}
-                                {% if question.question_type == 'single_choice' %}
-                                    {# 对单选题进行更健壮的比较 #}
-                                    {% set option_clean = (option|string).strip() %}
-                                    {% set user_answer_clean = (user_answer|string).strip() %}
-                                    {% set is_user_choice = option_clean == user_answer_clean %}
-                                    
-                                    {# 调试信息（注释掉） #}
-                                    {# <!-- Debug: option="{{option_clean}}", user="{{user_answer_clean}}", match={{is_user_choice}} --> #}
-                                {% else %}
-                                    {# 多选题比较 #}
-                                    {% set is_user_choice = (user_answer and (option in user_answer)) %}
-                                {% endif %}
-                                {% if question.question_type == 'single_choice' %}
-                                    {# 单选题正确答案比较 #}
-                                    {% set correct_answer = question_data.get('correct_answer') %}
-                                    {% set is_correct_option = (option|string).strip() == (correct_answer|string).strip() %}
-                                {% else %}
-                                    {# 多选题正确答案比较 #}
-                                    {% set is_correct_option = option in question_data.get('correct_answers', []) %}
-                                {% endif %}
-                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; 
-                                     white-space: pre; font-family: Consolas, monospace; font-size: 13px; line-height: 1.4; 
-                                     text-indent: 0; margin-left: 0; overflow-x: auto;
-                                     background: {% if is_correct_option %}#d4edda{% elif is_user_choice %}#f8d7da{% else %}#f8f9fa{% endif %};">{{ option }}
-                                    {% if is_correct_option %}
-                                    <span style="color: #155724; font-weight: bold; font-family: Consolas, monospace;"> (正確答案)</span>
-                                    {% endif %}
-                                    {% if is_user_choice and not is_correct_option %}
-                                    <span style="color: #721c24; font-weight: bold; font-family: Consolas, monospace;"> (您的選擇)</span>
-                                    {% endif %}
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        
-                        {% elif question.question_type == 'fill_blank' %}
-                        <div style="margin-bottom: 1rem;">
-                            <strong style="font-family: Consolas, monospace;">您的答案：</strong>
-                            <span style="color: {{ '#155724' if is_correct else '#721c24' }}; font-family: Consolas, monospace;">{{ user_answer or '(未作答)' }}</span>
-                        </div>
-                        <div>
-                            <strong style="font-family: Consolas, monospace;">正確答案：</strong>
-                            <span style="color: #155724; font-family: Consolas, monospace;">{{ question_data.get('correct_answer') }}</span>
-                        </div>
-                        
-                        {% elif question.question_type == 'dropdown' %}
-                        <div style="margin-bottom: 1rem;">
-                            <strong style="font-family: Consolas, monospace;">您的選擇：</strong>
-                            <span style="color: {{ '#155724' if is_correct else '#721c24' }}; font-family: Consolas, monospace;">{{ user_answer or '(未選擇)' }}</span>
-                        </div>
-                        <div>
-                            <strong style="font-family: Consolas, monospace;">正確答案：</strong>
-                            <span style="color: #155724; font-family: Consolas, monospace;">{{ question_data.get('correct_answer') }}</span>
-                        </div>
-                        
-                        {% elif question.question_type == 'dropdown_fillblank' %}
-                        <div style="margin-bottom: 1rem;">
-                            <strong style="font-family: Consolas, monospace;">填空題文：</strong>
-                            <div style="margin-top: 0.5rem; padding: 0.5rem; background: #f8f9fa; border-radius: 4px; font-family: Consolas, monospace;">
-                                {{ question.question_text }}
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 1rem;">
-                            <strong style="font-family: Consolas, monospace;">您的答案：</strong>
-                            <div style="margin-top: 0.5rem;">
-                                {% for blank in question_data.get('blanks', []) %}
-                                {% set blank_id = 'blank_' ~ loop.index0 %}
-                                {% set user_blank_answer = user_answer[blank_id] if user_answer is mapping and blank_id in user_answer else '(未填寫)' %}
-                                {% set is_blank_correct = user_blank_answer == blank.get('correct_answer') %}
-                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; background: {{ '#d4edda' if is_blank_correct else '#f8d7da' }}; font-family: Consolas, monospace;">
-                                    空格 {{ loop.index }}: {{ user_blank_answer }}
-                                    <span style="color: {{ '#155724' if is_blank_correct else '#721c24' }}; font-weight: bold; font-family: Consolas, monospace;">
-                                        {{ '✓ 正確' if is_blank_correct else '✗ 錯誤' }}
-                                    </span>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        <div>
-                            <strong style="font-family: Consolas, monospace;">正確答案：</strong>
-                            <div style="margin-top: 0.5rem;">
-                                {% for blank in question_data.get('blanks', []) %}
-                                <div style="padding: 0.5rem; margin: 0.25rem 0; border-radius: 4px; background: #e8f5e8; font-family: Consolas, monospace;">
-                                    空格 {{ loop.index }}: {{ blank.get('correct_answer') }}
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        
-                        {% elif question.question_type == 'parsons' %}
-                        <div style="margin-bottom: 1rem;">
-                            <strong style="font-family: Consolas, monospace;">可選程式碼塊：</strong>
-                            <div style="font-family: Consolas, monospace; background: #f8f9fa; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
-                                {% for label in question_data.code_blocks.keys() | sort %}
-                                <div style="padding: 0.15rem 0; border-left: 3px solid #667eea; padding-left: 0.5rem; margin: 0.15rem 0; overflow-x: auto; font-family: Consolas, monospace; font-size: 14px; line-height: 1.4; height: auto; min-height: 0;">
-                                    <div style="display: flex; align-items: flex-start;">
-                                        <strong style="display: inline-block; width: 30px; flex-shrink: 0;">{{ label }}:</strong>
-                                        <div style="text-align: left; flex-grow: 1; white-space: pre;">{{ question_data.code_blocks[label] | safe }}</div>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 1rem;">
-                            <strong style="font-family: Consolas, monospace;">您的答案：</strong>
-                            <div style="background: {{ '#d4edda' if is_correct else '#f8d7da' }}; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
-                                {% if user_answer is mapping and user_answer.slot_answers %}
-                                    {% for i in range(1, question_data.answer_slots + 1) %}
-                                    {% set user_label = user_answer.slot_answers.get(i|string, '') %}
-                                    {% set correct_label = question_data.slot_answers.get(i|string, '') %}
-                                    {% set is_slot_correct = user_label == correct_label %}
-                                    <div style="padding: 0.5rem; margin: 0.25rem 0; background: {{ '#e8f5e8' if is_slot_correct else '#ffeaea' }}; border-radius: 4px;">
-                                        <strong style="font-family: Consolas, monospace;">空格 {{ i }}:</strong> 
-                                        {% if user_label %}
-                                            <div style="display: flex; align-items: flex-start;">
-                                                <span style="color: #667eea; font-weight: bold; display: inline-block; width: 30px; flex-shrink: 0;">{{ user_label }}</span>
-                                                <div style="text-align: left; flex-grow: 1; white-space: pre;">{{ question_data.code_blocks.get(user_label, '(未知)') | safe }}</div>
-                                            </div>
-                                            {% if is_slot_correct %}
-                                            <span style="color: #27ae60; margin-left: 1rem; font-family: Consolas, monospace;">✓ 正確</span>
-                                            {% else %}
-                                            <span style="color: #e74c3c; margin-left: 1rem; font-family: Consolas, monospace;">✗ 錯誤</span>
-                                            {% endif %}
-                                        {% else %}
-                                            <span style="color: #666; font-family: Consolas, monospace;">(未填寫)</span>
-                                        {% endif %}
-                                    </div>
-                                    {% endfor %}
-                                {% else %}
-                                    <div style="color: #721c24; padding: 0.5rem; font-family: Consolas, monospace;">(未完成)</div>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div>
-                            <strong style="font-family: Consolas, monospace;">正確答案：</strong>
-                            <div style="background: #e8f5e8; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
-                                {% for i in range(1, question_data.answer_slots + 1) %}
-                                {% set correct_label = question_data.slot_answers.get(i|string, '') %}
-                                <div style="padding: 0.5rem; margin: 0.25rem 0; background: white; border-radius: 4px;">
-                                    <strong style="font-family: Consolas, monospace;">空格 {{ i }}:</strong> 
-                                    <div style="display: flex; align-items: flex-start;">
-                                        <span style="color: #667eea; font-weight: bold; display: inline-block; width: 30px; flex-shrink: 0;">{{ correct_label }}</span>
-                                        <div style="text-align: left; flex-grow: 1; white-space: pre;">{{ question_data.code_blocks.get(correct_label, '') | safe }}</div>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endif %}
+{% set student_answers = student_answers if student_answers is defined else submission.answers | from_json %}
+{% set flags = review_flag_ids or [] %}
+{% set pct = (submission.score / submission.total_points * 100) if submission.total_points else 0 %}
+{% set right_count = questions | selectattr('id', 'in', correct_ids) | list | length %}
+{% set wrong_count = questions|length - right_count %}
+{% set flag_count = questions | selectattr('id', 'in', flags) | list | length %}
 
-                        {% if question_data.get('explanation') %}
-                        <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: #f0f4ff; border-radius: 6px; border-left: 4px solid #667eea;">
-                            <strong style="font-family: Consolas, monospace;">解析：</strong>
-                            <div style="margin-top: 0.35rem; white-space: pre-wrap; font-family: Consolas, monospace; color: #333;">{{ question_data.get('explanation') }}</div>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            
-            <div style="text-align: center; margin-top: 2rem; padding-top: 2rem; border-top: 1px solid #e9ecef;">
-                <button onclick="window.print()" class="btn btn-secondary" style="font-family: Consolas, monospace;">🖨️ 列印結果</button>
-                <a href="/quiz/{{ submission.quiz_bank.access_code }}" class="btn btn-primary" style="font-family: Consolas, monospace;">返回測驗</a>
-            </div>
+<div class="qz-res">
+    <section class="qz-res-top">
+        <div class="qz-ring{% if pct < 60 %} low{% elif pct < 80 %} mid{% endif %}" style="--p: {{ pct | round | int }}"
+             role="img" aria-label="得分 {{ pct | round | int }}%">
+            <div><div><b>{{ pct | round | int }}<small>%</small></b><span>{{ num(submission.score) }} / {{ num(submission.total_points) }} 分</span></div></div>
         </div>
+        <div>
+            <div class="muted small">{{ submission.student_name }} · {{ submission.submitted_at|utc8('%m-%d %H:%M') }} 交卷</div>
+            <h1>{{ submission.quiz_bank.title }}</h1>
+            <div class="qz-res-stats">
+                <div><span>答對</span><b>{{ right_count }} / {{ questions|length }} 題</b></div>
+                <div><span>用時</span><b>{% if submission.elapsed_seconds is not none %}{{ submission.elapsed_seconds // 60 }} 分 {{ submission.elapsed_seconds % 60 }} 秒{% else %}—{% endif %}</b></div>
+                <div><span>稍後再看</span><b>{{ flag_count }} 題</b></div>
+            </div>
+            {% if not teacher_view %}
+            <div class="qz-keep">{{ ui.note('這個網址就是你的成績單。把它加入書籤，之後可以再打開。') }}</div>
+            {% endif %}
+        </div>
+    </section>
+
+    <div class="qz-filters" role="group" aria-label="篩選題目">
+        <button type="button" data-filter="all" aria-pressed="true">全部 {{ questions|length }}</button>
+        <button type="button" data-filter="bad" aria-pressed="false">答錯 {{ wrong_count }}</button>
+        <button type="button" data-filter="flag" aria-pressed="false">稍後再看 {{ flag_count }}</button>
+    </div>
+    <p class="qz-filter-empty muted" id="qz-filter-empty" hidden>沒有符合的題目。</p>
+
+    {% for question in questions %}
+    {% set question_data = question.question_data | from_json %}
+    {% set user_answer = student_answers.get(question.id|string) %}
+    {% set is_correct = question.id in correct_ids %}
+    {% set points = (question_points or {}).get(question.id, question.points) %}
+    <article class="qz-rv {{ 'ok' if is_correct else 'bad' }}" id="rv-{{ question.id }}"
+             data-correct="{{ 1 if is_correct else 0 }}" data-flag="{{ 1 if question.id in flags else 0 }}">
+        <div class="qz-rv-h">
+            {{ ui.type_badge(question.question_type) }}
+            <span>第 {{ loop.index }} 題 · {{ num(points) }} 分</span>
+            {% if question.id in flags %}<span class="qz-flagpill"><i class="far fa-flag" aria-hidden="true"></i> 稍後再看</span>{% endif %}
+            <span class="st">
+                {% if is_correct %}<i class="fas fa-check" aria-hidden="true"></i> 答對 +{{ num(points) }}
+                {% else %}<i class="fas fa-times" aria-hidden="true"></i> 答錯 +0{% endif %}
+            </span>
+        </div>
+        {% if question.question_type != 'dropdown_fillblank' %}
+        <div class="q">{{ question.question_text | trim }}</div>
+        {% endif %}
+        {% if question_data.image and question_data.image.data_url %}
+        <img src="{{ question_data.image.data_url }}" alt="題目附圖" class="question-image">
+        {% endif %}
+
+        {% if question.question_type in ['single_choice', 'multiple_choice'] %}
+            {% for option in question_data.options %}
+            {% if question.question_type == 'single_choice' %}
+                {% set is_user_choice = (option|string).strip() == (user_answer|string).strip() %}
+                {% set is_correct_option = (option|string).strip() == (question_data.get('correct_answer')|string).strip() %}
+            {% else %}
+                {% set is_user_choice = (user_answer is iterable and user_answer is not string and option in user_answer) %}
+                {% set is_correct_option = option in question_data.get('correct_answers', []) %}
+            {% endif %}
+            {% if is_correct_option and is_user_choice %}
+            <div class="qz-ro right"><span class="txt">{{ option }}</span><span class="tag"><i class="fas fa-check" aria-hidden="true"></i> 你的答案 · 正確答案</span></div>
+            {% elif is_correct_option %}
+            <div class="qz-ro missed"><span class="txt">{{ option }}</span><span class="tag"><i class="fas fa-check" aria-hidden="true"></i> 正確答案{% if question.question_type == 'multiple_choice' %}（你沒選）{% endif %}</span></div>
+            {% elif is_user_choice %}
+            <div class="qz-ro wrong"><span class="txt">{{ option }}</span><span class="tag"><i class="fas fa-times" aria-hidden="true"></i> 你的答案</span></div>
+            {% else %}
+            <div class="qz-ro"><span class="txt">{{ option }}</span></div>
+            {% endif %}
+            {% endfor %}
+            {% if not user_answer %}<p class="muted small">你沒有作答這一題。</p>{% endif %}
+
+        {% elif question.question_type in ['fill_blank', 'dropdown'] %}
+        <dl class="qz-ab">
+            <dt>你的答案</dt>
+            {% if user_answer %}<dd class="{{ 'hi' if is_correct else 'lo' }}">{{ user_answer }}</dd>{% else %}<dd class="none">（未作答）</dd>{% endif %}
+            {% if not is_correct %}<dt>正確答案</dt><dd class="hi">{{ question_data.get('correct_answer') }}</dd>{% endif %}
+        </dl>
+
+        {% elif question.question_type == 'dropdown_fillblank' %}
+        <div class="q">{{ question.question_text }}</div>
+        <dl class="qz-ab">
+            {% for blank in question_data.get('blanks', []) %}
+            {% set blank_id = 'blank_' ~ loop.index0 %}
+            {% set user_blank = user_answer[blank_id] if user_answer is mapping and user_answer.get(blank_id) else none %}
+            {% set blank_ok = user_blank == blank.get('correct_answer') %}
+            <dt>第 {{ loop.index }} 格</dt>
+            <dd class="qz-blank">
+                你的答案：{% if user_blank %}<span class="{{ 'ok-text' if blank_ok else 'danger-text' }}">{{ user_blank }}</span>{% else %}<span class="muted">（未填寫）</span>{% endif %}
+                {% if not blank_ok %}<br>正確答案：<span class="ok-text">{{ blank.get('correct_answer') }}</span>{% endif %}
+            </dd>
+            {% endfor %}
+        </dl>
+
+        {% elif question.question_type == 'parsons' %}
+        {% set fixed_blocks = question_data.get('fixed_blocks') or {} %}
+        {% set user_slots = user_answer.get('slot_answers', {}) if user_answer is mapping else {} %}
+        {% set slot_nums = range(1, (question_data.get('answer_slots') or 0) + 1) | map('string') | reject('in', fixed_blocks) | list %}
+        <dl class="qz-ab">
+            <dt>你的答案</dt>
+            {% if user_slots %}
+            <dd class="{{ 'hi' if is_correct else 'lo' }}">{% for n in slot_nums %}{{ user_slots.get(n) or '＿' }}{% if not loop.last %} → {% endif %}{% endfor %}</dd>
+            {% else %}<dd class="none">（未作答）</dd>{% endif %}
+            {% if not is_correct %}
+            <dt>正確答案</dt>
+            <dd class="hi">{% for n in slot_nums %}{{ (question_data.get('slot_answers') or {}).get(n, '') }}{% if not loop.last %} → {% endif %}{% endfor %}</dd>
+            {% endif %}
+        </dl>
+        {% for label in (question_data.get('code_blocks') or {}).keys() | sort %}
+        <div class="qz-ro"><b>{{ label }}</b><span class="txt">{{ question_data.code_blocks[label] | safe }}</span></div>
+        {% endfor %}
+        {% endif %}
+
+        {% if question_data.get('explanation') %}
+        <div class="qz-explain"><b>解析：</b>{{ question_data.get('explanation') }}</div>
+        {% endif %}
+    </article>
+    {% endfor %}
+
+    <div class="qz-res-actions">
+        <button type="button" onclick="window.print()" class="btn"><i class="fas fa-print" aria-hidden="true"></i> 列印成績單</button>
+        {% if teacher_view %}
+        <a href="{{ url_for('view_submissions_page', quiz_bank_id=submission.quiz_bank_id) }}" class="btn btn-primary">返回成績</a>
+        {% elif submission.is_practice %}
+        <a href="/quiz/{{ submission.quiz_bank.access_code }}" class="btn btn-primary"><i class="fas fa-redo" aria-hidden="true"></i> 再練一次</a>
+        {% else %}
+        <a href="/quiz/{{ submission.quiz_bank.access_code }}" class="btn btn-primary">返回測驗</a>
+        {% endif %}
     </div>
 </div>
+{% endblock %}
 
-<style>
-/* 全局字体设置 */
-body, div, span, p, h1, h2, h3, h4, h5, h6, strong, button, a, input, select, textarea {
-    font-family: Consolas, monospace !important;
-}
-
-@media print {
-    .navbar { display: none !important; }
-    .btn { display: none !important; }
-    body { background: white !important; }
-    .container { box-shadow: none !important; }
-    .card { box-shadow: none !important; border: 1px solid #ddd !important; }
-}
-</style>
-
+{% block scripts %}
 <script>
-// 頁面載入時渲染 MathJax
+// Result filter: it only hides rows in this page. It does not change the URL or any data.
+(function () {
+    const buttons = document.querySelectorAll('.qz-filters [data-filter]');
+    const items = document.querySelectorAll('.qz-rv');
+    const empty = document.getElementById('qz-filter-empty');
+    function apply(filter) {
+        let shown = 0;
+        items.forEach(function (item) {
+            const show = filter === 'all'
+                || (filter === 'bad' && item.dataset.correct === '0')
+                || (filter === 'flag' && item.dataset.flag === '1');
+            item.hidden = !show;
+            if (show) { shown++; }
+        });
+        buttons.forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.filter === filter ? 'true' : 'false'); });
+        empty.hidden = shown > 0;
+    }
+    buttons.forEach(function (b) { b.addEventListener('click', function () { apply(b.dataset.filter); }); });
+})();
+
 document.addEventListener('DOMContentLoaded', function() {
-    if (typeof MathJax !== 'undefined') {
+    if (typeof MathJax !== 'undefined' && MathJax.typesetPromise) {
         MathJax.typesetPromise().catch((err) => console.log('MathJax typeset error:', err));
     }
 });

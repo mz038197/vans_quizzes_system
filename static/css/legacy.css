@@ -92,29 +92,6 @@
     border: 1px solid var(--border);
 }
 
-/* 練習入口：寬度依標題長度伸縮，避免標題換行或過寬空白 */
-.practice-landing {
-    width: fit-content;
-    max-width: 100%;
-    min-width: min(560px, 100%);
-}
-
-.practice-landing__header {
-    width: fit-content;
-    max-width: 100%;
-}
-
-.practice-landing__title {
-    margin: 0;
-    white-space: nowrap;
-}
-
-@media (max-width: 768px) {
-    .practice-landing__title {
-        white-space: normal;
-    }
-}
-
 .form-group {
     margin-bottom: 1.2rem;
 }
@@ -265,12 +242,6 @@
     text-indent: 0 !important;
     margin-left: 0 !important;
     overflow-x: auto;
-}
-
-/* 作答頁選項字級加大（覆寫上方 13px） */
-#quiz-questions .option-text {
-    font-size: 1.15rem !important;
-    line-height: 1.55 !important;
 }
 
 .option:hover {
