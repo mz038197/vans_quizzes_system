@@ -122,7 +122,8 @@ def test_row_shows_code_banks_with_time_limit_count_and_folder_and_fitting_actio
     make_class_session(ids, starts_in=3600, ends_in=7200, name='等一下')
     make_class_session(ids, starts_in=-7200, ends_in=-3600, name='剛剛')
     auth_client.post(f'/api/quiz/{live}/submit', json={
-        'student_name': 'Student A', 'answers': {str(ids['question_id']): 'A'}, 'elapsed_seconds': 5})
+        'student_name': 'Student A', 'quiz_bank_id': ids['quiz_bank_id'],
+        'answers': {str(ids['question_id']): 'A'}, 'elapsed_seconds': 5})
     html = _page(auth_client)
     rows = dict(re.findall(r'<tr data-class-session="\d+".*?class="t-title">([^<]+)<(.*?)</tr>', html, re.S))
     assert f'<span class="code">{live}</span>' in rows['現在']

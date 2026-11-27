@@ -39,7 +39,7 @@ def _submission_token(client):
     ids = client._ids
     response = client.post(
         f'/api/quiz/{live_code(client)}/submit',
-        json={'student_name': '學生甲', 'student_email': '', 'answers': {str(ids['question_id']): 'A'}},
+        json={'student_name': '學生甲', 'student_email': '', 'quiz_bank_id': ids['quiz_bank_id'], 'answers': {str(ids['question_id']): 'A'}},
     )
     assert response.status_code == 200
     return response.get_json()['result_url'].rsplit('/', 1)[-1]

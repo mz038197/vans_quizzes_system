@@ -21,7 +21,7 @@ def _submit(client, name='學生甲', email='', answer='A'):
     ids = client._ids
     response = client.post(
         f'/api/quiz/{live_code(client)}/submit',
-        json={'student_name': name, 'student_email': email, 'answers': {str(ids['question_id']): answer}},
+        json={'student_name': name, 'student_email': email, 'quiz_bank_id': ids['quiz_bank_id'], 'answers': {str(ids['question_id']): answer}},
     )
     assert response.status_code == 200
     return response.get_json()

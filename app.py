@@ -1742,6 +1742,10 @@ def confirm_append_quiz_md(quiz_bank_id):
 @app.route('/api/quiz/<code>/submit', methods=['POST'])
 def submit_quiz(code):
     data = request.get_json(silent=True) or {}
+    # A hand-in names its Quiz Bank; there is no fallback to the first offered one.
+    ClassSession.query.filter_by(code=code).first_or_404()
+    if data.get('quiz_bank_id') in (None, ''):
+        return jsonify({'error': '缺少題庫，請重新開啟測驗'}), 400
     entry = find_student_entry(code, data.get('quiz_bank_id'))
     now = datetime.utcnow()
     if now < entry.class_session.starts_at:

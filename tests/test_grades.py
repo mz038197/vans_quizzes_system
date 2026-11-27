@@ -37,7 +37,8 @@ def hand_in(client, code, name, right, elapsed=None, email=''):
     """Hand in with the first `right` questions answered right and the rest wrong."""
     qids = client._ids['question_ids']
     answers = {str(q): ('A' if i < right else 'B') for i, q in enumerate(qids)}
-    body = {'student_name': name, 'student_email': email, 'answers': answers}
+    body = {'student_name': name, 'student_email': email, 'answers': answers,
+            'quiz_bank_id': client._ids['quiz_bank_id']}
     if elapsed is not None:
         body['elapsed_seconds'] = elapsed
     response = client.post(f'/api/quiz/{code}/submit', json=body)
@@ -156,7 +157,7 @@ def test_most_missed_counts_a_blank_answer_as_wrong(bank):
     a = make_class_session(bank._ids, name='一班')
     qids = bank._ids['question_ids']
     response = bank.post(f'/api/quiz/{a}/submit', json={
-        'student_name': '甲', 'answers': {str(q): 'A' for q in qids[:4]},
+        'student_name': '甲', 'answers': {str(q): 'A' for q in qids[:4]}, 'quiz_bank_id': bank._ids['quiz_bank_id'],
     })
     assert response.status_code == 200
     assert [m['number'] for m in grades(bank)['most_missed']] == [5]

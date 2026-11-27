@@ -18,7 +18,7 @@ def _html(response):
 
 
 def _submit(client, code, name='Student A', **extra):
-    body = {'student_name': name, 'student_email': '',
+    body = {'student_name': name, 'student_email': '', 'quiz_bank_id': client._ids['quiz_bank_id'],
             'answers': {str(client._ids['question_id']): 'A'}, 'elapsed_seconds': 95}
     body.update(extra)
     return client.post(f'/api/quiz/{code}/submit', json=body)

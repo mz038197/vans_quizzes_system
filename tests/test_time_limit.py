@@ -13,6 +13,7 @@ def test_submit_persists_elapsed_seconds_and_lists_it(auth_client):
         f'/api/quiz/{access_code}/submit',
         json={
             'student_name': 'Alice',
+            'quiz_bank_id': ids['quiz_bank_id'],
             'student_email': '',
             'answers': {str(question_id): 'A'},
             'elapsed_seconds': 2538,
@@ -40,6 +41,7 @@ def test_submit_stores_elapsed_seconds_also_when_untimed(auth_client):
         f'/api/quiz/{access_code}/submit',
         json={
             'student_name': 'Bob',
+            'quiz_bank_id': ids['quiz_bank_id'],
             'student_email': '',
             'answers': {str(question_id): 'A'},
             'elapsed_seconds': 120,

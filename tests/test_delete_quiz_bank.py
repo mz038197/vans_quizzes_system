@@ -10,6 +10,7 @@ def _submit(auth_client, student_name='Alice'):
         f'/api/quiz/{live_code(auth_client)}/submit',
         json={
             'student_name': student_name,
+            'quiz_bank_id': ids['quiz_bank_id'],
             'student_email': '',
             'answers': {str(ids['question_id']): 'A'},
         },

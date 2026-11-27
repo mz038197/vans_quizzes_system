@@ -208,3 +208,22 @@ def test_the_list_page_uses_the_student_layout_and_no_browser_dialog_box(auth_cl
     assert not dialog_box.findall(html)
     assert not dialog_box.findall(_html(auth_client.get('/static/js/student_hub.js')))
     assert 'style=' not in html.split('<main', 1)[1]
+
+
+def test_hand_in_must_name_a_quiz_bank_the_class_session_offers(auth_client):
+    """No fallback to the first offered Quiz Bank (review fix 6)."""
+    first = auth_client._ids['quiz_bank_id']
+    second, _ = _add_bank('迴圈與串列練習')
+    other, _ = _add_bank('沒有提供的題庫')
+    code = _open(auth_client, [(first, None), (second, None)])
+    answers = {str(auth_client._ids['question_id']): 'A'}
+
+    for bank_id in (None, '', 'abc', other):
+        body = {'student_name': '學生甲', 'answers': answers}
+        if bank_id is not None:
+            body['quiz_bank_id'] = bank_id
+        response = auth_client.post(f'/api/quiz/{code}/submit', json=body)
+        assert response.status_code in (400, 404), (bank_id, response.status_code)
+
+    with app_module.app.app_context():
+        assert app_module.Submission.query.count() == 0
