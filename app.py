@@ -1104,18 +1104,15 @@ def preview_import_quiz_md():
         parsed = parse_md_quiz(content)
     except Exception as exc:
         return jsonify({'success': False, 'errors': [f'解析失敗：{exc}']}), 500
+    preview_questions = parsed['rows']
     if parsed['errors']:
-        return jsonify({'success': False, 'errors': parsed['errors']}), 400
-
-    preview_questions = []
-    for index, question in enumerate(parsed['questions'], start=1):
-        preview_questions.append({
-            'index': index,
-            'title': question['title'],
-            'question_type': question['question_type'],
-            'category': question.get('category', ''),
-            'points': question.get('points', 1),
-        })
+        return jsonify({
+            'success': False,
+            'errors': parsed['errors'],
+            'file_errors': parsed['file_errors'],
+            'questions': preview_questions,
+            'question_count': len(preview_questions),
+        }), 400
 
     return jsonify({
         'success': True,
@@ -1162,18 +1159,6 @@ def download_import_template():
 def download_append_questions_template():
     return send_from_directory('static/templates', 'quiz_questions_append.md', as_attachment=True)
 
-def _build_append_preview(questions):
-    preview_questions = []
-    for index, question in enumerate(questions, start=1):
-        preview_questions.append({
-            'index': index,
-            'title': question['title'],
-            'question_type': question['question_type'],
-            'category': question.get('category', ''),
-            'points': question.get('points', 1),
-        })
-    return preview_questions
-
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/import-md/preview', methods=['POST'])
 @teacher_required
 def preview_append_quiz_md(quiz_bank_id):
@@ -1197,11 +1182,18 @@ def preview_append_quiz_md(quiz_bank_id):
         return jsonify({'success': False, 'errors': [f'解析失敗：{exc}']}), 500
 
     if parsed['errors']:
-        return jsonify({'success': False, 'errors': parsed['errors'], 'warnings': parsed.get('warnings', [])}), 400
+        return jsonify({
+            'success': False,
+            'errors': parsed['errors'],
+            'warnings': parsed.get('warnings', []),
+            'file_errors': parsed['file_errors'],
+            'questions': parsed['rows'],
+            'question_count': len(parsed['rows']),
+        }), 400
 
     return jsonify({
         'success': True,
-        'questions': _build_append_preview(parsed['questions']),
+        'questions': parsed['rows'],
         'question_count': len(parsed['questions']),
         'warnings': parsed.get('warnings', []),
     })

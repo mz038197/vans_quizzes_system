@@ -255,10 +255,11 @@
             <div class="panel-h"><h2>預覽</h2><span class="muted small">確認後才會加入題庫</span></div>
             <div class="table-wrap">
                 <table class="table">
-                    <thead><tr><th>#</th><th>題型</th><th>題目</th><th>分類</th><th>分數</th></tr></thead>
+                    <thead><tr><th>#</th><th>題型</th><th>題目</th><th>分類</th><th>分數</th><th>答案</th><th><span class="sr-only">狀態</span></th></tr></thead>
                     <tbody id="append-preview-body"></tbody>
                 </table>
             </div>
+            <p class="preview-problems danger-text" id="append-problems" role="alert" hidden><i class="fas fa-exclamation-circle" aria-hidden="true"></i> 第 <span id="append-problem-list"></span> 題要先修正，才能匯入。</p>
             <div class="panel-h panel-foot">
                 <span class="muted small" id="append-summary"></span>
                 <button type="button" class="btn btn-primary" id="confirm-append-btn" onclick="confirmAppendImport()" disabled>加入題目</button>
@@ -1848,10 +1849,6 @@ function clearAppendAlert() {
     document.getElementById('append-alert').innerHTML = '';
 }
 
-function typeBadge(type) {
-    return `<span class="tb t-${escapeHtml(type)}">${escapeHtml(QUESTION_TYPE_NAMES[type] || type)}</span>`;
-}
-
 async function previewAppendImport(file) {
     appendFile = file;
     const formData = new FormData();
@@ -1868,8 +1865,10 @@ async function previewAppendImport(file) {
             body: formData
         });
         const data = await response.json();
+        const ok = response.ok && data.success;
+        const rows = data.questions || [];
 
-        if (!response.ok || !data.success) {
+        if (!rows.length) {
             const errors = (data.errors || [data.error || '預覽失敗']).map(escapeHtml).join('<br>');
             showAppendAlert(errors, 'danger');
             MdDrop.setInfo('append-drop', '這個檔案有問題，請修正後再選一次');
@@ -1877,25 +1876,20 @@ async function previewAppendImport(file) {
             return;
         }
 
-        MdDrop.setInfo('append-drop', `解析到 ${data.question_count} 題`);
-        if (data.warnings && data.warnings.length) {
+        const fileErrors = data.file_errors || [];
+        if (fileErrors.length) {
+            showAppendAlert(fileErrors.map(escapeHtml).join('<br>'), 'danger');
+        } else if (data.warnings && data.warnings.length) {
             showAppendAlert(data.warnings.map(escapeHtml).join('<br>'), 'warn');
         }
         const start = BANK_QUESTION_COUNT;
-        document.getElementById('append-preview-body').innerHTML = data.questions.map(item => `
-            <tr>
-                <td class="num">${start + item.index}</td>
-                <td>${typeBadge(item.question_type)}</td>
-                <td class="t-title">${escapeHtml(item.title)}</td>
-                <td>${item.category ? escapeHtml(item.category) : '<span class="muted">未分類</span>'}</td>
-                <td class="num">${escapeHtml(item.points)}</td>
-            </tr>
-        `).join('');
+        const bad = MdPreview.render('append', data, QUESTION_TYPE_NAMES, start);
+        MdDrop.setInfo('append-drop', bad ? `解析到 ${rows.length} 題，${bad} 題有問題` : `解析到 ${rows.length} 題`);
         document.getElementById('append-summary').textContent = `會加在現有 ${start} 題後面`;
-        confirmButton.textContent = `加入 ${data.question_count} 題`;
+        confirmButton.textContent = `加入 ${rows.length} 題`;
         document.getElementById('append-preview').hidden = false;
-        confirmButton.disabled = data.question_count === 0;
-        appendPreviewReady = data.question_count > 0;
+        confirmButton.disabled = !ok;
+        appendPreviewReady = ok;
     } catch (error) {
         showAppendAlert('網路錯誤，請檢查連線', 'danger');
     }
@@ -1992,4 +1986,5 @@ document.addEventListener('DOMContentLoaded', function() {
 {% block scripts %}
 <script>const QUESTION_TYPE_NAMES = {{ question_type_names | tojson }};</script>
 <script src="{{ url_for('static', filename='js/md_drop.js') }}"></script>
+<script src="{{ url_for('static', filename='js/md_preview.js') }}"></script>
 {% endblock %}

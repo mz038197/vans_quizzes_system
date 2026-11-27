@@ -54,10 +54,33 @@ def _merge_question_parts(parts):
     return blocks
 
 
+_INDEX_PREFIX = re.compile(r'^(練習模式)?第 \d+ 題\s*')
+
+
+def _reason(error):
+    """Error text without the 「第 N 題」 prefix, for the preview row."""
+    return _INDEX_PREFIX.sub('', error)
+
+
+def _answer_text(question_type, question_data):
+    if question_type == 'multiple_choice':
+        return '、'.join(question_data.get('correct_answers') or [])
+    return question_data.get('correct_answer', '') or ''
+
+
 def _parse_question_block(index, block):
+    """Return (question or None, errors, preview row or None)."""
     block = block.strip()
     if not block or block.startswith('#'):
-        return None, []
+        return None, [], None
+
+    question, errors, row = _parse_question_meta(index, block)
+    if row is not None:
+        row['errors'] = [_reason(error) for error in errors]
+    return question, errors, row
+
+
+def _parse_question_meta(index, block):
 
     parts = block.split('\n\n')
     meta_text = parts[0].strip()
@@ -79,18 +102,18 @@ def _parse_question_block(index, block):
     try:
         meta = yaml.safe_load(combined_meta) or {}
     except yaml.YAMLError as exc:
-        return None, [f'第 {index} 題 YAML 解析失敗：{exc}']
+        return None, [f'第 {index} 題 YAML 解析失敗：{exc}'], _empty_row(index)
 
     if not isinstance(meta, dict):
-        return None, [f'第 {index} 題 metadata 格式錯誤']
+        return None, [f'第 {index} 題 metadata 格式錯誤'], _empty_row(index)
 
     if 'type' not in meta:
-        return None, []
+        return None, [], None
 
     question_type = TYPE_ALIASES.get(meta.get('type', ''), meta.get('type', ''))
-    title = str(meta.get('title', '')).strip()
+    title = _as_text(meta.get('title'))
     question_text = body_text.strip()
-    category = str(meta.get('category', '')).strip()
+    category = _as_text(meta.get('category'))
 
     errors = []
     raw_points = meta.get('points', 1)
@@ -113,8 +136,16 @@ def _parse_question_block(index, block):
         errors.append(f'第 {index} 題 type 不支援：{meta.get("type")}')
 
     question_data = _build_question_data(index, question_type, meta, errors)
+    row = {
+        'index': index,
+        'title': title,
+        'question_type': question_type,
+        'category': category,
+        'points': points,
+        'answer': _answer_text(question_type, question_data),
+    }
     if errors:
-        return None, errors
+        return None, errors, row
 
     explanation = _as_text(meta.get('explanation'))
     if explanation:
@@ -127,7 +158,11 @@ def _parse_question_block(index, block):
         'points': points,
         'category': category,
         'question_data': question_data,
-    }, []
+    }, [], row
+
+
+def _empty_row(index):
+    return {'index': index, 'title': '', 'question_type': '', 'category': '', 'points': None, 'answer': ''}
 
 
 def _build_question_data(index, question_type, meta, errors):
@@ -145,13 +180,13 @@ def _build_question_data(index, question_type, meta, errors):
         if question_type == 'multiple_choice':
             correct_answers = meta.get('correct_answers') or []
             if not isinstance(correct_answers, list):
-                errors.append(f'第 {index} 題缺少 correct_answers')
+                errors.append(f'第 {index} 題沒有標記正確答案（correct_answers）')
                 return {'options': options, 'correct_answers': []}
             correct_answers = [_as_text(ans) for ans in correct_answers]
             if any(not ans for ans in correct_answers):
                 errors.append(f'第 {index} 題 correct_answers 含空值，特殊字元如 # 請加引號')
             if not any(ans for ans in correct_answers):
-                errors.append(f'第 {index} 題缺少 correct_answers')
+                errors.append(f'第 {index} 題沒有標記正確答案（correct_answers）')
             else:
                 invalid = [ans for ans in correct_answers if ans and ans not in options]
                 if invalid:
@@ -160,7 +195,7 @@ def _build_question_data(index, question_type, meta, errors):
 
         correct_answer = _as_text(meta.get('correct_answer'))
         if not correct_answer:
-            errors.append(f'第 {index} 題缺少 correct_answer')
+            errors.append(f'第 {index} 題沒有標記正確答案（correct_answer）')
         elif correct_answer not in options:
             errors.append(f'第 {index} 題 correct_answer 不在 options 中')
         return {'options': options, 'correct_answer': correct_answer}
@@ -168,7 +203,7 @@ def _build_question_data(index, question_type, meta, errors):
     if question_type == 'fill_blank':
         correct_answer = _as_text(meta.get('correct_answer'))
         if not correct_answer:
-            errors.append(f'第 {index} 題缺少 correct_answer')
+            errors.append(f'第 {index} 題沒有標記正確答案（correct_answer）')
         return {'correct_answer': correct_answer}
 
     return {}
@@ -194,11 +229,15 @@ def _parse_bank_settings(bank_meta):
     return bank
 
 
-def _validate_questions_for_mode(questions, quiz_mode, errors):
-    if quiz_mode == 'practice':
-        for idx, question in enumerate(questions, start=1):
-            if not question.get('category'):
-                errors.append(f'練習模式第 {idx} 題缺少 category')
+def _validate_rows_for_mode(rows, quiz_mode, errors):
+    """A practice Quiz Bank draws by category, so each question needs one."""
+    if quiz_mode != 'practice':
+        return
+    for row in rows:
+        if row['question_type'] and not row['category']:
+            error = f'練習模式第 {row["index"]} 題缺少 category'
+            errors.append(error)
+            row['errors'].append(_reason(error))
 
 
 def _validate_bank(bank, questions, errors):
@@ -212,17 +251,21 @@ def _validate_bank(bank, questions, errors):
 
         ratios = bank.get('category_ratios') or {}
         errors.extend(validate_category_ratios(ratios))
-        _validate_questions_for_mode(questions, 'practice', errors)
 
 
-def _parse_question_blocks(question_blocks, errors):
+def _parse_question_blocks(question_blocks, errors, quiz_mode='fixed'):
+    """Return (questions without problems, one preview row per question)."""
     questions = []
+    rows = []
     for idx, block in enumerate(question_blocks, start=1):
-        question, question_errors = _parse_question_block(idx, block)
+        question, question_errors, row = _parse_question_block(idx, block)
         errors.extend(question_errors)
+        if row is not None:
+            rows.append(row)
         if question:
             questions.append(question)
-    return questions
+    _validate_rows_for_mode(rows, quiz_mode, errors)
+    return questions, rows
 
 
 def parse_md_quiz(content):
@@ -230,17 +273,22 @@ def parse_md_quiz(content):
     bank_meta, question_blocks = _split_document(content)
 
     if bank_meta is None and not question_blocks:
-        return {'bank': {}, 'questions': [], 'errors': ['檔案內容為空或格式錯誤']}
+        error = ['檔案內容為空或格式錯誤']
+        return {'bank': {}, 'questions': [], 'rows': [], 'errors': error, 'file_errors': error}
 
     bank_meta = bank_meta or {}
     bank = _parse_bank_settings(bank_meta)
-    questions = _parse_question_blocks(question_blocks, errors)
-    _validate_bank(bank, questions, errors)
+    questions, rows = _parse_question_blocks(question_blocks, errors, bank['quiz_mode'])
+    file_errors = []
+    _validate_bank(bank, questions, file_errors)
+    errors.extend(file_errors)
 
     return {
         'bank': bank,
         'questions': questions,
+        'rows': rows,
         'errors': errors,
+        'file_errors': file_errors,
     }
 
 
@@ -260,7 +308,8 @@ def parse_md_questions_append(content, quiz_mode='fixed', existing_categories=No
     parts = re.split(r'^---\s*$', text, flags=re.MULTILINE)
     parts = [part.strip() for part in parts if part.strip()]
     if not parts:
-        return {'questions': [], 'errors': ['檔案內容為空或格式錯誤'], 'warnings': []}
+        error = ['檔案內容為空或格式錯誤']
+        return {'questions': [], 'rows': [], 'errors': error, 'file_errors': error, 'warnings': []}
 
     bank_meta = _parse_bank_meta(parts[0])
     if bank_meta is not None:
@@ -271,12 +320,12 @@ def parse_md_questions_append(content, quiz_mode='fixed', existing_categories=No
         question_parts = parts
 
     question_blocks = _merge_question_parts(question_parts)
-    questions = _parse_question_blocks(question_blocks, errors)
+    questions, rows = _parse_question_blocks(question_blocks, errors, quiz_mode)
 
+    file_errors = []
     if not questions and not errors:
-        errors.append('至少需要 1 道題目')
-
-    _validate_questions_for_mode(questions, quiz_mode, errors)
+        file_errors.append('至少需要 1 道題目')
+    errors.extend(file_errors)
 
     existing = {
         str(category).strip()
@@ -298,6 +347,8 @@ def parse_md_questions_append(content, quiz_mode='fixed', existing_categories=No
 
     return {
         'questions': questions,
+        'rows': rows,
         'errors': errors,
+        'file_errors': file_errors,
         'warnings': warnings,
     }

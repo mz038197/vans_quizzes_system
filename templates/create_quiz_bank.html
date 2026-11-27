@@ -68,10 +68,11 @@
             <div class="panel-b" id="import-summary"></div>
             <div class="table-wrap">
                 <table class="table">
-                    <thead><tr><th>#</th><th>題型</th><th>題目</th><th>分類</th><th>分數</th></tr></thead>
+                    <thead><tr><th>#</th><th>題型</th><th>題目</th><th>分類</th><th>分數</th><th>答案</th><th><span class="sr-only">狀態</span></th></tr></thead>
                     <tbody id="import-preview-body"></tbody>
                 </table>
             </div>
+            <p class="preview-problems danger-text" id="import-problems" role="alert" hidden><i class="fas fa-exclamation-circle" aria-hidden="true"></i> 第 <span id="import-problem-list"></span> 題要先修正，才能匯入。</p>
         </div>
         <div class="form-actions">
             <a class="btn" href="{{ banks_url }}">取消</a>
@@ -83,6 +84,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/md_drop.js') }}"></script>
+<script src="{{ url_for('static', filename='js/md_preview.js') }}"></script>
 <script>
 const QUESTION_TYPE_NAMES = {{ question_type_names | tojson }};
 let previewReady = false;
@@ -176,8 +178,10 @@ async function previewImport(file) {
             body: formData
         });
         const data = await response.json();
+        const ok = response.ok && data.success;
+        const rows = data.questions || [];
 
-        if (!response.ok || !data.success) {
+        if (!rows.length) {
             const errors = (data.errors || [data.error || '預覽失敗']).map(escapeHtml).join('<br>');
             showAlert(errors, 'danger');
             MdDrop.setInfo('create-drop', '這個檔案有問題，請修正後再選一次');
@@ -185,8 +189,12 @@ async function previewImport(file) {
             return;
         }
 
+        const fileErrors = data.file_errors || [];
+        if (fileErrors.length) showAlert(fileErrors.map(escapeHtml).join('<br>'), 'danger');
+        const bad = MdPreview.render('import', data, QUESTION_TYPE_NAMES);
+        MdDrop.setInfo('create-drop', bad ? `解析到 ${rows.length} 題，${bad} 題有問題` : `解析到 ${rows.length} 題`);
         const bank = data.bank || {};
-        MdDrop.setInfo('create-drop', `解析到 ${data.question_count} 題`);
+        document.getElementById('import-summary').hidden = !ok;
         document.getElementById('import-summary').innerHTML = `
             <dl class="kv kv-left">
                 <dt>題庫標題</dt><dd>${escapeHtml(bank.title || '')}</dd>
@@ -194,20 +202,10 @@ async function previewImport(file) {
                 <dt>題數</dt><dd>${data.question_count} 題</dd>
             </dl>
         `;
-        document.getElementById('import-preview-body').innerHTML = data.questions.map(item => `
-            <tr>
-                <td class="num">${item.index}</td>
-                <td><span class="tb t-${escapeHtml(item.question_type)}">${escapeHtml(QUESTION_TYPE_NAMES[item.question_type] || item.question_type)}</span></td>
-                <td class="t-title">${escapeHtml(item.title)}</td>
-                <td>${item.category ? escapeHtml(item.category) : '<span class="muted">未分類</span>'}</td>
-                <td class="num">${escapeHtml(item.points)}</td>
-            </tr>
-        `).join('');
-
         document.getElementById('import-preview').hidden = false;
-        confirmButton.textContent = `建立題庫（${data.question_count} 題）`;
-        confirmButton.disabled = false;
-        previewReady = true;
+        confirmButton.textContent = `建立題庫（${rows.length} 題）`;
+        confirmButton.disabled = !ok;
+        previewReady = ok;
     } catch (error) {
         showAlert('網路錯誤，請檢查連線', 'danger');
     }
