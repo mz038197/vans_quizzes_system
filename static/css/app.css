@@ -286,7 +286,7 @@ tr.is-link { cursor: pointer; }
 
 /* ===== Empty state ===== */
 .empty { padding: var(--s5) var(--s3); text-align: center; color: var(--muted); }
-.empty i { font-size: var(--fs-2xl); color: var(--border-strong); display: block; margin-bottom: var(--s1); }
+.empty > i { font-size: var(--fs-2xl); color: var(--border-strong); display: block; margin-bottom: var(--s1); }
 .empty .btn { margin-top: var(--s2); }
 
 /* ===== Popup menu ===== */
