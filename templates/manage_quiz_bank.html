@@ -101,7 +101,7 @@
                                 {% set fixed = data.fixed_blocks[slot_num] %}
                                 {% set indent_level = fixed.indent if fixed.indent is defined else 0 %}
                             {% endif %}
-                            <div class="pslot" style="--indent: {{ indent_level }}">
+                            <div class="pslot" data-indent="{{ indent_level }}">
                                 {% if is_fixed %}
                                 <div class="pblock">{{ fixed.content | safe }}</div>
                                 {% elif correct_label %}
@@ -128,7 +128,7 @@
             {% else %}
             <div class="panel">
                 {% call ui.empty('還沒有題目。一題一題加入，或從 Markdown 追加。', icon='fa-clipboard-list') %}
-                <div class="row" style="justify-content: center">
+                <div class="row qe-center">
                     <button type="button" class="btn btn-primary" onclick="showAddQuestionModal()"><i class="fas fa-plus" aria-hidden="true"></i> 新增題目</button>
                     <a class="btn" href="?tab=import" data-tab-link="import"><i class="fab fa-markdown" aria-hidden="true"></i> 從 Markdown 追加</a>
                 </div>
@@ -142,7 +142,7 @@
                 <h3>題型</h3>
                 {% set max_type = (type_counts | map(attribute=2) | max) if type_counts else 1 %}
                 {% for key, name, count in type_counts %}
-                <div class="tbar t-{{ key }}"><span>{{ name }}</span><div class="track"><div class="fill" style="width: {{ (count / max_type * 100) | round }}%"></div></div><span class="c num">{{ count }}</span></div>
+                <div class="tbar t-{{ key }}"><span>{{ name }}</span><progress class="track" max="100" value="{{ (count / max_type * 100) | round }}">{{ count }}</progress><span class="c num">{{ count }}</span></div>
                 {% else %}
                 <p class="muted small">還沒有題目。</p>
                 {% endfor %}
@@ -151,7 +151,7 @@
                 <h3>分類</h3>
                 {% set max_cat = (category_stats.values() | max) if category_stats else 1 %}
                 {% for name, count in category_stats | dictsort %}
-                <div class="tbar{{ ' is-none' if name == '未分類' }}"><span>{{ name }}</span><div class="track"><div class="fill" style="width: {{ (count / max_cat * 100) | round }}%"></div></div><span class="c num">{{ count }}</span></div>
+                <div class="tbar{{ ' is-none' if name == '未分類' }}"><span>{{ name }}</span><progress class="track" max="100" value="{{ (count / max_cat * 100) | round }}">{{ count }}</progress><span class="c num">{{ count }}</span></div>
                 {% else %}
                 <p class="muted small">還沒有題目。</p>
                 {% endfor %}
@@ -316,7 +316,7 @@
 </section>
 
 {# ===== 新增 / 編輯題目 ===== #}
-<div id="question-modal" class="qmodal-back" style="display: none;">
+<div id="question-modal" class="qmodal-back" hidden>
     <div class="qmodal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="row-between row qmodal-h">
             <h2 id="modal-title">新增題目</h2>
@@ -340,7 +340,7 @@
                 <input type="file" id="question-image" accept="image/png,image/jpeg,image/gif,image/webp">
                 <p class="help">PNG、JPG、GIF、WebP，一個檔案最大 2MB。圖片顯示在題目文字下方。</p>
                 <div id="question-image-preview"></div>
-                <button type="button" id="question-image-remove" class="btn btn-secondary" style="display: none;">移除圖片</button>
+                <button type="button" id="question-image-remove" class="btn btn-secondary" hidden>移除圖片</button>
             </div>
 
             <div class="form-group">
@@ -391,7 +391,7 @@ function resetQuestionImageState() {
     const removeButton = document.getElementById('question-image-remove');
     if (fileInput) fileInput.value = '';
     if (preview) preview.innerHTML = '';
-    if (removeButton) removeButton.style.display = 'none';
+    if (removeButton) removeButton.hidden = true;
 }
 
 function renderQuestionImagePreview(imageData) {
@@ -401,12 +401,12 @@ function renderQuestionImagePreview(imageData) {
 
     if (!imageData || !imageData.data_url) {
         preview.innerHTML = '';
-        removeButton.style.display = 'none';
+        removeButton.hidden = true;
         return;
     }
 
     preview.innerHTML = `<img src="${imageData.data_url}" alt="題目附圖預覽" class="question-image">`;
-    removeButton.style.display = 'inline-block';
+    removeButton.hidden = false;
 }
 
 function setPendingQuestionImage(imageData) {
@@ -420,11 +420,11 @@ function showAddQuestionModal() {
     document.getElementById('question-form').reset();
     document.getElementById('question-specific-content').innerHTML = '';
     resetQuestionImageState();
-    document.getElementById('question-modal').style.display = 'block';
+    document.getElementById('question-modal').hidden = false;
 }
 
 function hideQuestionModal() {
-    document.getElementById('question-modal').style.display = 'none';
+    document.getElementById('question-modal').hidden = true;
     resetQuestionImageState();
 }
 
@@ -437,18 +437,18 @@ function handleQuestionTypeChange() {
         case 'multiple_choice':
             container.innerHTML = `
                 <div class="form-group">
-                    <label>選項 * <span style="color: #667eea; font-size: 0.9rem;">(支援 LaTeX 數學公式)</span></label>
+                    <label>選項 * <span class="qe-hint">(支援 LaTeX 數學公式)</span></label>
                     <div id="options-container">
-                        <div class="option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <textarea class="option-input" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)" style="flex: 1; min-height: 60px;"></textarea>
-                            <label style="margin: 0; display: flex; align-items: center;">
-                                <input type="${type === 'single_choice' ? 'radio' : 'checkbox'}" name="correct-option" style="margin-right: 0.5rem;">
+                        <div class="option-row qe-optrow">
+                            <textarea class="option-input qe-opttext" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)"></textarea>
+                            <label class="qe-check">
+                                <input class="qe-mr1" type="${type === 'single_choice' ? 'radio' : 'checkbox'}" name="correct-option">
                                 正確
                             </label>
-                            <button type="button" onclick="removeOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            <button type="button" onclick="removeOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                         </div>
                     </div>
-                    <button type="button" onclick="addOption()" class="btn btn-secondary" style="margin-top: 0.5rem;">新增選項</button>
+                    <button type="button" onclick="addOption()" class="btn btn-secondary qe-mt1">新增選項</button>
                 </div>
             `;
             break;
@@ -467,16 +467,16 @@ function handleQuestionTypeChange() {
                 <div class="form-group">
                     <label>下拉選項 *</label>
                     <div id="dropdown-options-container">
-                        <div class="dropdown-option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <textarea class="dropdown-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
-                            <label style="margin: 0; display: flex; align-items: center;">
-                                <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;">
+                        <div class="dropdown-option-row qe-optrow">
+                            <textarea class="dropdown-option-input qe-opttext" placeholder="選項內容 (支援多行)"></textarea>
+                            <label class="qe-check">
+                                <input class="qe-mr1" type="radio" name="correct-dropdown">
                                 正確
                             </label>
-                            <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                         </div>
                     </div>
-                    <button type="button" onclick="addDropdownOption()" class="btn btn-secondary" style="margin-top: 0.5rem;">新增選項</button>
+                    <button type="button" onclick="addDropdownOption()" class="btn btn-secondary qe-mt1">新增選項</button>
                 </div>
             `;
             break;
@@ -485,15 +485,15 @@ function handleQuestionTypeChange() {
             container.innerHTML = `
                 <div class="form-group">
                     <label>填空題目文字 *</label>
-                    <textarea id="fillblank-text" rows="3" placeholder="請輸入題目文字，使用 {{ '{{}}' }} 標記需要填空的位置。例如：程式設計中，{{ '{{}}' }} 是一種控制結構，用來執行 {{ '{{}}' }} 操作。" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;"></textarea>
-                    <p style="color: #666; font-size: 0.9rem; margin-top: 0.5rem;">使用 {{ '{{}}' }} 標記填空位置，系統會自動為每個 {{ '{{}}' }} 生成對應的下拉選單</p>
+                    <textarea class="qe-field" id="fillblank-text" rows="3" placeholder="請輸入題目文字，使用 {{ '{{}}' }} 標記需要填空的位置。例如：程式設計中，{{ '{{}}' }} 是一種控制結構，用來執行 {{ '{{}}' }} 操作。"></textarea>
+                    <p class="qe-sub qe-mt1">使用 {{ '{{}}' }} 標記填空位置，系統會自動為每個 {{ '{{}}' }} 生成對應的下拉選單</p>
                 </div>
                 
                 <div class="form-group">
                     <label>空格選項設定</label>
-                    <div id="blanks-container" style="background: #f8f9fa; padding: 1rem; border-radius: 8px;">
-                        <p style="color: #666; margin-bottom: 1rem;">請先在上方文字中使用 {{ '{{}}' }} 標記填空位置，然後點擊下方按鈕解析空格</p>
-                        <button type="button" onclick="parseBlanks()" class="btn btn-primary" style="margin-bottom: 1rem;">解析空格</button>
+                    <div class="qe-box" id="blanks-container">
+                        <p class="muted qe-mb2">請先在上方文字中使用 {{ '{{}}' }} 標記填空位置，然後點擊下方按鈕解析空格</p>
+                        <button type="button" onclick="parseBlanks()" class="btn btn-primary qe-mb2">解析空格</button>
                         <div id="blanks-options-container"></div>
                     </div>
                 </div>
@@ -504,32 +504,32 @@ function handleQuestionTypeChange() {
             container.innerHTML = `
                 <div class="form-group">
                     <label>可供選擇的程式碼塊 *</label>
-                    <div id="code-blocks-container" style="background: #e8f5e8; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                        <div class="code-block-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
-                            <span style="min-width: 30px; color: #666;">A</span>
-                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
-                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                    <div class="qe-box qe-box-ok qe-mb2" id="code-blocks-container">
+                        <div class="code-block-row qe-optrow qe-mid">
+                            <span class="qe-blabel qe-blabel-plain">A</span>
+                            <textarea class="code-block-input qe-opttext qe-code" placeholder="程式碼塊內容 (支援多行)" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
+                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                         </div>
                     </div>
-                    <button type="button" onclick="addCodeBlock()" class="btn btn-success" style="margin-bottom: 1.5rem;">新增程式碼塊</button>
+                    <button type="button" onclick="addCodeBlock()" class="btn btn-success qe-mb3">新增程式碼塊</button>
                     
                     <label>答案區空格設定 *</label>
-                    <div style="background: #f0f7ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                        <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
-                            <label style="margin: 0;">答案區空格數量：</label>
-                            <input type="number" id="answer-slots-count" min="1" value="3" style="width: 80px;" onchange="updateAnswerSlots(); updateParsonsPreview();">
-                            <span style="color: #666; font-size: 0.9rem;">（自動更新）</span>
-                            <span id="parsons-completion-status" style="margin-left: auto; padding: 0.3rem 0.8rem; border-radius: 4px; font-size: 0.9rem; font-weight: 500;"></span>
+                    <div class="qe-box qe-box-info qe-mb2">
+                        <div class="qe-line qe-gap2 qe-mb2">
+                            <label class="qe-m0">答案區空格數量：</label>
+                            <input class="qe-num" type="number" id="answer-slots-count" min="1" value="3" onchange="updateAnswerSlots(); updateParsonsPreview();">
+                            <span class="qe-sub">（自動更新）</span>
+                            <span class="qe-status" id="parsons-completion-status"></span>
                         </div>
                         <div id="answer-slots-container"></div>
                     </div>
                     
                     <label>即時預覽</label>
-                    <div id="parsons-preview-container" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border: 1px solid #ddd; min-height: 200px;">
-                        <p style="color: #999; text-align: center; margin: 2rem 0;">請先設定程式碼塊和答案區空格</p>
+                    <div class="qe-box qe-preview qe-mb2" id="parsons-preview-container">
+                        <p class="qe-empty">請先設定程式碼塊和答案區空格</p>
                     </div>
                     
-                    <p style="color: #666; font-size: 0.9rem; margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                    <p class="qe-box qe-sub qe-mt2">
                         <strong>📝 說明：</strong><br>
                         • 先設定所有可供選擇的程式碼塊（標記為A、B、C...）<br>
                         • 設定答案區有多少個空格<br>
@@ -555,14 +555,14 @@ function addOption() {
     const isMultiple = document.getElementById('question-type').value === 'multiple_choice';
     const optionRow = document.createElement('div');
     optionRow.className = 'option-row';
-    optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+    optionRow.classList.add('qe-optrow');
     optionRow.innerHTML = `
-        <textarea class="option-input" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)" style="flex: 1; min-height: 60px;"></textarea>
-        <label style="margin: 0; display: flex; align-items: center;">
-            <input type="${isMultiple ? 'checkbox' : 'radio'}" name="correct-option" style="margin-right: 0.5rem;">
+        <textarea class="option-input qe-opttext" placeholder="選項內容 (支援多行和LaTeX公式，例如：$\\\\frac{1}{2}$)"></textarea>
+        <label class="qe-check">
+            <input class="qe-mr1" type="${isMultiple ? 'checkbox' : 'radio'}" name="correct-option">
             正確
         </label>
-        <button type="button" onclick="removeOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+        <button type="button" onclick="removeOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
     `;
     container.appendChild(optionRow);
 }
@@ -575,14 +575,14 @@ function addDropdownOption() {
     const container = document.getElementById('dropdown-options-container');
     const optionRow = document.createElement('div');
     optionRow.className = 'dropdown-option-row';
-    optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+    optionRow.classList.add('qe-optrow');
     optionRow.innerHTML = `
-        <textarea class="dropdown-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
-        <label style="margin: 0; display: flex; align-items: center;">
-            <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;">
+        <textarea class="dropdown-option-input qe-opttext" placeholder="選項內容 (支援多行)"></textarea>
+        <label class="qe-check">
+            <input class="qe-mr1" type="radio" name="correct-dropdown">
             正確
         </label>
-        <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+        <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
     `;
     container.appendChild(optionRow);
 }
@@ -597,11 +597,11 @@ function addCodeBlock() {
     const blockLabel = String.fromCharCode(65 + blockCount); // A, B, C...
     const blockRow = document.createElement('div');
     blockRow.className = 'code-block-row';
-    blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+    blockRow.classList.add('qe-optrow', 'qe-mid');
     blockRow.innerHTML = `
-        <span style="min-width: 30px; color: #667eea; font-weight: bold;">${blockLabel}</span>
-        <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
-        <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+        <span class="qe-blabel">${blockLabel}</span>
+        <textarea class="code-block-input qe-opttext qe-code" placeholder="程式碼塊內容 (支援多行)" oninput="updateAnswerSlots(); updateParsonsPreview();"></textarea>
+        <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger qe-btn-sm">刪除</button>
     `;
     container.appendChild(blockRow);
     updateAnswerSlots();
@@ -639,7 +639,7 @@ function updateAnswerSlots() {
     });
     
     if (codeBlocks.length === 0) {
-        container.innerHTML = '<p style="color: #e74c3c; margin: 0;">請先添加程式碼塊</p>';
+        container.innerHTML = '<p class="danger-text qe-m0">請先添加程式碼塊</p>';
         return;
     }
     
@@ -673,19 +673,19 @@ function updateAnswerSlots() {
         const slotType = currentTypes[slotNum] || 'answer';
         const slotDiv = document.createElement('div');
         slotDiv.className = 'slot-config-item';
-        slotDiv.style.cssText = 'margin-bottom: 1rem; padding: 1rem; background: white; border-radius: 8px; border: 1px solid #ddd;';
+        slotDiv.classList.add('qe-slot');
         
         let slotHTML = `
-            <div style="display: flex; align-items: center; margin-bottom: 0.8rem;">
-            <label style="min-width: 80px; margin: 0; font-weight: bold; color: #333;">空格 ${i}：</label>
-                <div style="display: flex; gap: 1rem; align-items: center;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="radio" name="slot-type-${i}" value="answer" ${slotType === 'answer' ? 'checked' : ''} onchange="toggleSlotType('${i}'); updateParsonsPreview(); checkParsonsCompletion();" style="margin-right: 0.3rem;">
-                        <span style="font-size: 0.9rem;">普通答案</span>
+            <div class="qe-line qe-mb2">
+            <label class="qe-slot-name">空格 ${i}：</label>
+                <div class="qe-line qe-gap2">
+                    <label class="qe-line qe-pick">
+                        <input class="qe-mr0" type="radio" name="slot-type-${i}" value="answer" ${slotType === 'answer' ? 'checked' : ''} onchange="toggleSlotType('${i}'); updateParsonsPreview(); checkParsonsCompletion();">
+                        <span class="qe-fs-sm">普通答案</span>
                     </label>
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="radio" name="slot-type-${i}" value="fixed" ${slotType === 'fixed' ? 'checked' : ''} onchange="toggleSlotType('${i}'); updateParsonsPreview(); checkParsonsCompletion();" style="margin-right: 0.3rem;">
-                        <span style="font-size: 0.9rem; color: #667eea;">固定程式碼塊</span>
+                    <label class="qe-line qe-pick">
+                        <input class="qe-mr0" type="radio" name="slot-type-${i}" value="fixed" ${slotType === 'fixed' ? 'checked' : ''} onchange="toggleSlotType('${i}'); updateParsonsPreview(); checkParsonsCompletion();">
+                        <span class="qe-hint">固定程式碼塊</span>
                     </label>
                 </div>
             </div>
@@ -696,16 +696,16 @@ function updateAnswerSlots() {
             // 固定程式碼塊：顯示程式碼輸入框
             slotHTML += `
                 <div class="slot-fixed-container" data-slot="${i}">
-                    <label style="display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem;">程式碼內容：</label>
-                    <textarea class="slot-fixed-content" data-slot="${i}" rows="3" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;" oninput="updateParsonsPreview();">${currentFixedContents[i] || ''}</textarea>
+                    <label class="qe-flabel">程式碼內容：</label>
+                    <textarea class="slot-fixed-content qe-field qe-code" data-slot="${i}" rows="3" placeholder="輸入固定顯示的程式碼..." oninput="updateParsonsPreview();">${currentFixedContents[i] || ''}</textarea>
                 </div>
             `;
         } else {
             // 普通答案：顯示下拉選擇
             slotHTML += `
                 <div class="slot-answer-container" data-slot="${i}">
-                    <label style="display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem;">選擇程式碼塊：</label>
-                    <select class="slot-answer-select" data-slot="${i}" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-family: Consolas, monospace;">
+                    <label class="qe-flabel">選擇程式碼塊：</label>
+                    <select class="slot-answer-select qe-field qe-code" data-slot="${i}">
                 <option value="">請選擇正確答案...</option>
         `;
         
@@ -719,9 +719,9 @@ function updateAnswerSlots() {
         
         // 縮排設置（兩種類型都有）
         slotHTML += `
-            <div style="display: flex; align-items: center; margin-top: 0.8rem;">
-                <label style="min-width: 60px; margin: 0; color: #666; font-size: 0.9rem;">縮排：</label>
-                <input type="number" class="slot-indent-input" data-slot="${i}" min="0" max="10" value="${currentIndents[i] || '0'}" style="width: 80px; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;" title="縮排級別（0-10，每個級別約20px）" onchange="updateParsonsPreview();">
+            <div class="qe-line qe-mt2">
+                <label class="qe-indent-label">縮排：</label>
+                <input type="number" class="slot-indent-input qe-field qe-num" data-slot="${i}" min="0" max="10" value="${currentIndents[i] || '0'}" title="縮排級別（0-10，每個級別約20px）" onchange="updateParsonsPreview();">
             </div>
         `;
         
@@ -763,7 +763,7 @@ function toggleSlotType(slotNum) {
     if (selectedType === 'fixed') {
         // 切換到固定程式碼塊
         if (answerContainer) {
-            answerContainer.style.display = 'none';
+            answerContainer.hidden = true;
         }
         if (!fixedContainer) {
             // 創建固定程式碼塊輸入框
@@ -779,19 +779,19 @@ function toggleSlotType(slotNum) {
             const indentDiv = indentInput.parentElement;
             
             const fixedHTML = `
-                <div class="slot-fixed-container" data-slot="${slotNum}" style="margin-top: 0.8rem;">
-                    <label style="display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem;">程式碼內容：</label>
-                    <textarea class="slot-fixed-content" data-slot="${slotNum}" rows="3" placeholder="輸入固定顯示的程式碼..." style="width: 100%; font-family: Consolas, monospace; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px;" oninput="updateParsonsPreview();"></textarea>
+                <div class="slot-fixed-container qe-mt2" data-slot="${slotNum}">
+                    <label class="qe-flabel">程式碼內容：</label>
+                    <textarea class="slot-fixed-content qe-field qe-code" data-slot="${slotNum}" rows="3" placeholder="輸入固定顯示的程式碼..." oninput="updateParsonsPreview();"></textarea>
         </div>
     `;
             indentDiv.insertAdjacentHTML('beforebegin', fixedHTML);
         } else {
-            fixedContainer.style.display = 'block';
+            fixedContainer.hidden = false;
         }
     } else {
         // 切換到普通答案
         if (fixedContainer) {
-            fixedContainer.style.display = 'none';
+            fixedContainer.hidden = true;
         }
         if (!answerContainer) {
             // 創建下拉選擇框
@@ -807,9 +807,9 @@ function toggleSlotType(slotNum) {
             const indentDiv = indentInput.parentElement;
             
             let selectHTML = `
-                <div class="slot-answer-container" data-slot="${slotNum}" style="margin-top: 0.8rem;">
-                    <label style="display: block; margin-bottom: 0.5rem; color: #666; font-size: 0.9rem;">選擇程式碼塊：</label>
-                    <select class="slot-answer-select" data-slot="${slotNum}" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-family: Consolas, monospace;">
+                <div class="slot-answer-container qe-mt2" data-slot="${slotNum}">
+                    <label class="qe-flabel">選擇程式碼塊：</label>
+                    <select class="slot-answer-select qe-field qe-code" data-slot="${slotNum}">
                         <option value="">請選擇正確答案...</option>
             `;
             
@@ -829,7 +829,7 @@ function toggleSlotType(slotNum) {
                 });
             }
         } else {
-            answerContainer.style.display = 'block';
+            answerContainer.hidden = false;
         }
     }
 }
@@ -856,13 +856,13 @@ function updateParsonsPreview() {
     });
     
     if (Object.keys(codeBlocks).length === 0 || slotConfigItems.length === 0) {
-        previewContainer.innerHTML = '<p style="color: #999; text-align: center; margin: 2rem 0;">請先設定程式碼塊和答案區空格</p>';
+        previewContainer.innerHTML = '<p class="qe-empty">請先設定程式碼塊和答案區空格</p>';
         return;
     }
     
     // 生成預覽HTML
-    let previewHTML = '<div style="display: flex; gap: 1rem; flex-direction: column;">';
-    previewHTML += '<h4 style="margin: 0 0 0.5rem 0; color: #667eea; font-size: 0.9rem;">答題區預覽</h4>';
+    let previewHTML = '<div class="qe-pv">';
+    previewHTML += '<h4 class="qe-pv-h">答題區預覽</h4>';
     
     Array.from(slotConfigItems).forEach((item) => {
         const indentInput = item.querySelector('.slot-indent-input');
@@ -870,34 +870,34 @@ function updateParsonsPreview() {
         if (!slotNum) return;
         
         const indentLevel = indentInput ? (parseInt(indentInput.value) || 0) : 0;
-        const indentPx = indentLevel * 20;
+        const indentStep = Math.max(0, Math.min(10, indentLevel));
         
         // 獲取類型
         const typeRadio = item.querySelector(`input[name="slot-type-${slotNum}"]:checked`);
         const slotType = typeRadio ? typeRadio.value : 'answer';
         
-        previewHTML += '<div style="display: flex; align-items: center; margin-bottom: 0.5rem;">';
-        previewHTML += `<span style="min-width: 60px; color: #666; font-size: 0.85rem;">空格 ${slotNum}：</span>`;
-        previewHTML += `<div style="flex: 1; margin-left: ${indentPx}px; border: 2px dashed #bbb; border-radius: 6px; padding: 0.5rem; background: white; min-height: 40px; display: flex; align-items: center;">`;
+        previewHTML += '<div class="qe-line qe-mb1">';
+        previewHTML += `<span class="qe-pv-name">空格 ${slotNum}：</span>`;
+        previewHTML += `<div class="qe-pv-slot" data-indent="${indentStep}">`;
         
         if (slotType === 'fixed') {
             const fixedContent = item.querySelector('.slot-fixed-content')?.value.trim() || '';
             if (fixedContent) {
                 const preview = fixedContent.substring(0, 50) + (fixedContent.length > 50 ? '...' : '');
-                previewHTML += `<span style="font-family: Consolas, monospace; font-size: 0.85rem; color: #2d3748; background: #f0f0f0; padding: 0.3rem 0.6rem; border-radius: 4px;">${preview}</span>`;
-                previewHTML += '<span style="margin-left: 0.5rem; color: #667eea; font-size: 0.75rem;">[固定]</span>';
+                previewHTML += `<span class="qe-pv-fixed">${preview}</span>`;
+                previewHTML += '<span class="qe-pv-tag">[固定]</span>';
             } else {
-                previewHTML += '<span style="color: #999; font-style: italic; font-size: 0.85rem;">未輸入程式碼</span>';
+                previewHTML += '<span class="qe-pv-empty">未輸入程式碼</span>';
             }
         } else {
             const answerSelect = item.querySelector('.slot-answer-select');
             const selectedAnswer = answerSelect ? answerSelect.value : '';
             if (selectedAnswer && codeBlocks[selectedAnswer]) {
                 const preview = codeBlocks[selectedAnswer].substring(0, 50) + (codeBlocks[selectedAnswer].length > 50 ? '...' : '');
-                previewHTML += `<span style="font-family: Consolas, monospace; font-size: 0.85rem; color: #27ae60;">${preview}</span>`;
-                previewHTML += `<span style="margin-left: 0.5rem; color: #27ae60; font-size: 0.75rem; font-weight: bold;">[${selectedAnswer}]</span>`;
+                previewHTML += `<span class="qe-pv-code">${preview}</span>`;
+                previewHTML += `<span class="qe-pv-tag is-ok">[${selectedAnswer}]</span>`;
             } else {
-                previewHTML += '<span style="color: #999; font-style: italic; font-size: 0.85rem;">未設定</span>';
+                previewHTML += '<span class="qe-pv-empty">未設定</span>';
             }
         }
         
@@ -955,16 +955,16 @@ function checkParsonsCompletion() {
     // 更新狀態顯示
     if (codeBlocksCount < 2) {
         statusElement.textContent = '⚠️ 至少需要2個程式碼塊';
-        statusElement.style.background = '#fff3cd';
-        statusElement.style.color = '#856404';
+        statusElement.classList.remove('is-ok');
+        statusElement.classList.add('is-warn');
     } else if (completedSlots < totalSlots) {
         statusElement.textContent = `⚠️ 還有 ${totalSlots - completedSlots} 個空格未設定（空格：${missingSlots.join(', ')}）`;
-        statusElement.style.background = '#fff3cd';
-        statusElement.style.color = '#856404';
+        statusElement.classList.remove('is-ok');
+        statusElement.classList.add('is-warn');
     } else {
         statusElement.textContent = '✓ 所有空格已設定完成';
-        statusElement.style.background = '#d4edda';
-        statusElement.style.color = '#155724';
+        statusElement.classList.remove('is-warn');
+        statusElement.classList.add('is-ok');
     }
 }
 
@@ -985,21 +985,21 @@ function parseBlanks() {
     
     blanks.forEach((blank, index) => {
         const blankDiv = document.createElement('div');
-        blankDiv.style.cssText = 'border: 1px solid #ddd; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; background: white;';
+        blankDiv.classList.add('qe-card');
         
         blankDiv.innerHTML = `
-            <h4 style="margin: 0 0 1rem 0; color: #333;">空格 ${index + 1}: ${blank}</h4>
+            <h4 class="qe-card-h">空格 ${index + 1}: ${blank}</h4>
             <div class="blank-options" data-blank-index="${index}">
-                <div class="blank-option-row" style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
-                    <textarea class="blank-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
-                    <label style="margin: 0; display: flex; align-items: center;">
-                        <input type="radio" name="correct-blank-${index}" style="margin-right: 0.5rem;">
+                <div class="blank-option-row qe-optrow qe-mid">
+                    <textarea class="blank-option-input qe-opttext" placeholder="選項內容 (支援多行)"></textarea>
+                    <label class="qe-check">
+                        <input class="qe-mr1" type="radio" name="correct-blank-${index}">
                         正確答案
                     </label>
-                    <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                    <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                 </div>
             </div>
-            <button type="button" onclick="addBlankOption(${index})" class="btn btn-secondary" style="margin-top: 0.5rem;">新增選項</button>
+            <button type="button" onclick="addBlankOption(${index})" class="btn btn-secondary qe-mt1">新增選項</button>
         `;
         
         container.appendChild(blankDiv);
@@ -1010,14 +1010,14 @@ function addBlankOption(blankIndex) {
     const container = document.querySelector(`[data-blank-index="${blankIndex}"]`);
     const optionRow = document.createElement('div');
     optionRow.className = 'blank-option-row';
-    optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+    optionRow.classList.add('qe-optrow', 'qe-mid');
     optionRow.innerHTML = `
-        <textarea class="blank-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;"></textarea>
-        <label style="margin: 0; display: flex; align-items: center;">
-            <input type="radio" name="correct-blank-${blankIndex}" style="margin-right: 0.5rem;">
+        <textarea class="blank-option-input qe-opttext" placeholder="選項內容 (支援多行)"></textarea>
+        <label class="qe-check">
+            <input class="qe-mr1" type="radio" name="correct-blank-${blankIndex}">
             正確答案
         </label>
-        <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+        <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
     `;
     container.appendChild(optionRow);
 }
@@ -1320,12 +1320,10 @@ function validateFormData(data) {
                         if (indentInput) {
                             const slotItem = indentInput.closest('.slot-config-item');
                             if (slotItem) {
-                                slotItem.style.borderColor = '#e74c3c';
-                                slotItem.style.borderWidth = '2px';
+                                slotItem.classList.add('is-error');
                                 slotItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
                                 setTimeout(() => {
-                                    slotItem.style.borderColor = '';
-                                    slotItem.style.borderWidth = '';
+                                    slotItem.classList.remove('is-error');
                                 }, 3000);
                             }
                         }
@@ -1400,20 +1398,20 @@ async function editQuestion(questionId) {
                         data.options.forEach(option => {
                             const optionRow = document.createElement('div');
                             optionRow.className = 'option-row';
-                            optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+                            optionRow.classList.add('qe-optrow');
                             
                             const isCorrect = question.question_type === 'single_choice' 
                                 ? option === data.correct_answer
                                 : (data.correct_answers && data.correct_answers.includes(option));
                             
                             optionRow.innerHTML = `
-                                <textarea class="option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;">${option}</textarea>
-                                <label style="margin: 0; display: flex; align-items: center;">
-                                    <input type="${question.question_type === 'single_choice' ? 'radio' : 'checkbox'}" 
-                                           name="correct-option" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
+                                <textarea class="option-input qe-opttext" placeholder="選項內容 (支援多行)">${option}</textarea>
+                                <label class="qe-check">
+                                    <input class="qe-mr1" type="${question.question_type === 'single_choice' ? 'radio' : 'checkbox'}" 
+                                           name="correct-option" ${isCorrect ? 'checked' : ''}>
                                     正確
                                 </label>
-                                <button type="button" onclick="removeOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                                <button type="button" onclick="removeOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                             `;
                             
                             document.getElementById('options-container').appendChild(optionRow);
@@ -1436,17 +1434,17 @@ async function editQuestion(questionId) {
                         data.options.forEach(option => {
                             const optionRow = document.createElement('div');
                             optionRow.className = 'dropdown-option-row';
-                            optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem;';
+                            optionRow.classList.add('qe-optrow');
                             
                             const isCorrect = option === data.correct_answer;
                             
                             optionRow.innerHTML = `
-                                <textarea class="dropdown-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;">${option}</textarea>
-                                <label style="margin: 0; display: flex; align-items: center;">
-                                    <input type="radio" name="correct-dropdown" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
+                                <textarea class="dropdown-option-input qe-opttext" placeholder="選項內容 (支援多行)">${option}</textarea>
+                                <label class="qe-check">
+                                    <input class="qe-mr1" type="radio" name="correct-dropdown" ${isCorrect ? 'checked' : ''}>
                                     正確
                                 </label>
-                                <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                                <button type="button" onclick="removeDropdownOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                             `;
                             
                             document.getElementById('dropdown-options-container').appendChild(optionRow);
@@ -1478,17 +1476,17 @@ async function editQuestion(questionId) {
                                     blank.options.forEach(option => {
                                         const optionRow = document.createElement('div');
                                         optionRow.className = 'blank-option-row';
-                                        optionRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+                                        optionRow.classList.add('qe-optrow', 'qe-mid');
                                         
                                         const isCorrect = option === blank.correct_answer;
                                         
                                         optionRow.innerHTML = `
-                                            <textarea class="blank-option-input" placeholder="選項內容 (支援多行)" style="flex: 1; min-height: 60px;">${option}</textarea>
-                                            <label style="margin: 0; display: flex; align-items: center;">
-                                                <input type="radio" name="correct-blank-${index}" style="margin-right: 0.5rem;" ${isCorrect ? 'checked' : ''}>
+                                            <textarea class="blank-option-input qe-opttext" placeholder="選項內容 (支援多行)">${option}</textarea>
+                                            <label class="qe-check">
+                                                <input class="qe-mr1" type="radio" name="correct-blank-${index}" ${isCorrect ? 'checked' : ''}>
                                                 正確答案
                                             </label>
-                                            <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                                            <button type="button" onclick="removeBlankOption(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                                         `;
                                         
                                         blankContainer.appendChild(optionRow);
@@ -1515,11 +1513,11 @@ async function editQuestion(questionId) {
                     labels.forEach((label, index) => {
                         const blockRow = document.createElement('div');
                         blockRow.className = 'code-block-row';
-                        blockRow.style.cssText = 'display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;';
+                        blockRow.classList.add('qe-optrow', 'qe-mid');
                         blockRow.innerHTML = `
-                            <span style="min-width: 30px; color: #667eea; font-weight: bold;">${label}</span>
-                            <textarea class="code-block-input" placeholder="程式碼塊內容 (支援多行)" style="flex: 1; min-height: 60px; font-family: Consolas, monospace;" oninput="updateAnswerSlots(); updateParsonsPreview();">${codeBlocks[label]}</textarea>
-                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger" style="padding: 4px 8px;">刪除</button>
+                            <span class="qe-blabel">${label}</span>
+                            <textarea class="code-block-input qe-opttext qe-code" placeholder="程式碼塊內容 (支援多行)" oninput="updateAnswerSlots(); updateParsonsPreview();">${codeBlocks[label]}</textarea>
+                            <button type="button" onclick="removeCodeBlock(this)" class="btn btn-danger qe-btn-sm">刪除</button>
                         `;
                         codeBlocksContainer.appendChild(blockRow);
                     });
@@ -1606,7 +1604,7 @@ async function editQuestion(questionId) {
         }
         
         // 顯示模態框
-        document.getElementById('question-modal').style.display = 'block';
+        document.getElementById('question-modal').hidden = false;
         
     } catch (error) {
         console.error('獲取題目數據失敗', error);

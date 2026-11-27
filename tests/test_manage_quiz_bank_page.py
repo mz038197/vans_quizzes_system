@@ -184,3 +184,20 @@ def test_manual_create_still_makes_a_quiz_bank(auth_client):
     assert response.status_code == 200
     bank_id = response.get_json()['quiz_bank_id']
     assert auth_client.get(f'/quiz-bank/{bank_id}').status_code == 200
+
+
+def test_manage_page_has_no_inline_styles_and_no_legacy_stylesheet(auth_client):
+    """Review fix 5: styles live in static/css/pages/quiz_bank.css; legacy.css is gone."""
+    # a Parsons question shows the indent and the side bars, which used inline styles
+    with app_module.app.app_context():
+        app_module.db.session.add(app_module.Question(
+            title='P', question_text='Order', question_type='parsons', points=1, order_index=1,
+            quiz_bank_id=auth_client._ids['quiz_bank_id'],
+            question_data='{"code_blocks": {"A": "x = 1", "B": "print(x)"}, "answer_slots": 2,'
+                          ' "slot_answers": {"1": "A", "2": "B"}, "slot_indents": {"2": 1}}'))
+        app_module.db.session.commit()
+    html = auth_client.get(f"/quiz-bank/{auth_client._ids['quiz_bank_id']}").get_data(as_text=True)
+    assert 'style=' not in html
+    assert '.style.' not in html
+    assert 'legacy.css' not in html
+    assert auth_client.get('/static/css/legacy.css').status_code == 404

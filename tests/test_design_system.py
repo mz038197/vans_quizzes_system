@@ -97,7 +97,7 @@ def test_student_pages_use_the_shared_layout_without_teacher_nav(client):
         assert '登出' not in html, path
 
 
-@pytest.mark.parametrize('path', ['/static/css/app.css', '/static/css/legacy.css',
+@pytest.mark.parametrize('path', ['/static/css/app.css', '/static/css/qr_stage.css',
                                   '/static/css/pages/dashboard.css', '/static/css/pages/quiz_banks.css',
                                   '/static/css/class_session_dialog.css', '/static/css/pages/quiz.css'])
 def test_shared_stylesheets_take_every_colour_from_the_tokens(client, path):
