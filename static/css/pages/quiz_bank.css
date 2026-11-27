@@ -135,3 +135,8 @@
   .qi .acts { justify-content: flex-end; }
   .side { position: static; }
 }
+
+/* Markdown import preview: a question with a problem (ticket #19) */
+.table tr.is-error td { background: var(--danger-soft); }
+.table tr.is-error td:first-child { box-shadow: inset 3px 0 0 var(--danger); }
+.preview-problems { margin: 0; padding: var(--s2) var(--s3); border-top: 1px solid var(--border); font-size: var(--fs-sm); }

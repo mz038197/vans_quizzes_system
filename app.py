@@ -126,7 +126,8 @@ class QuizBank(db.Model):
     time_limit_minutes = db.Column(db.Integer)  # optional Time Limit; null = untimed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     teacher_id = db.Column(db.Integer, nullable=False, index=True)  # router user id (ADR 0007)
-    
+    folder_id = db.Column(db.Integer, db.ForeignKey('folder.id'), nullable=True, index=True)  # ADR 0009; null = 未分類
+
     # 關聯
     questions = db.relationship('Question', backref='quiz_bank', lazy=True, cascade='all, delete-orphan')
     submissions = db.relationship('Submission', backref='quiz_bank', lazy=True, cascade='all, delete-orphan')
@@ -398,6 +399,8 @@ def ensure_schema_updates():
             statements.append('ALTER TABLE quiz_bank ADD COLUMN scoring_total_points REAL DEFAULT 100')
         if 'time_limit_minutes' not in cols:
             statements.append('ALTER TABLE quiz_bank ADD COLUMN time_limit_minutes INTEGER')
+        if 'folder_id' not in cols:
+            statements.append('ALTER TABLE quiz_bank ADD COLUMN folder_id INTEGER REFERENCES folder(id)')
 
     if 'question' in table_names:
         cols = column_names('question')
@@ -756,12 +759,39 @@ def teacher_dashboard():
 @app.route('/quiz-banks')
 @teacher_required
 def quiz_banks():
-    banks = teacher_bank_overview(current_teacher().user_id)
+    teacher_id = current_teacher().user_id
+    banks = teacher_bank_overview(teacher_id)
+    folders = teacher_folders(teacher_id)
+    folder = None
+    if request.args.get('folder'):
+        folder = Folder.query.get_or_404(request.args.get('folder', type=int) or 0)
+        if not is_own_folder(folder):
+            return redirect(url_for('quiz_banks'))
     attention_count = sum(1 for b in banks if b['attention'])
     attention_only = request.args.get('filter') == 'attention'
-    shown = [b for b in banks if b['attention']] if attention_only else banks
+    query = (request.args.get('q') or '').strip()
+    if query:
+        shown = [b for b in banks if bank_matches(b['bank'], query)]
+    elif attention_only:
+        shown = [b for b in banks if b['attention']]
+    else:
+        here = folder.id if folder else None
+        shown = [b for b in banks if b['bank'].folder_id == here]
+    cards = []
+    for f in folders:
+        inside = [b for b in banks if b['bank'].folder_id == f.id]
+        cards.append({'folder': f, 'n_banks': len(inside),
+                      'n_attention': sum(1 for b in inside if b['attention'])})
     return render_template('quiz_banks.html', banks=shown, total=len(banks),
-                           attention_count=attention_count, attention_only=attention_only)
+                           attention_count=attention_count, attention_only=attention_only, query=query,
+                           folder=folder, folder_cards=cards, folder_colors=FOLDER_COLORS,
+                           folders_json=[folder_json(f) for f in folders])
+
+
+def bank_matches(bank, query):
+    """True when the search text is in the Quiz Bank title or description, ignoring case."""
+    needle = query.casefold()
+    return needle in (bank.title or '').casefold() or needle in (bank.description or '').casefold()
 
 
 def teacher_bank_overview(teacher_id):
@@ -777,6 +807,7 @@ def teacher_bank_overview(teacher_id):
     for bank_id, score, total in (db.session.query(Submission.quiz_bank_id, Submission.score, Submission.total_points)
                                   .join(QuizBank).filter(QuizBank.teacher_id == teacher_id).all()):
         scores.setdefault(bank_id, []).append((score, total))
+    folder_by_id = {f.id: f for f in teacher_folders(teacher_id)}
     overview = []
     for bank in banks:
         average = teacher_stats.average_percent(scores.get(bank.id, []))
@@ -788,8 +819,124 @@ def teacher_bank_overview(teacher_id):
             'average': average,
             'average_text': None if average is None else teacher_stats.percent_text(average),
             'attention': teacher_stats.attention_reason(average),
+            'folder': folder_by_id.get(bank.folder_id),
         })
     return overview
+
+
+# --- Folders (ADR 0009) -------------------------------------------------------
+
+FOLDER_COLORS = ('blue', 'green', 'purple', 'amber', 'pink', 'cyan')
+
+
+class Folder(db.Model):
+    """A teacher-owned, named place for Quiz Banks. One level only; a Quiz Bank is in at most one Folder."""
+    __table_args__ = (db.UniqueConstraint('teacher_id', 'name', name='uq_folder_teacher_name'),)
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, nullable=False, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    color = db.Column(db.String(20), nullable=False, default='blue')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+def is_own_folder(folder):
+    return folder.teacher_id == current_teacher().user_id
+
+
+def teacher_folders(teacher_id):
+    return Folder.query.filter_by(teacher_id=teacher_id).order_by(Folder.created_at, Folder.id).all()
+
+
+def folder_json(folder):
+    return {'id': folder.id, 'name': folder.name, 'color': folder.color}
+
+
+def read_folder_fields(payload, teacher_id, folder_id=None):
+    """Check a Folder name and colour. Returns (name, color, error)."""
+    name = str(payload.get('name') or '').strip()
+    color = payload.get('color') or 'blue'
+    if not name:
+        return None, None, '請輸入資料夾名稱'
+    if len(name) > 100:
+        return None, None, '資料夾名稱最多 100 個字'
+    if color not in FOLDER_COLORS:
+        return None, None, '請選一個資料夾顏色'
+    same = Folder.query.filter_by(teacher_id=teacher_id, name=name).first()
+    if same and same.id != folder_id:
+        return None, None, f'已經有名稱是「{name}」的資料夾'
+    return name, color, None
+
+
+def owned_folder_or_error(folder_id):
+    """(folder, None) for a Folder of this Teacher; (None, error response) if not. No id means 未分類."""
+    if folder_id is None or folder_id == '':
+        return None, None
+    try:
+        folder = db.session.get(Folder, int(folder_id))
+    except (TypeError, ValueError):
+        folder = None
+    if folder is None:
+        return None, (jsonify({'error': '找不到資料夾'}), 404)
+    if not is_own_folder(folder):
+        return None, (jsonify({'error': '無權限操作'}), 403)
+    return folder, None
+
+
+@app.route('/api/folders', methods=['POST'])
+@teacher_required
+def create_folder():
+    teacher_id = current_teacher().user_id
+    name, color, error = read_folder_fields(request.get_json(silent=True) or {}, teacher_id)
+    if error:
+        return jsonify({'error': error}), 400
+    folder = Folder(teacher_id=teacher_id, name=name, color=color)
+    db.session.add(folder)
+    db.session.commit()
+    return jsonify({'message': '資料夾已建立', 'folder': folder_json(folder)}), 201
+
+
+@app.route('/api/folders/<int:folder_id>', methods=['PUT', 'DELETE'])
+@teacher_required
+def manage_folder(folder_id):
+    folder = Folder.query.get_or_404(folder_id)
+    if not is_own_folder(folder):
+        return jsonify({'error': '無權限操作'}), 403
+    if request.method == 'DELETE':
+        QuizBank.query.filter_by(folder_id=folder.id).update({'folder_id': None})
+        db.session.delete(folder)
+        db.session.commit()
+        return jsonify({'message': '資料夾已刪除，裡面的題庫已移回未分類'})
+    name, color, error = read_folder_fields(request.get_json(silent=True) or {}, folder.teacher_id, folder.id)
+    if error:
+        return jsonify({'error': error}), 400
+    folder.name, folder.color = name, color
+    db.session.commit()
+    return jsonify({'message': '資料夾已更新', 'folder': folder_json(folder)})
+
+
+@app.route('/api/quiz-banks/move', methods=['POST'])
+@teacher_required
+def move_quiz_banks():
+    """Move Quiz Banks into one Folder, or to 未分類 with a null folder_id. All or nothing."""
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get('quiz_bank_ids')
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, int) for i in ids):
+        return jsonify({'error': '請選擇要移動的題庫'}), 400
+    folder, refused = owned_folder_or_error(payload.get('folder_id'))
+    if refused:
+        return refused
+    banks = QuizBank.query.filter(QuizBank.id.in_(set(ids))).all()
+    if len(banks) != len(set(ids)):
+        return jsonify({'error': '找不到題庫'}), 404
+    if not all(is_own_quiz_bank(b) for b in banks):
+        return jsonify({'error': '無權限操作'}), 403
+    previous = [{'id': bank.id, 'folder_id': bank.folder_id} for bank in banks]
+    for bank in banks:
+        bank.folder_id = folder.id if folder else None
+    db.session.commit()
+    where = f'「{folder.name}」' if folder else '未分類'
+    return jsonify({'message': f'已移動 {len(banks)} 個題庫到{where}', 'moved': len(banks),
+                    'folder': folder_json(folder) if folder else None, 'previous': previous})
 
 @app.route('/create-quiz-bank', methods=['GET', 'POST'])
 @teacher_required
@@ -798,12 +945,16 @@ def create_quiz_bank():
         data = request.get_json()
         title = data.get('title')
         description = data.get('description', '')
-        
+        folder, refused = owned_folder_or_error(data.get('folder_id'))
+        if refused:
+            return refused
+
         quiz_bank = QuizBank(
             title=title,
             description=description,
             access_code=generate_access_code(),
-            teacher_id=current_teacher().user_id
+            teacher_id=current_teacher().user_id,
+            folder_id=folder.id if folder else None,
         )
         db.session.add(quiz_bank)
         db.session.commit()
@@ -817,7 +968,10 @@ def create_quiz_bank():
     tab = request.args.get('tab')
     if tab not in ('manual', 'import'):
         tab = 'manual'
-    return render_template('create_quiz_bank.html', tab=tab)
+    folder = db.session.get(Folder, request.args.get('folder', type=int) or 0)
+    if folder is not None and not is_own_folder(folder):
+        folder = None
+    return render_template('create_quiz_bank.html', tab=tab, folder=folder)
 
 @app.route('/quiz-bank/<int:quiz_bank_id>')
 @teacher_required
@@ -1133,6 +1287,34 @@ def manage_question(question_id):
         db.session.commit()
         return jsonify({'message': '題目刪除成功'})
 
+@app.route('/api/question/<int:question_id>/copy', methods=['POST'])
+@teacher_required
+def copy_question(question_id):
+    """Add a new Question with the same content right after the source."""
+    source = Question.query.get_or_404(question_id)
+    if not is_own_quiz_bank(source.quiz_bank):
+        return jsonify({'error': '無權限操作'}), 403
+
+    position = source.order_index or 0
+    Question.query.filter(
+        Question.quiz_bank_id == source.quiz_bank_id,
+        Question.order_index > position,
+    ).update({Question.order_index: Question.order_index + 1}, synchronize_session=False)
+
+    copy = Question(
+        title=source.title,
+        question_text=source.question_text,
+        question_type=source.question_type,
+        question_data=source.question_data,
+        points=source.points,
+        order_index=position + 1,
+        category=source.category,
+        quiz_bank_id=source.quiz_bank_id,
+    )
+    db.session.add(copy)
+    db.session.commit()
+    return jsonify({'message': '題目已複製', 'question_id': copy.id})
+
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/practice-config', methods=['PUT'])
 @teacher_required
 def update_practice_config(quiz_bank_id):
@@ -1239,18 +1421,15 @@ def preview_import_quiz_md():
         parsed = parse_md_quiz(content)
     except Exception as exc:
         return jsonify({'success': False, 'errors': [f'解析失敗：{exc}']}), 500
+    preview_questions = parsed['rows']
     if parsed['errors']:
-        return jsonify({'success': False, 'errors': parsed['errors']}), 400
-
-    preview_questions = []
-    for index, question in enumerate(parsed['questions'], start=1):
-        preview_questions.append({
-            'index': index,
-            'title': question['title'],
-            'question_type': question['question_type'],
-            'category': question.get('category', ''),
-            'points': question.get('points', 1),
-        })
+        return jsonify({
+            'success': False,
+            'errors': parsed['errors'],
+            'file_errors': parsed['file_errors'],
+            'questions': preview_questions,
+            'question_count': len(preview_questions),
+        }), 400
 
     return jsonify({
         'success': True,
@@ -1266,6 +1445,10 @@ def confirm_import_quiz_md():
     if not uploaded or not uploaded.filename:
         return jsonify({'success': False, 'errors': ['請上傳 .md 檔案']}), 400
 
+    folder, refused = owned_folder_or_error(request.form.get('folder_id'))
+    if refused:
+        return refused
+
     content = uploaded.read().decode('utf-8-sig')
     parsed = parse_md_quiz(content)
     if parsed['errors']:
@@ -1273,6 +1456,7 @@ def confirm_import_quiz_md():
 
     try:
         quiz_bank = create_quiz_bank_from_data(current_teacher().user_id, parsed['bank'])
+        quiz_bank.folder_id = folder.id if folder else None
         create_questions_for_bank(quiz_bank.id, parsed['questions'])
         db.session.commit()
     except Exception:
@@ -1297,18 +1481,6 @@ def download_import_template():
 def download_append_questions_template():
     return send_from_directory('static/templates', 'quiz_questions_append.md', as_attachment=True)
 
-def _build_append_preview(questions):
-    preview_questions = []
-    for index, question in enumerate(questions, start=1):
-        preview_questions.append({
-            'index': index,
-            'title': question['title'],
-            'question_type': question['question_type'],
-            'category': question.get('category', ''),
-            'points': question.get('points', 1),
-        })
-    return preview_questions
-
 @app.route('/api/quiz-bank/<int:quiz_bank_id>/import-md/preview', methods=['POST'])
 @teacher_required
 def preview_append_quiz_md(quiz_bank_id):
@@ -1332,11 +1504,18 @@ def preview_append_quiz_md(quiz_bank_id):
         return jsonify({'success': False, 'errors': [f'解析失敗：{exc}']}), 500
 
     if parsed['errors']:
-        return jsonify({'success': False, 'errors': parsed['errors'], 'warnings': parsed.get('warnings', [])}), 400
+        return jsonify({
+            'success': False,
+            'errors': parsed['errors'],
+            'warnings': parsed.get('warnings', []),
+            'file_errors': parsed['file_errors'],
+            'questions': parsed['rows'],
+            'question_count': len(parsed['rows']),
+        }), 400
 
     return jsonify({
         'success': True,
-        'questions': _build_append_preview(parsed['questions']),
+        'questions': parsed['rows'],
         'question_count': len(parsed['questions']),
         'warnings': parsed.get('warnings', []),
     })
