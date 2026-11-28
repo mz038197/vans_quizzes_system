@@ -1028,7 +1028,8 @@ def manage_folder(folder_id):
 @app.route('/api/folders/<int:folder_id>/cover', methods=['PUT', 'DELETE'])
 @teacher_required
 def manage_folder_cover(folder_id):
-    """PUT a picture (form field "cover") to set the Folder cover; DELETE to go back to the colour block."""
+    """PUT a picture (form field "cover", and "crop": the part to keep, see folder_cover.parse_crop) to set
+    the Folder cover; DELETE to go back to the colour block."""
     folder = owned_or_404(Folder, folder_id, '找不到資料夾')
     if request.method == 'DELETE':
         folder.cover_image, folder.cover_updated_at = None, None
@@ -1036,7 +1037,8 @@ def manage_folder_cover(folder_id):
         return jsonify({'message': '已移除封面', 'folder': folder_json(folder)})
     upload = request.files.get('cover')
     try:
-        folder.cover_image = folder_cover.make_cover(upload.read() if upload else b'')
+        crop = folder_cover.parse_crop(request.form.get('crop', '').strip())
+        folder.cover_image = folder_cover.make_cover(upload.read() if upload else b'', crop)
     except folder_cover.CoverError as error:
         return jsonify({'error': str(error)}), 400
     folder.cover_updated_at = datetime.utcnow()

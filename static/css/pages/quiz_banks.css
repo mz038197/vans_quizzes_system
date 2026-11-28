@@ -116,3 +116,19 @@
   background: color-mix(in srgb, var(--fc, var(--muted)) 85%, var(--on-primary)) center / cover no-repeat;
 }
 .fld:has(#fd-cover:focus-visible) .cover-pick label.btn { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* Cover cropper (static/js/cover_crop.js): the whole picture, a 16:9 box on it, the rest under the fade. */
+.cover-crop:empty { display: none; }
+.crop-wrap { display: grid; place-items: center; background: var(--bg); border-radius: var(--r-sm); padding: var(--s1); }
+.crop-stage { position: relative; overflow: hidden; touch-action: none; user-select: none; }
+.crop-stage img { display: block; max-width: 100%; max-height: 280px; }
+.crop-box {
+  position: absolute; cursor: move; outline: 2px solid var(--on-primary);
+  box-shadow: 0 0 0 9999px var(--photo-fade);
+}
+.crop-box:focus-visible { outline: 3px solid var(--focus); }
+.crop-handle {
+  position: absolute; right: var(--s0); bottom: var(--s0);
+  width: var(--s2); height: var(--s2); border-radius: var(--r-pill);
+  background: var(--on-primary); border: 2px solid var(--primary); cursor: nwse-resize;
+}

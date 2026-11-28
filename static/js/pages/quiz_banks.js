@@ -36,7 +36,8 @@
   // The server takes at most 4 MB for the whole request (MAX_CONTENT_LENGTH); leave room for the form fields.
   const COVER_MAX_BYTES = 4 * 1024 * 1024 - 16 * 1024;
 
-  /* Cover picture field: a 16:9 preview, 選擇圖片 and 移除. state.file is a new picture; state.remove drops the old one. */
+  /* Cover picture field: a 16:9 preview, 選擇圖片 and 移除, and for a new picture the cropper (cover_crop.js).
+     state.file is a new picture, state.crop() the part of it to keep; state.remove drops the old one. */
   function coverField(folder, state) {
     const preview = make('span', { class: 'cover-preview', 'aria-hidden': 'true' });
     const fileInput = make('input', { id: 'fd-cover', type: 'file', accept: COVER_TYPES.join(','), class: 'sr-only' });
@@ -44,14 +45,29 @@
       make('i', { class: 'fas fa-image', 'aria-hidden': 'true' }), make('span', { text: ' 選擇圖片' }),
     ]);
     const remove = make('button', { type: 'button', class: 'btn' }, [make('span', { text: '移除圖片' })]);
-    const hint = make('p', { class: 'muted small', text: 'JPG、PNG、WebP 或 GIF，最多 4 MB。圖片會從中間裁成 16:9。' });
+    const hint = make('p', { class: 'muted small', text: 'JPG、PNG、WebP 或 GIF，最多 4 MB。選好圖片後，拖動框框選要的範圍，拉右下角改大小。' });
+    const cropArea = make('div', { class: 'cover-crop' });
     const error = make('div', { class: 'err', role: 'alert' });
     let objectUrl = null;
 
     function show(url) {
       preview.style.backgroundImage = url ? `url("${url}")` : '';
+      preview.style.backgroundSize = '';
+      preview.style.backgroundPosition = '';
       remove.hidden = !url;
     }
+    // The preview shows only the cropped part: the picture is 1/w of the preview wide.
+    function showCrop(crop) {
+      if (!crop) return;
+      const at = (start, size) => (size < 1 ? (start / (1 - size)) * 100 : 0);
+      preview.style.backgroundSize = `${100 / crop.w}% auto`;
+      preview.style.backgroundPosition = `${at(crop.x, crop.w)}% ${at(crop.y, crop.h)}%`;
+    }
+    function clearCrop() {
+      cropArea.replaceChildren();
+      state.crop = () => null;
+    }
+    clearCrop();
     show(folder && folder.cover_url);
 
     fileInput.addEventListener('change', () => {
@@ -63,16 +79,21 @@
       state.remove = false;
       error.textContent = '';
       show(objectUrl);
+      const cropper = CoverCrop.create(objectUrl, showCrop);
+      cropArea.replaceChildren(cropper.node);
+      state.crop = cropper.crop;
     });
     remove.addEventListener('click', () => {
       state.file = null;
       state.remove = Boolean(folder && folder.cover_url);
       fileInput.value = '';
+      clearCrop();
       show(null);
     });
     const field = make('div', { class: 'fld' }, [
       make('span', { class: 'label', text: '封面圖片' }),
       make('div', { class: 'cover-pick' }, [preview, make('div', { class: 'stack' }, [make('div', { class: 'row' }, [pick, remove]), hint, error])]),
+      cropArea,
       fileInput,
     ]);
     // The empty preview shows the Folder colour, as the card will.
@@ -88,6 +109,8 @@
     if (state.file) {
       const form = new FormData();
       form.append('cover', state.file);
+      const crop = state.crop();
+      if (crop) form.append('crop', [crop.x, crop.y, crop.w, crop.h].map((n) => n.toFixed(5)).join(','));
       return send('PUT', `/api/folders/${folderId}/cover`, form);
     }
     if (state.remove) return send('DELETE', `/api/folders/${folderId}/cover`);

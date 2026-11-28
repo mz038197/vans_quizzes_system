@@ -165,3 +165,73 @@ def test_after_removal_the_card_shows_the_colour_block_again(auth_client):
     card = card[:card.index('</a>')]
     assert 'background-image' not in card
     assert 'fcard-ph' in card
+
+
+# ---- The Teacher picks the part of the picture to keep (form field "crop") ----
+
+QUADRANTS = {'top-left': (220, 30, 30), 'top-right': (30, 200, 30),
+             'bottom-left': (30, 30, 220), 'bottom-right': (230, 200, 20)}
+
+
+def _four_colour_picture():
+    """1600×900, each quarter one colour: a 16:9 quarter is 800×450."""
+    picture = Image.new('RGB', (1600, 900))
+    for name, box in {'top-left': (0, 0, 800, 450), 'top-right': (800, 0, 1600, 450),
+                      'bottom-left': (0, 450, 800, 900), 'bottom-right': (800, 450, 1600, 900)}.items():
+        picture.paste(QUADRANTS[name], box)
+    data = io.BytesIO()
+    picture.save(data, 'PNG')
+    return data.getvalue()
+
+
+def _upload_cropped(client, folder_id, crop):
+    return client.put(f'/api/folders/{folder_id}/cover',
+                      data={'cover': (io.BytesIO(_four_colour_picture()), 'cover.png'), 'crop': crop},
+                      content_type='multipart/form-data')
+
+
+def _cover_colour(client, response):
+    assert response.status_code == 200, response.get_json()
+    picture = Image.open(io.BytesIO(client.get(response.get_json()['folder']['cover_url']).data)).convert('RGB')
+    assert picture.size == (640, 360)
+    return picture.getpixel((320, 180))
+
+
+def _near(colour, expected):
+    return all(abs(a - b) <= 12 for a, b in zip(colour, expected))
+
+
+def test_the_cover_keeps_the_part_the_teacher_picked(auth_client):
+    folder_id = _folder_id(auth_client)
+
+    top_left = _cover_colour(auth_client, _upload_cropped(auth_client, folder_id, '0,0,0.5,0.5'))
+    bottom_right = _cover_colour(auth_client, _upload_cropped(auth_client, folder_id, '0.5,0.5,0.5,0.5'))
+
+    assert _near(top_left, QUADRANTS['top-left'])
+    assert _near(bottom_right, QUADRANTS['bottom-right'])
+
+
+def test_without_a_crop_the_cover_is_the_middle_of_the_picture(auth_client):
+    folder_id = _folder_id(auth_client)
+    response = auth_client.put(f'/api/folders/{folder_id}/cover',
+                               data={'cover': (io.BytesIO(_four_colour_picture()), 'cover.png')},
+                               content_type='multipart/form-data')
+    picture = Image.open(io.BytesIO(auth_client.get(response.get_json()['folder']['cover_url']).data)).convert('RGB')
+    assert _near(picture.getpixel((80, 45)), QUADRANTS['top-left'])
+    assert _near(picture.getpixel((560, 315)), QUADRANTS['bottom-right'])
+
+
+def test_a_crop_outside_the_picture_or_not_numbers_is_refused(auth_client):
+    folder_id = _folder_id(auth_client)
+    for crop in ('0.8,0,0.5,0.5', '0,0,0,0', '-0.1,0,0.5,0.5', 'abc', '0,0,0.5'):
+        response = _upload_cropped(auth_client, folder_id, crop)
+        assert response.status_code == 400, crop
+        assert response.get_json()['error'] == '裁切範圍不對，請重新選取', crop
+    assert auth_client.get('/quiz-banks').status_code == 200
+
+
+def test_folder_dialog_loads_the_cover_cropper(auth_client):
+    page = _html(auth_client, '/quiz-banks')
+    assert '/static/js/cover_crop.js' in page
+    script = auth_client.get('/static/js/pages/quiz_banks.js').get_data(as_text=True)
+    assert "form.append('crop'" in script
