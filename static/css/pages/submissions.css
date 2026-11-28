@@ -7,7 +7,7 @@
 
 .subs-table td.r { text-align: right; }
 .subs-table th.r { text-align: right; }
-.subs-table .nowrap { white-space: nowrap; }
+.subs-table .nowrap, .subs-table .t-title, .subs-table th { white-space: nowrap; }
 .subs-table .t-actions { white-space: nowrap; text-align: right; }
 .subs-table .t-actions .btn { margin-left: var(--s0); }
 

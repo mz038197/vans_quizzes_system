@@ -85,7 +85,11 @@
   /* ---- motion ---- */
   --ease: 150ms ease;
 
+  /* ---- controls ---- */
+  --checkbox: 16px;
+
   /* ---- layers ---- */
+  --z-bar: 100;      /* the bottom action bar (bulk delete); under menus and dialogs */
   --z-menu: 200;
   --z-dialog: 1000;   /* in-page dialogs; later dialogs stack on earlier ones */
   --z-toast: 1100;

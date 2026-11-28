@@ -79,9 +79,10 @@ def test_page_stylesheet_takes_colours_from_the_tokens(client):
 
 def test_delete_asks_with_the_in_page_danger_dialog(auth_client):
     html = _page(auth_client)
-    script = html.rsplit('<script', 1)[1]
+    assert '/static/js/submission_delete.js' in html  # one row or several: the shared dialog
+    script = auth_client.get('/static/js/submission_delete.js').get_data(as_text=True)
     assert re.search(r'UI\.ask\([^;]*danger:\s*true', script, re.S)
-    assert "method: 'DELETE'" in script
+    assert "'/api/submissions/delete'" in script and "method: 'POST'" in script
 
 
 def test_rows_link_to_the_teacher_view_of_the_submission(auth_client):
@@ -102,7 +103,7 @@ def test_list_view_and_delete_still_work(auth_client):
 
     assert auth_client.get(f'/quiz-bank/{qb}/submissions/{body["submission_id"]}').status_code == 200
 
-    deleted = auth_client.delete(f'/api/submission/{body["submission_id"]}')
+    deleted = auth_client.post('/api/submissions/delete', json={'ids': [body['submission_id']]})
     assert deleted.status_code == 200
     assert auth_client.get(f'/api/quiz-bank/{qb}/submissions').get_json() == []
 
