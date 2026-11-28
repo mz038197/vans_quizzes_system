@@ -164,6 +164,8 @@ def test_long_live_class_session_without_hand_in_does_not_need_attention(auth_cl
 
     html = _page(auth_client, '/quiz-banks?filter=attention')
     assert 'Quiet Live Bank' not in html
+    # the live Class Session still shows in the Quiz Bank's status
+    assert '● 1 堂進行中' in _row(_page(auth_client, '/quiz-banks'), quiet)
 
 
 def test_attention_list_names_the_folder(auth_client):
