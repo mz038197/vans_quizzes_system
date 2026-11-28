@@ -26,6 +26,74 @@
     return node;
   }
 
+  const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  const COVER_MAX_BYTES = 4 * 1024 * 1024;  // the server's upload limit
+
+  /* Cover picture field: a 16:9 preview, 選擇圖片 and 移除. state.file is a new picture; state.remove drops the old one. */
+  function coverField(folder, state) {
+    const preview = make('span', { class: 'cover-preview', 'aria-hidden': 'true' });
+    const fileInput = make('input', { id: 'fd-cover', type: 'file', accept: COVER_TYPES.join(','), class: 'sr-only' });
+    const pick = make('label', { for: 'fd-cover', class: 'btn' }, [
+      make('i', { class: 'fas fa-image', 'aria-hidden': 'true' }), make('span', { text: ' 選擇圖片' }),
+    ]);
+    const remove = make('button', { type: 'button', class: 'btn' }, [make('span', { text: '移除圖片' })]);
+    const hint = make('p', { class: 'muted small', text: 'JPG、PNG、WebP 或 GIF，最多 4 MB。圖片會從中間裁成 16:9。' });
+    const error = make('div', { class: 'err', role: 'alert' });
+    let objectUrl = null;
+
+    function show(url) {
+      preview.style.backgroundImage = url ? `url("${url}")` : '';
+      preview.classList.toggle('is-empty', !url);
+      remove.hidden = !url;
+    }
+    show(folder && folder.cover_url);
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(file);
+      state.file = file;
+      state.remove = false;
+      error.textContent = '';
+      show(objectUrl);
+    });
+    remove.addEventListener('click', () => {
+      state.file = null;
+      state.remove = Boolean(folder && folder.cover_url);
+      fileInput.value = '';
+      show(null);
+    });
+    const field = make('div', { class: 'fld' }, [
+      make('span', { class: 'label', text: '封面圖片' }),
+      make('div', { class: 'cover-pick' }, [preview, make('div', { class: 'stack' }, [make('div', { class: 'row' }, [pick, remove]), hint, error])]),
+      fileInput,
+    ]);
+    // The empty preview shows the Folder colour, as the card will.
+    field.setColor = (color) => {
+      [...preview.classList].filter((c) => c.startsWith('fc-')).forEach((c) => preview.classList.remove(c));
+      preview.classList.add(`fc-${color}`);
+    };
+    field.showError = (text) => { error.textContent = text; fileInput.focus(); };
+    return field;
+  }
+
+  async function sendCover(folderId, state) {
+    if (state.file) {
+      const form = new FormData();
+      form.append('cover', state.file);
+      try {
+        const response = await fetch(`/api/folders/${folderId}/cover`, { method: 'PUT', body: form });
+        const result = await response.json().catch(() => ({}));
+        return { ok: response.ok, result };
+      } catch (error) {
+        return { ok: false, result: { error: '網路錯誤，請檢查連線' } };
+      }
+    }
+    if (state.remove) return send('DELETE', `/api/folders/${folderId}/cover`);
+    return { ok: true, result: {} };
+  }
+
   /* New Folder / edit Folder. Resolves to the saved Folder, or null. */
   async function folderDialog(folder) {
     const nameId = 'fd-name';
@@ -40,11 +108,17 @@
         radio, make('span', { class: 'swatch', 'aria-hidden': 'true' }), make('span', { class: 'sr-only', text: COLOR_NAMES[color] || color }),
       ]));
     });
+    const cover = { file: null, remove: false };
+    const coverInput = coverField(folder, cover);
     const body = make('div', { class: 'stack' }, [
       make('div', { class: 'fld' }, [make('label', { for: nameId, text: '資料夾名稱' }), input, error]),
       make('div', { class: 'fld' }, [make('span', { class: 'label', text: '顏色' }), colors]),
+      coverInput,
     ]);
+    const pickedColor = () => (body.querySelector('input[name="fd-color"]:checked') || {}).value;
+    colors.addEventListener('change', () => coverInput.setColor(pickedColor()));
     let saving = false;
+    let saved = null;  // the Folder once its name and colour are saved, so a retry does not make it twice
     const dlg = UI.dialog({
       title: folder ? '編輯資料夾' : '新增資料夾',
       body,
@@ -62,22 +136,30 @@
     async function save() {
       if (saving) return;
       const name = input.value.trim();
-      const color = (body.querySelector('input[name="fd-color"]:checked') || {}).value;
+      const color = pickedColor();
       if (!name) { showError('請輸入資料夾名稱'); return; }
+      if (cover.file && !COVER_TYPES.includes(cover.file.type)) { coverInput.showError('只接受 JPG、PNG、WebP 或 GIF 圖片'); return; }
+      if (cover.file && cover.file.size > COVER_MAX_BYTES) { coverInput.showError('檔案太大，最多 4 MB'); return; }
       saving = true;
-      const { ok, result } = folder
-        ? await send('PUT', `/api/folders/${folder.id}`, { name, color })
+      const target = saved || folder;
+      const { ok, result } = target
+        ? await send('PUT', `/api/folders/${target.id}`, { name, color })
         : await send('POST', '/api/folders', { name, color });
+      if (!ok) { saving = false; showError(result.error || '儲存失敗，請稍後再試'); return; }
+      saved = result.folder;
+      const sent = await sendCover(saved.id, cover);
       saving = false;
-      if (!ok) { showError(result.error || '儲存失敗，請稍後再試'); return; }
-      dlg.close(result.folder);
+      if (!sent.ok) { coverInput.showError(sent.result.error || '封面圖片沒有存好，請再試一次'); return; }
+      dlg.close(sent.result.folder || saved);
     }
     function showError(text) {
       error.textContent = text;
       input.setAttribute('aria-invalid', 'true');
       input.focus();
     }
-    return dlg.result;
+    coverInput.setColor(pickedColor());
+    // 取消 after the name was saved but the picture was not: the Folder still exists, so report it.
+    return dlg.result.then((value) => value || saved);
   }
 
   function currentFolder() {

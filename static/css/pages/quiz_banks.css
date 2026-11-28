@@ -5,20 +5,46 @@
 .bank-table td.act .btn { vertical-align: middle; }
 
 /* Folders (ticket 07, #9). Tokens only. A card sets --fc with .fc-<color>. */
-.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--s2); margin: var(--s2) 0 var(--s3); }
+.fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--s2); margin: var(--s2) 0 var(--s3); }
+
+/* A Folder card is its cover picture, with the name on a dark fade at the bottom.
+   No picture: a block in the Folder colour with a folder icon. */
 .fcard {
-  display: grid; gap: var(--s0); align-content: start; min-height: calc(var(--tap) * 2);
-  padding: var(--s2); border: 1px solid var(--border); border-top: 4px solid var(--fc, var(--border-strong));
-  border-radius: var(--r); background: var(--surface); color: var(--text); text-decoration: none;
-  box-shadow: var(--shadow-1); text-align: left; font: inherit; cursor: pointer;
+  position: relative; display: block; overflow: hidden; aspect-ratio: 4 / 3; padding: 0;
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--surface);
+  color: var(--text); text-decoration: none; text-align: left; font: inherit; cursor: pointer;
+  box-shadow: var(--shadow-1); transition: box-shadow var(--ease), transform var(--ease);
 }
-.fcard:hover { border-color: var(--fc, var(--border-strong)); box-shadow: var(--shadow-2); }
-.fcard-name { font-weight: 600; display: flex; gap: var(--s1); align-items: center; }
-.fcard-name i { color: var(--fc, var(--muted)); }
-.fcard-meta { color: var(--muted); font-size: var(--fs-sm); }
-.fcard-attn { color: var(--warning); font-size: var(--fs-xs); }
-.fcard-new { border-style: dashed; border-top-width: 1px; background: transparent; box-shadow: none; color: var(--muted); }
-.fcard-new .fcard-name i { color: var(--muted); }
+.fcard:hover { box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.fcard-cover {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: color-mix(in srgb, var(--fc, var(--muted)) 85%, var(--on-primary)) center / cover no-repeat;
+}
+.fcard-ph { font-size: var(--fs-2xl); color: color-mix(in srgb, var(--on-primary) 85%, transparent); margin-bottom: var(--s4); }
+.fcard-shade {
+  position: absolute; left: 0; right: 0; bottom: 0; display: grid; gap: var(--s0);
+  padding: var(--s4) var(--s2) var(--s1-5);
+  background: linear-gradient(transparent, var(--photo-fade)); color: var(--on-primary);
+}
+.fcard-name { font-weight: 600; font-size: var(--fs-lg); line-height: 1.3; }
+.fcard-meta { font-size: var(--fs-sm); color: color-mix(in srgb, var(--on-primary) 90%, transparent); }
+.fcard-attn { font-size: var(--fs-xs); color: var(--warning-soft); }
+.fcard-shade .bstat.live { color: var(--success-soft); }
+.fcard-new { border-style: dashed; background: transparent; box-shadow: none; }
+.fcard-new .fcard-cover { background: var(--bg); }
+.fcard-new .fcard-ph { color: var(--muted); }
+.fcard-new .fcard-shade { background: none; color: var(--text); }
+.fcard-new .fcard-meta { color: var(--muted); }
+
+/* Folder page: the cover with the name on it, the buttons below. */
+.folder-hero {
+  position: relative; overflow: hidden; min-height: 220px; margin-bottom: var(--s2);
+  border-radius: var(--r); box-shadow: var(--shadow-1);
+}
+.folder-hero .fcard-shade { padding: var(--s5) var(--s3) var(--s2); }
+.folder-hero h1 { color: var(--on-primary); }
+.folder-hero .sub { color: color-mix(in srgb, var(--on-primary) 85%, transparent); margin-top: var(--s0); }
+.folder-hero-actions { display: flex; gap: var(--s1); flex-wrap: wrap; justify-content: flex-end; margin-bottom: var(--s2); }
 .section-title { font-size: var(--fs-md); margin: var(--s2) 0 var(--s1); }
 .folder-chips { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; margin-bottom: var(--s2); }
 .folder-chips .chip { text-decoration: none; min-height: var(--tap-sm); color: var(--text); }
@@ -81,3 +107,11 @@
 .bstat.soon { color: var(--primary); }
 .bstat.none { color: var(--muted); }
 .fcard-meta .bstat { margin-left: var(--s0); }
+
+/* Folder dialog: cover picture field. The empty preview shows the Folder colour. */
+.cover-pick { display: grid; grid-template-columns: 160px 1fr; gap: var(--s2); align-items: start; }
+.cover-preview {
+  display: block; aspect-ratio: 16 / 9; border-radius: var(--r-sm); border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fc, var(--muted)) 85%, var(--on-primary)) center / cover no-repeat;
+}
+.fld:has(#fd-cover:focus-visible) .cover-pick label.btn { outline: 3px solid var(--focus); outline-offset: 2px; }

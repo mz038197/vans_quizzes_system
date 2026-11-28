@@ -28,6 +28,7 @@
   --focus: #93C5FD;
   --on-primary: #FFFFFF;       /* text on a filled colour button or a dark bar */
   --overlay: rgb(15 23 42 / .4);          /* dialog backdrop */
+  --photo-fade: rgb(15 23 42 / .72);     /* dark fade under text on a cover picture */
   --shadow-1: 0 1px 2px rgb(15 23 42 / .06);
   --shadow-2: 0 12px 32px rgb(15 23 42 / .15);
   --shadow-3: 0 24px 48px rgb(15 23 42 / .25);

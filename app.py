@@ -1,4 +1,4 @@
-from flask import Flask, abort, render_template, request, jsonify, redirect, url_for, session, send_from_directory
+from flask import Flask, abort, make_response, render_template, request, jsonify, redirect, url_for, session, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 import base64
@@ -10,7 +10,7 @@ import logging
 import re
 import secrets
 from datetime import datetime, timedelta
-from werkzeug.exceptions import NotFound
+from werkzeug.exceptions import NotFound, RequestEntityTooLarge
 from urllib.parse import quote
 import os
 import sys
@@ -27,6 +27,7 @@ from practice_utils import (
 )
 from time_display import format_wall_clock_utc8
 from page_nav import register_page_nav
+import folder_cover
 import teacher_stats
 import class_session_rules
 import grade_stats
@@ -254,6 +255,14 @@ def json_not_found(error):
         return jsonify({'error': description}), 404
     return error
 
+
+@app.errorhandler(RequestEntityTooLarge)
+def json_too_large(error):
+    """An upload over MAX_CONTENT_LENGTH: API callers get JSON with a message they can show."""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': '檔案太大，最多 4 MB'}), 413
+    return error
+
 LATE_HAND_IN_ERROR = '課堂已結束，這份作答沒有被收下'
 
 @app.template_global()
@@ -435,6 +444,13 @@ def ensure_schema_updates():
             statements.append('ALTER TABLE quiz_bank ADD COLUMN scoring_total_points REAL DEFAULT 100')
         if 'folder_id' not in cols:
             statements.append('ALTER TABLE quiz_bank ADD COLUMN folder_id INTEGER REFERENCES folder(id)')
+
+    if 'folder' in table_names:
+        cols = column_names('folder')
+        if 'cover_image' not in cols:
+            statements.append(f"ALTER TABLE folder ADD COLUMN cover_image {'BYTEA' if is_postgres else 'BLOB'}")
+        if 'cover_updated_at' not in cols:
+            statements.append(f"ALTER TABLE folder ADD COLUMN cover_updated_at {'TIMESTAMP' if is_postgres else 'DATETIME'}")
 
     if 'question' in table_names:
         cols = column_names('question')
@@ -934,6 +950,16 @@ class Folder(db.Model):
     name = db.Column(db.String(100), nullable=False)
     color = db.Column(db.String(20), nullable=False, default='blue')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Cover picture: a 640×360 WebP (folder_cover.make_cover). Deferred so lists of Folders do not load it.
+    cover_image = db.deferred(db.Column(db.LargeBinary))
+    cover_updated_at = db.Column(db.DateTime)
+
+    @property
+    def cover_url(self):
+        """The cover address, or None. The ?v= part changes with each upload, so browsers can keep it."""
+        if self.cover_updated_at is None:
+            return None
+        return url_for('folder_cover_image', folder_id=self.id, v=int(self.cover_updated_at.timestamp() * 1000))
 
 
 def teacher_folders(teacher_id):
@@ -941,7 +967,7 @@ def teacher_folders(teacher_id):
 
 
 def folder_json(folder):
-    return {'id': folder.id, 'name': folder.name, 'color': folder.color}
+    return {'id': folder.id, 'name': folder.name, 'color': folder.color, 'cover_url': folder.cover_url}
 
 
 def read_folder_fields(payload, teacher_id, folder_id=None):
@@ -998,6 +1024,39 @@ def manage_folder(folder_id):
     folder.name, folder.color = name, color
     db.session.commit()
     return jsonify({'message': '資料夾已更新', 'folder': folder_json(folder)})
+
+
+@app.route('/api/folders/<int:folder_id>/cover', methods=['PUT', 'DELETE'])
+@teacher_required
+def manage_folder_cover(folder_id):
+    """PUT a picture (form field "cover") to set the Folder cover; DELETE to go back to the colour block."""
+    folder = owned_or_404(Folder, folder_id, '找不到資料夾')
+    if request.method == 'DELETE':
+        folder.cover_image, folder.cover_updated_at = None, None
+        db.session.commit()
+        return jsonify({'message': '已移除封面', 'folder': folder_json(folder)})
+    upload = request.files.get('cover')
+    try:
+        folder.cover_image = folder_cover.make_cover(upload.read() if upload else b'')
+    except folder_cover.CoverError as error:
+        return jsonify({'error': str(error)}), 400
+    folder.cover_updated_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'message': '封面已更新', 'folder': folder_json(folder)})
+
+
+@app.route('/folders/<int:folder_id>/cover')
+@teacher_required
+def folder_cover_image(folder_id):
+    """The cover picture, only for the Teacher who owns the Folder."""
+    folder = owned_or_404(Folder, folder_id)
+    if folder.cover_updated_at is None or not folder.cover_image:
+        abort(404)
+    response = make_response(folder.cover_image)
+    response.mimetype = 'image/webp'
+    # The address has ?v=<upload time>, so a new upload gets a new address.
+    response.headers['Cache-Control'] = 'private, max-age=31536000, immutable'
+    return response
 
 
 @app.route('/api/quiz-banks/move', methods=['POST'])
