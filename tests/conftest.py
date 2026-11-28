@@ -1,5 +1,7 @@
 import os
+import re
 import tempfile
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -148,3 +150,70 @@ def ended_class_session_id(quiz_bank_id, teacher_id=TEACHER_ROUTER_ID):
             class_session_id=class_session.id, quiz_bank_id=quiz_bank_id, position=0))
         app_module.db.session.commit()
         return class_session.id
+
+
+# ---- Grade sheets and Submissions (ticket 16, issue #18; bulk delete) ----
+
+def make_bank(title, teacher_id=TEACHER_ROUTER_ID):
+    with app_module.app.app_context():
+        bank = app_module.QuizBank(title=title, description='',
+                                   teacher_id=teacher_id, quiz_mode='fixed')
+        app_module.db.session.add(bank)
+        app_module.db.session.commit()
+        return bank.id
+
+
+def make_course(name='高一 3 班 · 115 上', teacher_id=TEACHER_ROUTER_ID):
+    with app_module.app.app_context():
+        course = app_module.Course(teacher_id=teacher_id, name=name)
+        app_module.db.session.add(course)
+        app_module.db.session.commit()
+        return course.id
+
+
+def make_sheet_session(course_id, name, banks, starts_in_days=0, teacher_id=TEACHER_ROUTER_ID):
+    """For the grade sheet tests: a Class Session offering `banks` = [(quiz_bank_id, time_limit_minutes)] in that order."""
+    now = datetime.utcnow() + timedelta(days=starts_in_days)
+    with app_module.app.app_context():
+        cs = app_module.ClassSession(teacher_id=teacher_id, course_id=course_id, name=name,
+                                     code=app_module.new_class_session_code(),
+                                     starts_at=now - timedelta(minutes=10), ends_at=now + timedelta(minutes=40))
+        app_module.db.session.add(cs)
+        app_module.db.session.flush()
+        for position, (bank_id, minutes) in enumerate(banks):
+            app_module.db.session.add(app_module.ClassSessionBank(
+                class_session_id=cs.id, quiz_bank_id=bank_id, position=position, time_limit_minutes=minutes))
+        app_module.db.session.commit()
+        return cs.id
+
+
+_hand_in_clock = [datetime(2026, 11, 1, 2, 0)]
+
+
+def hand_in(class_session_id, bank_id, name, score, total=100):
+    """Insert one Submission; each call hands in one minute after the previous one."""
+    _hand_in_clock[0] += timedelta(minutes=1)
+    with app_module.app.app_context():
+        sub = app_module.Submission(student_name=name, score=score, total_points=total, answers='{}',
+                                    quiz_bank_id=bank_id, class_session_id=class_session_id,
+                                    submitted_at=_hand_in_clock[0])
+        app_module.db.session.add(sub)
+        app_module.db.session.commit()
+        return sub.id
+
+
+def page_html(response):
+    assert response.status_code == 200, response.status_code
+    return response.get_data(as_text=True)
+
+
+def sheet_rows(html):
+    """The body rows of the sheet table as lists of cell texts (tags stripped, spaces squeezed)."""
+    body = re.search(r'<tbody>(.*?)</tbody>', html, re.S).group(1)
+    rows = []
+    for tr in re.findall(r'<tr[^>]*>(.*?)</tr>', body, re.S):
+        cells = re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.S)
+        rows.append([' '.join(re.sub(r'<[^>]+>', ' ', c).split()) for c in cells])
+    return rows
+
+

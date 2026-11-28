@@ -103,7 +103,7 @@ def test_list_view_and_delete_still_work(auth_client):
 
     assert auth_client.get(f'/quiz-bank/{qb}/submissions/{body["submission_id"]}').status_code == 200
 
-    deleted = auth_client.delete(f'/api/submission/{body["submission_id"]}')
+    deleted = auth_client.post('/api/submissions/delete', json={'ids': [body['submission_id']]})
     assert deleted.status_code == 200
     assert auth_client.get(f'/api/quiz-bank/{qb}/submissions').get_json() == []
 

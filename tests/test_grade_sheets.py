@@ -7,73 +7,9 @@ Each cell is the latest score with its number of Takes, or 未作答.
 import csv
 import io
 import re
-from datetime import datetime, timedelta
 
-import app as app_module
-from conftest import TEACHER_ROUTER_ID, sign_in, OWN_ORIGIN
-
-
-def _bank(title, teacher_id=TEACHER_ROUTER_ID):
-    with app_module.app.app_context():
-        bank = app_module.QuizBank(title=title, description='',
-                                   teacher_id=teacher_id, quiz_mode='fixed')
-        app_module.db.session.add(bank)
-        app_module.db.session.commit()
-        return bank.id
-
-
-def _course(name='高一 3 班 · 115 上', teacher_id=TEACHER_ROUTER_ID):
-    with app_module.app.app_context():
-        course = app_module.Course(teacher_id=teacher_id, name=name)
-        app_module.db.session.add(course)
-        app_module.db.session.commit()
-        return course.id
-
-
-def _session(course_id, name, banks, starts_in_days=0, teacher_id=TEACHER_ROUTER_ID):
-    """A Class Session offering `banks` = [(quiz_bank_id, time_limit_minutes)] in that order."""
-    now = datetime.utcnow() + timedelta(days=starts_in_days)
-    with app_module.app.app_context():
-        cs = app_module.ClassSession(teacher_id=teacher_id, course_id=course_id, name=name,
-                                     code=app_module.new_class_session_code(),
-                                     starts_at=now - timedelta(minutes=10), ends_at=now + timedelta(minutes=40))
-        app_module.db.session.add(cs)
-        app_module.db.session.flush()
-        for position, (bank_id, minutes) in enumerate(banks):
-            app_module.db.session.add(app_module.ClassSessionBank(
-                class_session_id=cs.id, quiz_bank_id=bank_id, position=position, time_limit_minutes=minutes))
-        app_module.db.session.commit()
-        return cs.id
-
-
-_clock = [datetime(2026, 11, 1, 2, 0)]
-
-
-def _hand_in(class_session_id, bank_id, name, score, total=100):
-    """Insert one Submission; each call hands in one minute after the previous one."""
-    _clock[0] += timedelta(minutes=1)
-    with app_module.app.app_context():
-        sub = app_module.Submission(student_name=name, score=score, total_points=total, answers='{}',
-                                    quiz_bank_id=bank_id, class_session_id=class_session_id,
-                                    submitted_at=_clock[0])
-        app_module.db.session.add(sub)
-        app_module.db.session.commit()
-        return sub.id
-
-
-def _html(response):
-    assert response.status_code == 200, response.status_code
-    return response.get_data(as_text=True)
-
-
-def _rows(html):
-    """The body rows of the sheet table as lists of cell texts (tags stripped, spaces squeezed)."""
-    body = re.search(r'<tbody>(.*?)</tbody>', html, re.S).group(1)
-    rows = []
-    for tr in re.findall(r'<tr[^>]*>(.*?)</tr>', body, re.S):
-        cells = re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.S)
-        rows.append([' '.join(re.sub(r'<[^>]+>', ' ', c).split()) for c in cells])
-    return rows
+from conftest import (TEACHER_ROUTER_ID, sign_in, hand_in, make_bank, make_course, make_sheet_session,
+                      page_html, sheet_rows)
 
 
 def _csv(response):
@@ -84,49 +20,49 @@ def _csv(response):
 
 def test_session_sheet_merges_names_after_trimming_spaces(auth_client):
     bank = auth_client._ids['quiz_bank_id']
-    cs = _session(_course(), '第 12 週 · 小考', [(bank, 20)])
-    _hand_in(cs, bank, '王小明 ', 70)
-    _hand_in(cs, bank, ' 王小明', 80)
-    _hand_in(cs, bank, '陳怡君', 90)
+    cs = make_sheet_session(make_course(), '第 12 週 · 小考', [(bank, 20)])
+    hand_in(cs, bank, '王小明 ', 70)
+    hand_in(cs, bank, ' 王小明', 80)
+    hand_in(cs, bank, '陳怡君', 90)
 
-    rows = _rows(_html(auth_client.get(f'/class-sessions/{cs}')))
+    rows = sheet_rows(page_html(auth_client.get(f'/class-sessions/{cs}')))
     assert [r[0] for r in rows] == ['王小明', '陳怡君']
 
 
 def test_session_sheet_cell_is_the_latest_score_with_the_take_count(auth_client):
     first = auth_client._ids['quiz_bank_id']
-    second = _bank('迴圈與串列練習')
-    cs = _session(_course(), '第 12 週 · 小考', [(first, 20), (second, None)])
-    _hand_in(cs, first, '李佳穎', 50)
-    latest = _hand_in(cs, first, '李佳穎 ', 76)
-    _hand_in(cs, first, '陳怡君', 98)
-    _hand_in(cs, second, '陳怡君', 90)
+    second = make_bank('迴圈與串列練習')
+    cs = make_sheet_session(make_course(), '第 12 週 · 小考', [(first, 20), (second, None)])
+    hand_in(cs, first, '李佳穎', 50)
+    latest = hand_in(cs, first, '李佳穎 ', 76)
+    hand_in(cs, first, '陳怡君', 98)
+    hand_in(cs, second, '陳怡君', 90)
 
-    html = _html(auth_client.get(f'/class-sessions/{cs}'))
-    assert _rows(html) == [['李佳穎', '76% ×2', '未作答'], ['陳怡君', '98%', '90%']]
+    html = page_html(auth_client.get(f'/class-sessions/{cs}'))
+    assert sheet_rows(html) == [['李佳穎', '76% ×2', '未作答'], ['陳怡君', '98%', '90%']]
     assert f'/quiz-bank/{first}/submissions/{latest}' in html  # the score opens that Submission
 
 
 def test_session_sheet_columns_follow_the_class_session_order_with_their_numbers(auth_client):
     first = auth_client._ids['quiz_bank_id']
-    second = _bank('迴圈與串列練習')
-    cs = _session(_course(), '第 12 週 · 小考', [(second, None), (first, 20)])
-    _hand_in(cs, first, '陳怡君', 90)
-    _hand_in(cs, first, '林冠宇', 71)
+    second = make_bank('迴圈與串列練習')
+    cs = make_sheet_session(make_course(), '第 12 週 · 小考', [(second, None), (first, 20)])
+    hand_in(cs, first, '陳怡君', 90)
+    hand_in(cs, first, '林冠宇', 71)
 
-    html = _html(auth_client.get(f'/class-sessions/{cs}'))
+    html = page_html(auth_client.get(f'/class-sessions/{cs}'))
     head = re.search(r'<thead>(.*?)</thead>', html, re.S).group(1)
     assert head.index('迴圈與串列練習') < head.index('Timed Bank')
     text = ' '.join(re.sub(r'<[^>]+>', ' ', head).split())
     assert '不限時 · 0 人交卷 · 平均 —' in text
     assert '20 分鐘 · 2 人交卷 · 平均 81%' in text
-    assert _rows(html) == [['林冠宇', '未作答', '71%'], ['陳怡君', '未作答', '90%']]
+    assert sheet_rows(html) == [['林冠宇', '未作答', '71%'], ['陳怡君', '未作答', '90%']]
 
 
 def test_session_sheet_links_to_its_course_sheet(auth_client):
-    course = _course('高一 3 班 · 115 上')
-    cs = _session(course, '第 12 週 · 小考', [(auth_client._ids['quiz_bank_id'], None)])
-    html = _html(auth_client.get(f'/class-sessions/{cs}'))
+    course = make_course('高一 3 班 · 115 上')
+    cs = make_sheet_session(course, '第 12 週 · 小考', [(auth_client._ids['quiz_bank_id'], None)])
+    html = page_html(auth_client.get(f'/class-sessions/{cs}'))
     crumbs = re.search(r'<nav class="crumbs".*?</nav>', html, re.S).group(0)
     assert f'href="/courses/{course}"' in crumbs and '高一 3 班 · 115 上' in crumbs
     head = re.search(r'<div class="page-head">.*?</p>', html, re.S).group(0)
@@ -136,11 +72,11 @@ def test_session_sheet_links_to_its_course_sheet(auth_client):
 
 def test_session_sheet_csv_has_a_number_and_a_take_count_per_column(auth_client):
     first = auth_client._ids['quiz_bank_id']
-    second = _bank('迴圈與串列練習')
-    cs = _session(_course(), '第 12 週 · 小考', [(first, 20), (second, None)])
-    _hand_in(cs, first, '李佳穎', 50)
-    _hand_in(cs, first, '李佳穎', 76.4, total=100)
-    _hand_in(cs, second, '陳怡君', 9, total=10)
+    second = make_bank('迴圈與串列練習')
+    cs = make_sheet_session(make_course(), '第 12 週 · 小考', [(first, 20), (second, None)])
+    hand_in(cs, first, '李佳穎', 50)
+    hand_in(cs, first, '李佳穎', 76.4, total=100)
+    hand_in(cs, second, '陳怡君', 9, total=10)
 
     rows = _csv(auth_client.get(f'/class-sessions/{cs}/sheet.csv'))
     # Each column is two CSV columns: the latest score as a plain number (blank when not answered)
@@ -151,8 +87,8 @@ def test_session_sheet_csv_has_a_number_and_a_take_count_per_column(auth_client)
 
 
 def test_teacher_sees_only_own_sheets(client):
-    course = _course(teacher_id=TEACHER_ROUTER_ID + 1)
-    cs = _session(course, '別人的課堂', [(_bank('別人的題庫', TEACHER_ROUTER_ID + 1), None)],
+    course = make_course(teacher_id=TEACHER_ROUTER_ID + 1)
+    cs = make_sheet_session(course, '別人的課堂', [(make_bank('別人的題庫', TEACHER_ROUTER_ID + 1), None)],
                   teacher_id=TEACHER_ROUTER_ID + 1)
     sign_in(client, TEACHER_ROUTER_ID)
     for path in (f'/class-sessions/{cs}', f'/class-sessions/{cs}/sheet.csv',
@@ -166,28 +102,28 @@ def test_teacher_sees_only_own_sheets(client):
 def _course_with_three_sessions(auth_client):
     """Three Class Sessions (created out of start order) with 4 columns in all."""
     a = auth_client._ids['quiz_bank_id']
-    b = _bank('迴圈與串列練習')
-    course = _course('高一 3 班 · 115 上')
-    week12 = _session(course, '第 12 週 · 小考', [(a, 20), (b, None)], starts_in_days=-1)
-    week10 = _session(course, '第 10 週 · 小考', [(a, 20)], starts_in_days=-15)
-    term = _session(course, '整學期練習', [(b, None)], starts_in_days=0)
-    _session(_course('別的課程'), '別的課堂', [(a, None)])
+    b = make_bank('迴圈與串列練習')
+    course = make_course('高一 3 班 · 115 上')
+    week12 = make_sheet_session(course, '第 12 週 · 小考', [(a, 20), (b, None)], starts_in_days=-1)
+    week10 = make_sheet_session(course, '第 10 週 · 小考', [(a, 20)], starts_in_days=-15)
+    term = make_sheet_session(course, '整學期練習', [(b, None)], starts_in_days=0)
+    make_sheet_session(make_course('別的課程'), '別的課堂', [(a, None)])
     return course, a, b, week10, week12, term
 
 
 def test_course_sheet_rows_cells_average_and_answered_count(auth_client):
     course, a, b, week10, week12, term = _course_with_three_sessions(auth_client)
-    _hand_in(week10, a, '王小明', 70)
-    _hand_in(week12, a, '王小明 ', 60)
-    _hand_in(week12, a, '王小明', 81)
-    _hand_in(term, b, ' 陳怡君', 95)
+    hand_in(week10, a, '王小明', 70)
+    hand_in(week12, a, '王小明 ', 60)
+    hand_in(week12, a, '王小明', 81)
+    hand_in(term, b, ' 陳怡君', 95)
 
-    html = _html(auth_client.get(f'/courses/{course}'))
+    html = page_html(auth_client.get(f'/courses/{course}'))
     head = ' '.join(re.sub(r'<[^>]+>', ' ', re.search(r'<thead>(.*?)</thead>', html, re.S).group(1)).split())
     assert head.index('第 10 週') < head.index('第 12 週') < head.index('整學期練習')
     assert '別的課堂' not in html
     assert f'href="/class-sessions/{week12}"' in html  # a Class Session name opens its sheet
-    assert _rows(html) == [
+    assert sheet_rows(html) == [
         ['王小明', '70%', '81% ×2', '未作答', '未作答', '76%', '2 / 4'],
         ['陳怡君', '未作答', '未作答', '未作答', '95%', '95%', '1 / 4'],
     ]
@@ -195,9 +131,9 @@ def test_course_sheet_rows_cells_average_and_answered_count(auth_client):
 
 def test_course_sheet_csv_has_a_number_and_a_take_count_per_column(auth_client):
     course, a, b, week10, week12, term = _course_with_three_sessions(auth_client)
-    _hand_in(week10, a, '王小明', 70)
-    _hand_in(week12, b, '王小明', 85)
-    _hand_in(week12, b, '王小明', 90)
+    hand_in(week10, a, '王小明', 70)
+    hand_in(week12, b, '王小明', 85)
+    hand_in(week12, b, '王小明', 90)
 
     rows = _csv(auth_client.get(f'/courses/{course}/sheet.csv'))
     assert rows == [
@@ -212,8 +148,8 @@ def test_course_sheet_csv_has_a_number_and_a_take_count_per_column(auth_client):
 # ---- review fix 3: Class Session and Course actions on the sheets (prototype) ----
 
 def test_class_session_sheet_has_edit_and_end_now_with_the_shared_dialog(auth_client):
-    course = _course()
-    cs = _session(course, '第 12 週 · 小考', [(auth_client._ids['quiz_bank_id'], 20)])
+    course = make_course()
+    cs = make_sheet_session(course, '第 12 週 · 小考', [(auth_client._ids['quiz_bank_id'], 20)])
     html = auth_client.get(f'/class-sessions/{cs}').get_data(as_text=True)
     assert f'data-cs-edit="{cs}"' in html
     assert f'data-cs-action="end" data-id="{cs}"' in html  # it is live
@@ -222,16 +158,16 @@ def test_class_session_sheet_has_edit_and_end_now_with_the_shared_dialog(auth_cl
 
 
 def test_an_ended_class_session_sheet_offers_reopen_not_end_now(auth_client):
-    course = _course()
-    cs = _session(course, '上週', [(auth_client._ids['quiz_bank_id'], None)], starts_in_days=-7)
+    course = make_course()
+    cs = make_sheet_session(course, '上週', [(auth_client._ids['quiz_bank_id'], None)], starts_in_days=-7)
     html = auth_client.get(f'/class-sessions/{cs}').get_data(as_text=True)
     assert 'data-cs-action="end"' not in html
     assert f'data-cs-action="reopen" data-id="{cs}"' in html
 
 
 def test_course_sheet_has_the_course_actions(auth_client):
-    course = _course()
-    _session(course, '第 12 週 · 小考', [(auth_client._ids['quiz_bank_id'], None)])
+    course = make_course()
+    make_sheet_session(course, '第 12 週 · 小考', [(auth_client._ids['quiz_bank_id'], None)])
     html = auth_client.get(f'/courses/{course}').get_data(as_text=True)
     block = re.search(r'<[^>]+data-course="%d"[^>]*>' % course, html)
     assert block, 'the actions need the Course data'

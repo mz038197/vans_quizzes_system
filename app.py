@@ -1872,21 +1872,6 @@ def view_submissions(quiz_bank_id):
     
     return jsonify(submissions_data)
 
-@app.route('/api/submission/<int:submission_id>', methods=['DELETE'])
-@teacher_required
-def delete_submission(submission_id):
-    submission = owned_or_404(Submission, submission_id)
-    quiz_bank = submission.quiz_bank
-    
-    try:
-        db.session.delete(submission)
-        db.session.commit()
-        return jsonify({'message': '成績已成功刪除'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': '刪除失敗，請稍後再試'}), 500
-
-
 @app.route('/api/submissions/delete', methods=['POST'])
 @teacher_required
 def delete_submissions():
