@@ -11,8 +11,6 @@ from class_session_rules import LIVE, SOON, UTC8
 
 ATTENTION_BELOW_PERCENT = grade_stats.PASS_PERCENT
 WEEK = timedelta(days=7)
-# 需要注意 rule 2: a live Class Session that started this long ago and has no Submission.
-EMPTY_LIVE_AFTER = timedelta(minutes=10)
 
 
 def submission_percent(score, total_points):
@@ -37,18 +35,13 @@ def percent_text(value):
     return text
 
 
-def attention_reason(average, sessions=(), now=None):
-    """Why a Quiz Bank needs attention, or None.
+def attention_reason(average):
+    """Why a Quiz Bank needs attention, or None: its average is below 60%.
 
-    Rule 1: its average is below 60%. Rule 2: one of its Class Sessions is live, started at least
-    10 minutes ago and has no Submission. `sessions` is an iterable of (name, status, starts_at, n_subs).
+    A live Class Session with no Submission yet is not a reason: a Class Session can run for hours.
     """
     if average is not None and average < ATTENTION_BELOW_PERCENT:
         return f'平均 {percent_text(average)}%，低於 {ATTENTION_BELOW_PERCENT}%'
-    for name, status, starts_at, n_subs in sessions:
-        if status == LIVE and n_subs == 0 and now - starts_at >= EMPTY_LIVE_AFTER:
-            minutes = int((now - starts_at).total_seconds() // 60)
-            return f'課堂「{name}」已開始 {minutes} 分鐘，還沒有人交卷'
     return None
 
 

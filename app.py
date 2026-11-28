@@ -920,8 +920,7 @@ def teacher_bank_overview(teacher_id, now=None, sessions=None):
         own = sessions_of.get(bank.id, [])
         session_kind, session_text = teacher_stats.bank_session_status(
             (r['status'], r['session'].starts_at) for r in own)
-        attention = teacher_stats.attention_reason(
-            average, [(r['session'].name, r['status'], r['session'].starts_at, r['n_subs']) for r in own], now)
+        attention = teacher_stats.attention_reason(average)
         overview.append({
             'bank': bank,
             'mode': quiz_mode_label(bank.quiz_mode),
