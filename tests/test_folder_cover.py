@@ -169,32 +169,36 @@ def test_after_removal_the_card_shows_the_colour_block_again(auth_client):
 
 # ---- The Teacher picks the part of the picture to keep (form field "crop") ----
 
-QUADRANTS = {'top-left': (220, 30, 30), 'top-right': (30, 200, 30),
-             'bottom-left': (30, 30, 220), 'bottom-right': (230, 200, 20)}
+QUARTERS = {'top-left': ((0, 0), (220, 30, 30)), 'top-right': ((1, 0), (30, 200, 30)),
+            'bottom-left': ((0, 1), (30, 30, 220)), 'bottom-right': ((1, 1), (230, 200, 20))}
 
 
-def _four_colour_picture():
+def _colour(quarter):
+    return QUARTERS[quarter][1]
+
+
+def _four_colour_picture(fmt='PNG', exif=None):
     """1600×900, each quarter one colour: a 16:9 quarter is 800×450."""
     picture = Image.new('RGB', (1600, 900))
-    for name, box in {'top-left': (0, 0, 800, 450), 'top-right': (800, 0, 1600, 450),
-                      'bottom-left': (0, 450, 800, 900), 'bottom-right': (800, 450, 1600, 900)}.items():
-        picture.paste(QUADRANTS[name], box)
+    for (column, row), colour in QUARTERS.values():
+        picture.paste(colour, (column * 800, row * 450, column * 800 + 800, row * 450 + 450))
     data = io.BytesIO()
-    picture.save(data, 'PNG')
+    picture.save(data, fmt, **({'exif': exif} if exif else {}))
     return data.getvalue()
 
 
-def _upload_cropped(client, folder_id, crop):
-    return client.put(f'/api/folders/{folder_id}/cover',
-                      data={'cover': (io.BytesIO(_four_colour_picture()), 'cover.png'), 'crop': crop},
-                      content_type='multipart/form-data')
+def _upload_with_crop(client, folder_id, crop=None, raw=None):
+    data = {'cover': (io.BytesIO(raw or _four_colour_picture()), 'cover.png')}
+    if crop is not None:
+        data['crop'] = crop
+    return client.put(f'/api/folders/{folder_id}/cover', data=data, content_type='multipart/form-data')
 
 
-def _cover_colour(client, response):
+def _cover(client, response):
     assert response.status_code == 200, response.get_json()
     picture = Image.open(io.BytesIO(client.get(response.get_json()['folder']['cover_url']).data)).convert('RGB')
     assert picture.size == (640, 360)
-    return picture.getpixel((320, 180))
+    return picture
 
 
 def _near(colour, expected):
@@ -204,34 +208,56 @@ def _near(colour, expected):
 def test_the_cover_keeps_the_part_the_teacher_picked(auth_client):
     folder_id = _folder_id(auth_client)
 
-    top_left = _cover_colour(auth_client, _upload_cropped(auth_client, folder_id, '0,0,0.5,0.5'))
-    bottom_right = _cover_colour(auth_client, _upload_cropped(auth_client, folder_id, '0.5,0.5,0.5,0.5'))
+    top_left = _cover(auth_client, _upload_with_crop(auth_client, folder_id, '0,0,0.5,0.5'))
+    bottom_right = _cover(auth_client, _upload_with_crop(auth_client, folder_id, '0.5,0.5,0.5,0.5'))
 
-    assert _near(top_left, QUADRANTS['top-left'])
-    assert _near(bottom_right, QUADRANTS['bottom-right'])
+    assert _near(top_left.getpixel((320, 180)), _colour('top-left'))
+    assert _near(bottom_right.getpixel((320, 180)), _colour('bottom-right'))
 
 
 def test_without_a_crop_the_cover_is_the_middle_of_the_picture(auth_client):
-    folder_id = _folder_id(auth_client)
-    response = auth_client.put(f'/api/folders/{folder_id}/cover',
-                               data={'cover': (io.BytesIO(_four_colour_picture()), 'cover.png')},
-                               content_type='multipart/form-data')
-    picture = Image.open(io.BytesIO(auth_client.get(response.get_json()['folder']['cover_url']).data)).convert('RGB')
-    assert _near(picture.getpixel((80, 45)), QUADRANTS['top-left'])
-    assert _near(picture.getpixel((560, 315)), QUADRANTS['bottom-right'])
+    cover = _cover(auth_client, _upload_with_crop(auth_client, _folder_id(auth_client)))
+
+    assert _near(cover.getpixel((80, 45)), _colour('top-left'))
+    assert _near(cover.getpixel((560, 315)), _colour('bottom-right'))
+
+
+def test_the_crop_is_of_the_picture_turned_upright_as_the_browser_shows_it(auth_client):
+    exif = Image.Exif()
+    exif[0x0112] = 6  # the camera was turned: show the picture turned 90° clockwise (900×1600)
+    raw = _four_colour_picture('JPEG', exif)
+
+    # The top-left 16:9 part of the upright picture: 450×253 of 900×1600.
+    cover = _cover(auth_client, _upload_with_crop(auth_client, _folder_id(auth_client), '0,0,0.5,0.158', raw))
+
+    assert _near(cover.getpixel((320, 180)), _colour('bottom-left'))
+
+
+def test_a_small_crop_of_a_big_photo_keeps_its_detail(auth_client):
+    """Fine stripes 2 px wide on a 6000×4000 photo. A big JPEG is read at a smaller size to save memory;
+    for a small crop that size must still be big enough, or the stripes become one grey."""
+    picture = Image.new('L', (6000, 4000), 255)
+    for left in range(2400, 3900, 4):  # only in the crop, so the file stays under 4 MB
+        picture.paste(0, (left, 1600, left + 2, 2444))
+    data = io.BytesIO()
+    picture.save(data, 'JPEG', quality=95)
+
+    # A quarter of the width, 16:9: 1500×844 of 6000×4000.
+    cover = _cover(auth_client, _upload_with_crop(auth_client, _folder_id(auth_client), '0.4,0.4,0.25,0.2109',
+                                                  data.getvalue()))
+
+    row = [cover.getpixel((x, 180))[0] for x in range(200, 440)]
+    assert max(row) - min(row) > 50
 
 
 def test_a_crop_outside_the_picture_or_not_numbers_is_refused(auth_client):
     folder_id = _folder_id(auth_client)
-    for crop in ('0.8,0,0.5,0.5', '0,0,0,0', '-0.1,0,0.5,0.5', 'abc', '0,0,0.5'):
-        response = _upload_cropped(auth_client, folder_id, crop)
+    for crop in ('0.8,0,0.5,0.5', '0,0,0,0', '-0.1,0,0.5,0.5', 'abc', '0,0,0.5', 'nan,0,0.5,0.5'):
+        response = _upload_with_crop(auth_client, folder_id, crop)
         assert response.status_code == 400, crop
         assert response.get_json()['error'] == '裁切範圍不對，請重新選取', crop
     assert auth_client.get('/quiz-banks').status_code == 200
 
 
-def test_folder_dialog_loads_the_cover_cropper(auth_client):
-    page = _html(auth_client, '/quiz-banks')
-    assert '/static/js/cover_crop.js' in page
-    script = auth_client.get('/static/js/pages/quiz_banks.js').get_data(as_text=True)
-    assert "form.append('crop'" in script
+def test_quiz_banks_page_loads_the_cover_cropper(auth_client):
+    assert '/static/js/cover_crop.js' in _html(auth_client, '/quiz-banks')

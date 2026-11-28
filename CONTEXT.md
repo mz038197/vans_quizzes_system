@@ -57,5 +57,5 @@ A teacher-owned container of Class Sessions that outlives one lesson, such as on
 _Avoid_: Class (alone, too close to Class Session), 班級, semester, Folder (Folders hold Quiz Banks, not Class Sessions)
 
 **Folder**:
-A teacher-owned, named place for Quiz Banks, shown as 資料夾. A Quiz Bank sits in at most one Folder; one with no Folder is shown under “未分類”, which is not a Folder. Folders do not nest. Deleting a Folder moves its Quiz Banks back to “未分類” and deletes no Quiz Bank. A Folder can have a cover picture (封面圖片); without one it shows its colour.
+A teacher-owned, named place for Quiz Banks, shown as 資料夾. A Quiz Bank sits in at most one Folder; one with no Folder is shown under “未分類”, which is not a Folder. Folders do not nest. Deleting a Folder moves its Quiz Banks back to “未分類” and deletes no Quiz Bank. A Folder can have a cover picture (封面圖片); without one it shows its colour. When the Teacher picks the picture, they also pick the 16:9 part of it to keep, the crop (裁切範圍); only that part is kept, not the whole picture.
 _Avoid_: Group, 分組, tag, category (as the concept name)

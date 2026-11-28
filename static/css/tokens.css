@@ -87,6 +87,9 @@
 
   /* ---- controls ---- */
   --checkbox: 16px;
+  --line-bold: 2px;      /* a line that must show on a picture: the cover crop box */
+  --crop-h: 280px;       /* the tallest picture in the cover cropper */
+  --fade-all: 0 0 0 9999px var(--photo-fade);   /* box-shadow that fades everything around a box */
 
   /* ---- layers ---- */
   --z-bar: 100;      /* the bottom action bar (bulk delete); under menus and dialogs */

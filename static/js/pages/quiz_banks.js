@@ -37,7 +37,8 @@
   const COVER_MAX_BYTES = 4 * 1024 * 1024 - 16 * 1024;
 
   /* Cover picture field: a 16:9 preview, 選擇圖片 and 移除, and for a new picture the cropper (cover_crop.js).
-     state.file is a new picture, state.crop() the part of it to keep; state.remove drops the old one. */
+     state.file is a new picture and state.cropper picks the part of it to keep; state.remove drops the old one.
+     A file of the wrong type or size is refused at once, so state.file is always one the server can take. */
   function coverField(folder, state) {
     const preview = make('span', { class: 'cover-preview', 'aria-hidden': 'true' });
     const fileInput = make('input', { id: 'fd-cover', type: 'file', accept: COVER_TYPES.join(','), class: 'sr-only' });
@@ -45,7 +46,7 @@
       make('i', { class: 'fas fa-image', 'aria-hidden': 'true' }), make('span', { text: ' 選擇圖片' }),
     ]);
     const remove = make('button', { type: 'button', class: 'btn' }, [make('span', { text: '移除圖片' })]);
-    const hint = make('p', { class: 'muted small', text: 'JPG、PNG、WebP 或 GIF，最多 4 MB。選好圖片後，拖動框框選要的範圍，拉右下角改大小。' });
+    const hint = make('p', { class: 'muted small', text: 'JPG、PNG、WebP 或 GIF，最多 4 MB。選好圖片後，拖動框框選要的範圍，拉框的角改大小。' });
     const cropArea = make('div', { class: 'cover-crop' });
     const error = make('div', { class: 'err', role: 'alert' });
     let objectUrl = null;
@@ -56,38 +57,49 @@
       preview.style.backgroundPosition = '';
       remove.hidden = !url;
     }
-    // The preview shows only the cropped part: the picture is 1/w of the preview wide.
     function showCrop(crop) {
-      if (!crop) return;
-      const at = (start, size) => (size < 1 ? (start / (1 - size)) * 100 : 0);
-      preview.style.backgroundSize = `${100 / crop.w}% auto`;
-      preview.style.backgroundPosition = `${at(crop.x, crop.w)}% ${at(crop.y, crop.h)}%`;
+      if (crop) Object.assign(preview.style, CoverCrop.previewStyle(crop));
     }
-    function clearCrop() {
+    function forgetNewPicture() {
+      state.file = null;
+      state.cropper = null;
       cropArea.replaceChildren();
-      state.crop = () => null;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = null;
     }
-    clearCrop();
+    function problem(file) {
+      if (!COVER_TYPES.includes(file.type)) return '只接受 JPG、PNG、WebP 或 GIF 圖片';
+      if (file.size > COVER_MAX_BYTES) return '檔案太大，最多 4 MB';
+      return '';
+    }
     show(folder && folder.cover_url);
 
     fileInput.addEventListener('change', () => {
       const file = fileInput.files[0];
       if (!file) return;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      error.textContent = problem(file);
+      if (error.textContent) { fileInput.value = ''; return; }
+      forgetNewPicture();
       objectUrl = URL.createObjectURL(file);
       state.file = file;
       state.remove = false;
-      error.textContent = '';
       show(objectUrl);
-      const cropper = CoverCrop.create(objectUrl, showCrop);
-      cropArea.replaceChildren(cropper.node);
-      state.crop = cropper.crop;
+      state.cropper = CoverCrop.create(objectUrl, {
+        onChange: showCrop,
+        onError: () => {
+          forgetNewPicture();
+          fileInput.value = '';
+          show(folder && folder.cover_url);
+          error.textContent = '這個檔案不是可以讀的圖片';
+        },
+      });
+      cropArea.replaceChildren(state.cropper.node);
     });
     remove.addEventListener('click', () => {
-      state.file = null;
+      forgetNewPicture();
       state.remove = Boolean(folder && folder.cover_url);
       fileInput.value = '';
-      clearCrop();
+      error.textContent = '';
       show(null);
     });
     const field = make('div', { class: 'fld' }, [
@@ -109,8 +121,8 @@
     if (state.file) {
       const form = new FormData();
       form.append('cover', state.file);
-      const crop = state.crop();
-      if (crop) form.append('crop', [crop.x, crop.y, crop.w, crop.h].map((n) => n.toFixed(5)).join(','));
+      const crop = state.cropper ? state.cropper.formValue() : '';
+      if (crop) form.append('crop', crop);
       return send('PUT', `/api/folders/${folderId}/cover`, form);
     }
     if (state.remove) return send('DELETE', `/api/folders/${folderId}/cover`);
@@ -131,7 +143,7 @@
         radio, make('span', { class: 'swatch', 'aria-hidden': 'true' }), make('span', { class: 'sr-only', text: COLOR_NAMES[color] || color }),
       ]));
     });
-    const cover = { file: null, remove: false };
+    const cover = { file: null, cropper: null, remove: false };
     const coverInput = coverField(folder, cover);
     const body = make('div', { class: 'stack' }, [
       make('div', { class: 'fld' }, [make('label', { for: nameId, text: '資料夾名稱' }), input, error]),
@@ -161,8 +173,6 @@
       const name = input.value.trim();
       const color = pickedColor();
       if (!name) { showError('請輸入資料夾名稱'); return; }
-      if (cover.file && !COVER_TYPES.includes(cover.file.type)) { coverInput.showError('只接受 JPG、PNG、WebP 或 GIF 圖片'); return; }
-      if (cover.file && cover.file.size > COVER_MAX_BYTES) { coverInput.showError('檔案太大，最多 4 MB'); return; }
       saving = true;
       const target = saved || folder;
       const { ok, result } = target
