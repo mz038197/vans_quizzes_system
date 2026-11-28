@@ -88,7 +88,7 @@ def test_rename_and_recolour_folder(auth_client):
     response = auth_client.put(f'/api/folders/{folder_id}', json={'name': '新名', 'color': 'amber'})
 
     assert response.status_code == 200
-    assert response.get_json()['folder'] == {'id': folder_id, 'name': '新名', 'color': 'amber'}
+    assert response.get_json()['folder'] == {'id': folder_id, 'name': '新名', 'color': 'amber', 'cover_url': None}
     page = auth_client.get('/quiz-banks').get_data(as_text=True)
     assert '新名' in page and '舊名' not in page
     assert 'fc-amber' in page

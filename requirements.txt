@@ -12,3 +12,4 @@ psycopg2-binary==2.9.9; sys_platform != 'win32'
 # 在Windows上可選安裝
 # psycopg2==2.9.9; sys_platform == 'win32'
 PyYAML==6.0.2
+Pillow==11.3.0
