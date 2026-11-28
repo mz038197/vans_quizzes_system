@@ -28,7 +28,10 @@
     <div class="sgrid">
         {% for row in sessions %}{% set cs = row.session %}
         <article class="scard {{ row.status }}" data-class-session="{{ cs.id }}">
-            <div>{{ ui.status_pill(row.status, ('進行中 · ' if row.status == 'live' else '即將開始 · ') ~ row.when_text) }}</div>
+            <div class="hd">
+                {{ ui.status_pill(row.status, ('進行中 · ' if row.status == 'live' else '即將開始 · ') ~ row.when_text) }}
+                <button type="button" class="btn btn-icon" data-cs-edit="{{ cs.id }}" title="編輯課堂" aria-label="編輯「{{ cs.name }}」"><i class="fas fa-pen" aria-hidden="true"></i></button>
+            </div>
             <div>
                 <div class="t-sub"><i class="fas fa-graduation-cap" aria-hidden="true"></i> {{ cs.course.name }}</div>
                 <h3 class="nm">{{ cs.name }}</h3>
@@ -146,5 +149,6 @@
 {% block scripts %}
 {% include "_qr_stage.html" %}
 <script src="{{ url_for('static', filename='js/pages/dashboard.js') }}"></script>
+<script src="{{ url_for('static', filename='js/class_session_actions.js') }}"></script>
 {% include "_class_session_dialog.html" %}
 {% endblock %}

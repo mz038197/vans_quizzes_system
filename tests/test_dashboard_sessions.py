@@ -228,3 +228,19 @@ def test_other_teachers_class_sessions_do_not_show(client):
     assert '別人的課堂' not in html
     assert _kpi(html, '進行中的課堂')[0] == '0'
     assert _kpi(html, '需要注意')[0] == '0'
+
+
+def test_each_card_opens_the_edit_class_session_dialog(auth_client):
+    bank = auth_client._ids['quiz_bank_id']
+    live = _session(bank, '三年一班 第一節')
+    soon = _session(bank, '三年三班 明天', starts_in=3600, ends_in=6600)
+    with app_module.app.app_context():
+        ids = [app_module.ClassSession.query.filter_by(code=code).one().id for code in (live, soon)]
+
+    html = _page(auth_client, '/teacher-dashboard')
+
+    cards = _cards(html)
+    for class_session_id, name in zip(ids, ('三年一班 第一節', '三年三班 明天')):
+        assert f'data-cs-edit="{class_session_id}"' in cards
+        assert f'aria-label="編輯「{name}」"' in cards
+    assert '/static/js/class_session_actions.js' in html
