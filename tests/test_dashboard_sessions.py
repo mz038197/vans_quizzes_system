@@ -30,11 +30,11 @@ def _session(bank_id, name, **kw):
     return make_class_session({'quiz_bank_id': bank_id}, name=name, **kw)
 
 
-def _hand_in(code, bank_id, student='學生甲'):
+def _hand_in(code, bank_id, student='學生甲', score=1):
     with app_module.app.app_context():
         class_session = app_module.ClassSession.query.filter_by(code=code).one()
         app_module.db.session.add(app_module.Submission(
-            student_name=student, answers='{}', score=1, total_points=1,
+            student_name=student, answers='{}', score=score, total_points=1,
             quiz_bank_id=bank_id, class_session_id=class_session.id,
         ))
         app_module.db.session.commit()
@@ -150,37 +150,28 @@ def test_open_class_session_button_on_dashboard_and_quiz_banks_page(auth_client)
     assert f'data-id="{bank}"' in _row(_page(auth_client, '/quiz-banks'), bank)
 
 
-# ---- 需要注意: the 10-minute rule ----
+# ---- 需要注意: a live Class Session alone is not a reason ----
 
-def test_live_class_session_without_hand_in_needs_attention_after_10_minutes(auth_client):
-    nine = _bank('Nine Minutes Bank')
-    _session(nine, '九分鐘', starts_in=-9 * 60)
-    ten = _bank('Ten Minutes Bank')
-    _session(ten, '十分鐘', starts_in=-10 * 60 - 5)
-    handed = _bank('Handed In Bank')
-    code = _session(handed, '有人交卷', starts_in=-30 * 60)
-    _hand_in(code, handed)
-    closed = _bank('Ended Course Bank')
-    _session(closed, '課程已結束', starts_in=-30 * 60, course_ended=True)
-    upcoming = _bank('Upcoming Bank')
-    _session(upcoming, '還沒開始', starts_in=600, ends_in=3600)
+def test_long_live_class_session_without_hand_in_does_not_need_attention(auth_client):
+    # A Class Session can run for hours; no Submission yet is normal while Students work.
+    quiet = _bank('Quiet Live Bank')
+    _session(quiet, '長課堂', starts_in=-90 * 60)
 
     html = _page(auth_client, '/teacher-dashboard')
     value, _ = _kpi(html, '需要注意')
-    assert value == '1'
-    assert 'Ten Minutes Bank' in html
-    assert '課堂「十分鐘」已開始 10 分鐘，還沒有人交卷' in html
+    assert value == '0'
+    assert '還沒有人交卷' not in html
 
     html = _page(auth_client, '/quiz-banks?filter=attention')
-    assert 'Ten Minutes Bank' in html
-    for title in ('Nine Minutes Bank', 'Handed In Bank', 'Ended Course Bank', 'Upcoming Bank'):
-        assert title not in html
+    assert 'Quiet Live Bank' not in html
+    # the live Class Session still shows in the Quiz Bank's status
+    assert '● 1 堂進行中' in _row(_page(auth_client, '/quiz-banks'), quiet)
 
 
 def test_attention_list_names_the_folder(auth_client):
     folder = _folder('期中考')
     bank = _bank('Folder Bank', folder_id=folder)
-    _session(bank, '沒人進來', starts_in=-20 * 60)
+    _hand_in(_session(bank, '低分', starts_in=-20 * 60), bank, score=0)
     html = _page(auth_client, '/teacher-dashboard')
     attn = re.search(r'<section[^>]*dash-attn.*?</section>', html, re.S).group(0)
     assert 'Folder Bank' in attn and '期中考' in attn

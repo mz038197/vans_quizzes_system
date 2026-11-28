@@ -857,7 +857,7 @@ def bank_matches(bank, query):
 
 
 def teacher_class_session_overview(teacher_id, now=None):
-    """Every Class Session of the Teacher with its status, Submission count and distinct trimmed names.
+    """Every Class Session of the Teacher with its status and its count of distinct trimmed names.
 
     Sorted by class_session_rules.list_order (live, upcoming by start, ended by latest end).
     An ended Course makes its Class Sessions DONE (class_session_rules.status).
@@ -872,7 +872,7 @@ def teacher_class_session_overview(teacher_id, now=None):
     for class_session in class_sessions:
         status = class_session_rules.status(class_session, now)
         handed = names.get(class_session.id, [])
-        row = {'session': class_session, 'status': status, 'n_subs': len(handed),
+        row = {'session': class_session, 'status': status,
                'n_students': len(set(handed)), 'progress': None, 'when_text': None,
                'bank_summary': bank_summary.summarize([
                    {'title': o.quiz_bank.title, 'time_limit': o.time_limit_minutes, 'n_subs': 0, 'folder': None}
@@ -920,8 +920,7 @@ def teacher_bank_overview(teacher_id, now=None, sessions=None):
         own = sessions_of.get(bank.id, [])
         session_kind, session_text = teacher_stats.bank_session_status(
             (r['status'], r['session'].starts_at) for r in own)
-        attention = teacher_stats.attention_reason(
-            average, [(r['session'].name, r['status'], r['session'].starts_at, r['n_subs']) for r in own], now)
+        attention = teacher_stats.attention_reason(average)
         overview.append({
             'bank': bank,
             'mode': quiz_mode_label(bank.quiz_mode),
