@@ -1,5 +1,6 @@
 /*
- * Class Session row actions (ticket 11, #13). Used by the 課堂 page and the 課堂 tab of the Quiz Bank page.
+ * Class Session row actions (ticket 11, #13). Used by the 課堂 page, the 課堂 tab of the Quiz Bank page,
+ * the 課堂總表, and the Class Session cards on the 儀表板 (編輯課堂 only).
  *
  *   <button data-cs-action="end|start-now|extend|reopen" data-id="<Class Session id>">   POST /api/class-sessions/<id>/<action>
  *   <button data-cs-edit="<id>">     opens the shared dialog in edit mode (ClassSessionDialog.open({ session }))
