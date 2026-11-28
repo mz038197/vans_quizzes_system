@@ -162,6 +162,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/cover_crop.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pages/quiz_banks.js') }}"></script>
 {% include "_class_session_dialog.html" %}
 {% endblock %}

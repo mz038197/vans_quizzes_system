@@ -116,3 +116,24 @@
   background: color-mix(in srgb, var(--fc, var(--muted)) 85%, var(--on-primary)) center / cover no-repeat;
 }
 .fld:has(#fd-cover:focus-visible) .cover-pick label.btn { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* Cover cropper (static/js/cover_crop.js): the whole picture, a 16:9 box on it, the rest under the fade.
+   Each corner of the box is a --tap square to grab, with a small dot in it. */
+.cover-crop:empty { display: none; }
+.crop-wrap { display: grid; place-items: center; background: var(--bg); border-radius: var(--r-sm); padding: var(--s1); }
+.crop-stage { position: relative; overflow: hidden; touch-action: none; user-select: none; }
+.crop-stage img { display: block; max-width: 100%; max-height: var(--crop-h); }
+.crop-box {
+  position: absolute; cursor: move; outline: var(--line-bold) solid var(--on-primary);
+  box-shadow: var(--fade-all);
+}
+.crop-box:focus-visible { outline: var(--line-bold) solid var(--focus); }
+.crop-handle { position: absolute; width: var(--tap); height: var(--tap); display: grid; }
+.crop-handle::after {
+  content: ''; width: var(--s2); height: var(--s2); border-radius: var(--r-pill);
+  background: var(--on-primary); border: var(--line-bold) solid var(--primary);
+}
+.crop-handle[data-corner="nw"] { left: 0; top: 0; place-items: start; cursor: nwse-resize; }
+.crop-handle[data-corner="ne"] { right: 0; top: 0; place-items: start end; cursor: nesw-resize; }
+.crop-handle[data-corner="sw"] { left: 0; bottom: 0; place-items: end start; cursor: nesw-resize; }
+.crop-handle[data-corner="se"] { right: 0; bottom: 0; place-items: end; cursor: nwse-resize; }
