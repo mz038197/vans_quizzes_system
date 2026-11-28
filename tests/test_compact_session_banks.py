@@ -116,3 +116,20 @@ def test_different_time_limits_show_per_quiz_bank_and_no_shared_part_keeps_full_
     assert '變數小考 · 10 分' in card_text and '迴圈練習 · 20 分' in card_text and '函式挑戰 · 不限時' in card_text
     part = _text(_row_and_details(_html(auth_client, '/class-sessions'), session['id']))
     assert '3 份題庫 0 人' in part
+
+
+
+def _labels(titles):
+    import bank_summary
+    s = bank_summary.summarize([{'title': t, 'time_limit': None, 'n_subs': 0, 'folder': None} for t in titles])
+    return s['shared'], [item['label'] for item in s['items']]
+
+
+def test_shared_start_never_ends_inside_an_open_bracket():
+    assert _labels(['Quiz (Ch02 a)', 'Quiz (Ch02 b)', 'Quiz (Ch03 c)']) == ('Quiz', ['Ch02 a', 'Ch02 b', 'Ch03 c'])
+    assert _labels(['Quiz (Ch02 a)', 'Quiz (Ch02 b)', 'Quiz (Ch02 c)']) == ('Quiz', ['Ch02 a', 'Ch02 b', 'Ch02 c'])
+
+
+def test_a_chip_drops_brackets_only_when_one_pair_wraps_its_whole_part():
+    assert _labels(['測驗（Ch02 A）（進階）', '測驗（Ch03 B）', '測驗（Ch04 C）']) == (
+        '測驗', ['（Ch02 A）（進階）', 'Ch03 B', 'Ch04 C'])

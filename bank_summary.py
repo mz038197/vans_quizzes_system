@@ -27,17 +27,31 @@ def _shared_start(titles):
         end += 1
     while end > 0 and not (first[end] in _BREAKS if end < len(first) else False):
         end -= 1
-    shared = first[:end].rstrip(''.join(_BREAKS))
+    end = _before_open_bracket(first, end)
+    shared = first[:end].rstrip(_BREAKS)
     if len(shared) < 2 or any(not t[end:].strip(_BREAKS) for t in titles):
         return ''
     return shared
 
 
+def _before_open_bracket(text, end):
+    """Cut `end` back so that text[:end] leaves no bracket open."""
+    opened = []
+    for i, ch in enumerate(text[:end]):
+        if ch in _BRACKETS:
+            opened.append(i)
+        elif opened and ch == _BRACKETS[text[opened[-1]]]:
+            opened.pop()
+    return opened[0] if opened else end
+
+
 def _own_part(title, shared):
     rest = title[len(shared):].strip()
-    if rest[:1] in _BRACKETS and rest.endswith(_BRACKETS[rest[0]]):
-        rest = rest[1:-1].strip()
-    return rest.lstrip(''.join(_BREAKS)).strip() or title
+    inner = rest[1:-1]
+    if rest[:1] in _BRACKETS and rest.endswith(_BRACKETS[rest[0]]) and not any(
+            ch in inner for pair in _BRACKETS.items() for ch in pair):
+        rest = inner.strip()
+    return rest.lstrip(_BREAKS.translate({ord(c): None for c in _BRACKETS})).strip() or title
 
 
 def summarize(banks):

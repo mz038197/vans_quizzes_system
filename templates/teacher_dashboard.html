@@ -41,7 +41,7 @@
                 </ul>
                 {% else %}
                 <details class="bk-more">
-                    <summary><i class="far fa-file-alt" aria-hidden="true"></i> {{ s.count }} 份題庫{% if s.limit_text %} · {{ s.limit_text }}{% endif %}</summary>
+                    <summary><i class="far fa-file-alt" aria-hidden="true"></i> <span>{{ s.count }} 份題庫{% if s.limit_text %} · {{ s.limit_text }}{% endif %}</span><i class="fas fa-chevron-down bk-chev" aria-hidden="true"></i></summary>
                     {{ ui.bank_chips(s) }}
                 </details>
                 {% endif %}

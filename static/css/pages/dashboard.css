@@ -41,6 +41,7 @@
 .scard .acts .btn { flex: 1; justify-content: center; }
 
 .scard .bk-more { color: var(--muted); font-size: var(--fs-sm); }
-.scard .bk-more summary { cursor: pointer; line-height: 1.6; }
-.scard .bk-more summary i { width: 14px; }
-.scard .bk-more[open] summary { margin-bottom: var(--s1); }
+.scard .bk-more summary { display: flex; align-items: center; gap: var(--s1); min-height: var(--tap); cursor: pointer; list-style: none; }
+.scard .bk-more summary::-webkit-details-marker { display: none; }
+.scard .bk-more .bk-chev { margin-left: auto; font-size: var(--fs-xs); transition: transform var(--ease); }
+.scard .bk-more[open] .bk-chev { transform: rotate(180deg); }
