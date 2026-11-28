@@ -1892,14 +1892,16 @@ def delete_submission(submission_id):
 def delete_submissions():
     """Delete several Submissions in one transaction. Body: {ids: [...]} (the grades page), or
     {class_session_id, students: [...]} (the 課堂總表: every Take of those trimmed names in that
-    Class Session). One id that is not this Teacher's gives 404 and deletes nothing."""
+    Class Session). One id that is not this Teacher's gives 404 and deletes nothing, so this uses
+    owned_or_404 (not owned_or_none) for ids in the body, and checks every id before it deletes."""
     data = request.get_json(silent=True) or {}
     if 'class_session_id' in data:
         class_session = owned_or_404(ClassSession, data['class_session_id'])
         names = {grade_stats.trimmed_name(n) for n in data.get('students') or []}
         submissions = [s for s in class_session.submissions if grade_stats.trimmed_name(s.student_name) in names]
     else:
-        submissions = [owned_or_404(Submission, i) for i in data.get('ids') or []]
+        ids = dict.fromkeys(data.get('ids') or [])  # each id once, in order
+        submissions = [owned_or_404(Submission, i) for i in ids]
     if not submissions:
         return jsonify({'error': '沒有選擇作答'}), 400
     try:

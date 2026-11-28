@@ -91,3 +91,13 @@ def test_class_session_sheet_has_a_checkbox_for_each_student(auth_client):
     assert html.count('data-student=') == 2
     assert 'data-student="王小明"' in html
     assert 'data-student=' not in _html(auth_client.get(f'/courses/{course}'))
+
+
+def test_a_repeated_id_counts_once(auth_client):
+    bank = auth_client._ids['quiz_bank_id']
+    cs = _session(_course(), '第 12 週 · 小考', [(bank, None)])
+    a = _hand_in(cs, bank, '王小明', 70)
+
+    response = auth_client.post(URL, json={'ids': [a, a]})
+
+    assert response.get_json()['deleted'] == 1

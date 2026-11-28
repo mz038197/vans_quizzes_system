@@ -7,23 +7,22 @@
 
     const table = document.querySelector('table.sheet[data-class-session]');
     if (!table) return;
-    const all = table.querySelector('[data-select-all]');
+    const selectAll = table.querySelector('[data-select-all]');
     const boxes = [...table.querySelectorAll('[data-student]')];
     const UNIT = '位學生';
 
-    function picked() {
+    function selectedStudents() {
         return boxes.filter(box => box.checked).map(box => box.dataset.student);
     }
 
     function refresh() {
-        const count = picked().length;
-        all.checked = count > 0 && count === boxes.length;
-        all.indeterminate = count > 0 && count < boxes.length;
+        const count = selectedStudents().length;
+        SubmissionDelete.syncSelectAll(selectAll, count, boxes.length);
         bar.show(count, UNIT);
     }
 
-    async function remove() {
-        const students = picked();
+    async function deleteSelectedStudents() {
+        const students = selectedStudents();
         const result = await SubmissionDelete.run(
             { class_session_id: Number(table.dataset.classSession), students },
             { count: students.length, names: students, unit: UNIT, scope: '在這堂課的所有作答（包括寫了好幾次的舊作答）' });
@@ -32,14 +31,14 @@
         location.reload();
     }
 
-    function clear() {
+    function clearSelection() {
         boxes.forEach(box => { box.checked = false; });
         refresh();
     }
 
-    const bar = SubmissionDelete.bar({ onDelete: remove, onClear: clear });
-    all.addEventListener('change', () => {
-        boxes.forEach(box => { box.checked = all.checked; });
+    const bar = SubmissionDelete.bar({ onDelete: deleteSelectedStudents, onClear: clearSelection });
+    selectAll.addEventListener('change', () => {
+        boxes.forEach(box => { box.checked = selectAll.checked; });
         refresh();
     });
     boxes.forEach(box => box.addEventListener('change', refresh));

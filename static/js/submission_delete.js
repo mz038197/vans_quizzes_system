@@ -2,10 +2,13 @@
  * Delete several Submissions at once (POST /api/submissions/delete). Used by the Quiz Bank grades
  * page (rows = Submissions, body {ids}) and the 課堂總表 (rows = students, body {class_session_id, students}).
  *
- *   SubmissionDelete.bar({ onDelete, onClear })     the bottom action bar (_bulk_bar.html); returns { show(count, unit) }
- *   await SubmissionDelete.run(body, { count, names, unit, scope })   asks, sends, and resolves to the result or null
+ *   const bar = SubmissionDelete.bar({ onDelete, onClear })    the bottom action bar (_bulk_bar.html)
+ *   bar.show(count, unit)                                     hidden when count is 0
+ *   SubmissionDelete.syncSelectAll(box, selected, total)      checked, unchecked or partly checked
+ *   await SubmissionDelete.run(body, { count, names, unit, scope })   asks, sends; the result or null
  *
- * The dialog names the students (the first 5, then 「…等 N 位」). For 2 or more, the teacher types the count.
+ * The dialog names the students, trimmed and each once (the first 5, then 「…等 N 位」).
+ * For 2 or more, the teacher types the count.
  */
 (function () {
     'use strict';
@@ -13,7 +16,7 @@
     const SHOWN_NAMES = 5;
 
     function nameList(names) {
-        const unique = [...new Set(names)];
+        const unique = [...new Set(names.map(name => (name || '').trim()))];
         const shown = unique.slice(0, SHOWN_NAMES).join('、');
         return unique.length > SHOWN_NAMES ? `${shown}…等 ${unique.length} 位` : shown;
     }
@@ -31,7 +34,12 @@
         };
     }
 
-    async function run(body, { count, names, scope, unit }) {
+    function syncSelectAll(box, selected, total) {
+        box.checked = selected > 0 && selected === total;
+        box.indeterminate = selected > 0 && selected < total;
+    }
+
+    async function run(body, { count, names, unit, scope }) {
         const ok = await UI.ask(
             `會永久刪除 ${nameList(names)} ${scope}，學生的成績單連結也會打不開。這個動作無法復原。`,
             { title: `刪除 ${count} ${unit}？`, danger: true, okText: '刪除',
@@ -55,5 +63,5 @@
         }
     }
 
-    window.SubmissionDelete = { bar, run };
+    window.SubmissionDelete = { bar, syncSelectAll, run };
 })();
