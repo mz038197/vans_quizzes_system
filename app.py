@@ -959,7 +959,7 @@ class Folder(db.Model):
         """The cover address, or None. The ?v= part changes with each upload, so browsers can keep it."""
         if self.cover_updated_at is None:
             return None
-        return url_for('folder_cover_image', folder_id=self.id, v=int(self.cover_updated_at.timestamp() * 1000))
+        return url_for('folder_cover_image', folder_id=self.id, v=int(self.cover_updated_at.timestamp() * 1_000_000))
 
 
 def teacher_folders(teacher_id):

@@ -152,3 +152,16 @@ def test_startup_adds_the_cover_columns_to_an_old_folder_table(client):
 
         columns = {c['name'] for c in inspect(app_module.db.engine).get_columns('folder')}
         assert {'cover_image', 'cover_updated_at'} <= columns
+
+
+def test_after_removal_the_card_shows_the_colour_block_again(auth_client):
+    folder_id = _folder_id(auth_client, '換回顏色')
+    _cover_url(auth_client, folder_id)
+
+    auth_client.delete(f'/api/folders/{folder_id}/cover')
+
+    page = _html(auth_client, '/quiz-banks')
+    card = page[page.index(f'data-folder="{folder_id}"'):]
+    card = card[:card.index('</a>')]
+    assert 'background-image' not in card
+    assert 'fcard-ph' in card

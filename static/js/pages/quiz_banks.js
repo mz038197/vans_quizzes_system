@@ -7,9 +7,15 @@
   const COLOR_NAMES = { blue: '藍', green: '綠', purple: '紫', amber: '橘', pink: '粉紅', cyan: '青' };
   const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
+  /* body: a plain object (sent as JSON) or FormData (sent as a file upload). */
   async function send(method, url, body) {
+    const isForm = body instanceof FormData;
     try {
-      const response = await fetch(url, { method, headers: JSON_HEADERS, body: body ? JSON.stringify(body) : undefined });
+      const response = await fetch(url, {
+        method,
+        headers: isForm ? undefined : JSON_HEADERS,
+        body: isForm || !body ? body : JSON.stringify(body),
+      });
       const result = await response.json().catch(() => ({}));
       return { ok: response.ok, result };
     } catch (error) {
@@ -27,7 +33,8 @@
   }
 
   const COVER_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-  const COVER_MAX_BYTES = 4 * 1024 * 1024;  // the server's upload limit
+  // The server takes at most 4 MB for the whole request (MAX_CONTENT_LENGTH); leave room for the form fields.
+  const COVER_MAX_BYTES = 4 * 1024 * 1024 - 16 * 1024;
 
   /* Cover picture field: a 16:9 preview, 選擇圖片 and 移除. state.file is a new picture; state.remove drops the old one. */
   function coverField(folder, state) {
@@ -43,7 +50,6 @@
 
     function show(url) {
       preview.style.backgroundImage = url ? `url("${url}")` : '';
-      preview.classList.toggle('is-empty', !url);
       remove.hidden = !url;
     }
     show(folder && folder.cover_url);
@@ -82,13 +88,7 @@
     if (state.file) {
       const form = new FormData();
       form.append('cover', state.file);
-      try {
-        const response = await fetch(`/api/folders/${folderId}/cover`, { method: 'PUT', body: form });
-        const result = await response.json().catch(() => ({}));
-        return { ok: response.ok, result };
-      } catch (error) {
-        return { ok: false, result: { error: '網路錯誤，請檢查連線' } };
-      }
+      return send('PUT', `/api/folders/${folderId}/cover`, form);
     }
     if (state.remove) return send('DELETE', `/api/folders/${folderId}/cover`);
     return { ok: true, result: {} };
