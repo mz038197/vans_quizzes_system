@@ -86,7 +86,7 @@
                 <table class="table subs-table">
                     <thead>
                         <tr>
-                            <th>名次</th>
+                            <th><label class="pick"><input type="checkbox" id="subs-all" aria-label="選取畫面上全部的作答"> 名次</label></th>
                             <th>姓名</th>
                             <th>Email</th>
                             <th>課堂</th>
@@ -120,6 +120,8 @@
 {% endblock %}
 
 {% block scripts %}
+{% include "_bulk_bar.html" %}
+<script src="{{ url_for('static', filename='js/submission_delete.js') }}"></script>
 <script>
 const QUIZ_BANK_ID = {{ quiz_bank.id }};
 const SUBMISSIONS_URL = {{ url_for('view_submissions_page', quiz_bank_id=quiz_bank.id) | tojson }};
@@ -168,6 +170,7 @@ function filterParams(withSearch) {
 
 async function loadSubmissions() {
     show('subs-loading');
+    picked.clear();
     const params = filterParams(false);
     history.replaceState(null, '', params.toString() ? `?${params}` : window.location.pathname);
     try {
@@ -246,7 +249,7 @@ function displaySubmissionsTable() {
         const tier = tierOf(s.percentage);
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td><span class="rank${s.rank <= 3 ? ' top' : ''}">${s.rank}</span></td>
+            <td><label class="pick"><input type="checkbox" data-pick="${s.id}"${picked.has(s.id) ? ' checked' : ''} aria-label="選取 ${UI.escape(s.student_name)} 的作答"> <span class="rank${s.rank <= 3 ? ' top' : ''}">${s.rank}</span></label></td>
             <td><div class="t-title">${UI.escape(s.student_name)}${s.takes > 1 ? ` <span class="times">第 ${s.take} 次</span>` : ''}${s.is_practice ? ' <span class="badge badge-info">練習</span>' : ''}</div></td>
             <td class="t-sub">${s.student_email ? UI.escape(s.student_email) : '—'}</td>
             <td class="t-sub nowrap">${s.class_session ? UI.escape(s.class_session) : '—'}</td>
@@ -270,6 +273,7 @@ function displaySubmissionsTable() {
     const none = document.getElementById('subs-none');
     none.hidden = rows.length > 0;
     none.textContent = grades.submissions.length ? '沒有符合的姓名。' : '這堂課還沒有作答。';
+    refreshPicks();
 }
 
 function exportToCSV() {
@@ -280,30 +284,35 @@ function exportToCSV() {
     window.location.href = `${CSV_URL}?${filterParams(true)}`;
 }
 
-async function deleteSubmission(submissionId) {
-    const submission = grades.submissions.find(s => s.id === submissionId);
-    const name = submission ? submission.student_name : '';
-    const ok = await UI.ask(`確定要刪除「${name}」的作答嗎？刪除後無法復原。`, {
-        title: '刪除作答', okText: '刪除', danger: true,
-    });
-    if (!ok) return;
+// Selected Submission ids. Only rows on screen stay selected: a search that hides a row unselects it.
+const picked = new Set();
+const PICK_UNIT = '份作答';
 
-    try {
-        const response = await fetch(`/api/submission/${submissionId}`, {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-        });
-        const result = await response.json();
-        if (response.ok) {
-            UI.toast(result.message, 'ok');
-            loadSubmissions();
-        } else {
-            UI.toast(result.error || '刪除失敗，請稍後再試', 'error');
-        }
-    } catch (error) {
-        UI.toast('網路錯誤，請檢查連線', 'error');
-    }
+function refreshPicks() {
+    const visibleIds = new Set(visibleRows().map(s => s.id));
+    for (const id of picked) if (!visibleIds.has(id)) picked.delete(id);
+    const all = document.getElementById('subs-all');
+    all.checked = picked.size > 0 && picked.size === visibleIds.size;
+    all.indeterminate = picked.size > 0 && picked.size < visibleIds.size;
+    pickBar.show(picked.size, PICK_UNIT);
 }
+
+async function deleteSubmissions(ids) {
+    const names = grades.submissions.filter(s => ids.includes(s.id)).map(s => s.student_name);
+    const result = await SubmissionDelete.run({ ids },
+        { count: ids.length, names, unit: PICK_UNIT, scope: '的作答' });
+    if (!result) return;
+    UI.toast(result.message, 'ok');
+    loadSubmissions();
+}
+
+const pickBar = SubmissionDelete.bar({
+    onDelete: () => deleteSubmissions([...picked]),
+    onClear: () => {
+        picked.clear();
+        displaySubmissionsTable();
+    },
+});
 
 document.getElementById('export-csv').addEventListener('click', exportToCSV);
 document.getElementById('subs-retry').addEventListener('click', loadSubmissions);
@@ -311,7 +320,20 @@ document.getElementById('cs-filter').addEventListener('change', loadSubmissions)
 document.getElementById('subs-search').addEventListener('input', () => { if (grades) displaySubmissionsTable(); });
 document.getElementById('subs-tbody').addEventListener('click', (event) => {
     const button = event.target.closest('[data-delete]');
-    if (button) deleteSubmission(Number(button.dataset.delete));
+    if (button) deleteSubmissions([Number(button.dataset.delete)]);
+});
+document.getElementById('subs-tbody').addEventListener('change', (event) => {
+    const box = event.target.closest('[data-pick]');
+    if (!box) return;
+    const id = Number(box.dataset.pick);
+    if (box.checked) picked.add(id); else picked.delete(id);
+    refreshPicks();
+});
+document.getElementById('subs-all').addEventListener('change', (event) => {
+    for (const s of visibleRows()) {
+        if (event.target.checked) picked.add(s.id); else picked.delete(s.id);
+    }
+    displaySubmissionsTable();
 });
 
 document.addEventListener('DOMContentLoaded', loadSubmissions);
