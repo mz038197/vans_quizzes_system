@@ -357,3 +357,10 @@ body.has-dialog { overflow: hidden; }
 
 /* A question picture (take page, result page, question editor). Moved from legacy.css (review fix 5). */
 .question-image { display: block; max-width: 100%; max-height: 420px; margin: var(--s2) 0; object-fit: contain; border-radius: var(--r-sm); }
+
+/* The Quiz Banks of a Class Session, as chips (_ui.html bank_chips) */
+.bank-chips-h { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); margin-bottom: var(--s1); font-size: var(--fs-sm); }
+.bank-chip-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s1); }
+.bank-chip { padding: var(--s0) var(--s1); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-xs); line-height: 1.5; }
+.bank-chip .chip { font-size: var(--fs-xs); }
+

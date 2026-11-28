@@ -13,7 +13,7 @@
 .crs.is-ended .table-wrap { opacity: .8; }
 .crs-none { padding: var(--s2); margin: 0; }
 
-.cs-table .cs-name { white-space: nowrap; }
+.cs-table .cs-name { min-width: 10rem; }
 .cs-table .cs-name .code { display: inline-block; margin-top: var(--s0); font-size: var(--fs-xs); }
 .cs-table tr.is-live td:first-child { box-shadow: inset 3px 0 0 var(--success); }
 .cs-bank + .cs-bank { margin-top: var(--s0); }
@@ -32,3 +32,9 @@
 @media (max-width: 760px) {
   .crs-acts { margin-left: 0; }
 }
+
+.cs-banks-toggle { display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: var(--tap); padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); cursor: pointer; text-align: left; }
+.cs-banks-toggle .cs-banks-n { white-space: nowrap; }
+.cs-banks-toggle i { font-size: var(--fs-xs); color: var(--muted); transition: transform var(--ease); }
+.cs-banks-toggle[aria-expanded="true"] i { transform: rotate(180deg); }
+.cs-banks-row > td { padding-top: 0; background: var(--bg); }

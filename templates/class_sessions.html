@@ -12,9 +12,18 @@
 <tr data-class-session="{{ cs.id }}"{% if row.status == 'live' %} class="is-live"{% endif %}>
     <td class="cs-name"><div class="t-title">{{ cs.name }}</div><span class="code">{{ cs.code }}</span></td>
     <td>
+        {% set s = row.bank_summary %}
+        {% if s.full %}
         {% for b in row.banks %}
         <div class="cs-bank">{{ b.title }} <span class="t-sub">· {% if b.time_limit %}時限 {{ b.time_limit }} 分鐘{% else %}不限時{% endif %} · {{ b.n_subs }} 人</span>{% if b.folder %} <span class="chip fc-{{ b.folder.color }}">{{ ui.folder_dot(b.folder.color) }} {{ b.folder.name }}</span>{% endif %}</div>
         {% endfor %}
+        {% else %}
+        <button type="button" class="cs-banks-toggle" data-banks-toggle aria-expanded="false" aria-controls="cs-banks-{{ cs.id }}"
+                aria-label="「{{ cs.name }}」的 {{ s.count }} 份題庫{% if s.limit_text %}，{{ s.limit_text }}{% endif %}，{{ s.n_subs }} 人作答">
+            <span class="cs-banks-n">{{ s.count }} 份題庫 <i class="fas fa-chevron-down" aria-hidden="true"></i></span>
+            <span class="t-sub">{% if s.limit_text %}{{ s.limit_text }} · {% endif %}{{ s.n_subs }} 人</span>
+        </button>
+        {% endif %}
     </td>
     <td class="num t-sub nowrap">{{ class_session_window(cs) }}</td>
     <td>{{ ui.status_pill(row.status, row.status_label) }}</td>
@@ -38,6 +47,11 @@
         <button type="button" class="btn btn-icon" data-cs-delete="{{ cs.id }}" title="刪除課堂" aria-label="刪除「{{ cs.name }}」"><i class="far fa-trash-alt" aria-hidden="true"></i></button>
     </td>
 </tr>
+{% if not row.bank_summary.full %}
+<tr class="cs-banks-row" id="cs-banks-{{ cs.id }}" hidden>
+    <td colspan="5">{{ ui.bank_chips(row.bank_summary, show_subs=True, show_folder=True) }}</td>
+</tr>
+{% endif %}
 {%- endmacro %}
 
 {% macro course_block(block) -%}

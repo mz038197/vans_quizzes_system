@@ -31,6 +31,7 @@ import teacher_stats
 import class_session_rules
 import grade_stats
 import grade_sheets
+import bank_summary
 from teacher_auth import (
     DEFAULT_SECRET_KEY,
     LOGIN_REQUIRED,
@@ -856,7 +857,10 @@ def teacher_class_session_overview(teacher_id, now=None):
         status = class_session_rules.status(class_session, now)
         handed = names.get(class_session.id, [])
         row = {'session': class_session, 'status': status, 'n_subs': len(handed),
-               'n_students': len(set(handed)), 'progress': None, 'when_text': None}
+               'n_students': len(set(handed)), 'progress': None, 'when_text': None,
+               'bank_summary': bank_summary.summarize([
+                   {'title': o.quiz_bank.title, 'time_limit': o.time_limit_minutes, 'n_subs': 0, 'folder': None}
+                   for o in class_session.offers])}
         if status == class_session_rules.LIVE:
             end = class_session_rules.effective_end(class_session)
             span = (end - class_session.starts_at).total_seconds() or 1
@@ -2563,6 +2567,7 @@ def class_sessions_page_data(teacher_id, status_filter='all', query='', now=None
                 'folder': folders.get(o.quiz_bank.folder_id),
             } for o in class_session.offers]
             rows.append({'session': class_session, 'status': status, 'banks': banks,
+                         'bank_summary': bank_summary.summarize(banks),
                          'status_label': class_session_status_label(class_session, status, now)})
             if is_open:
                 tab_counts['all'] += 1

@@ -51,6 +51,26 @@
 </div>
 {%- endmacro %}
 
+{# The Quiz Banks of a Class Session (bank_summary.summarize): the shared start of the titles once,
+   then one chip per Quiz Bank with only what is its own. #}
+{% macro bank_chips(s, show_subs=False, show_folder=False) -%}
+<div class="bank-chips">
+  {% if s.shared or (show_folder and s.folder) %}<div class="bank-chips-h">
+    {%- if s.shared %}<span class="t-title">{{ s.shared }}</span>{% endif %}
+    {%- if show_folder and s.folder %} <span class="chip fc-{{ s.folder.color }}">{{ folder_dot(s.folder.color) }} {{ s.folder.name }}</span>{% endif -%}
+  </div>{% endif %}
+  <ul class="bank-chip-list">
+    {% for item in s['items'] %}
+    <li class="bank-chip" title="{{ item.title }}">{{ item.label }}
+      {%- if item.limit_text %} · {{ item.limit_text }}{% endif %}
+      {%- if show_subs and item.n_subs is not none %} · {{ item.n_subs }} 人{% endif %}
+      {%- if show_folder and item.folder %} <span class="chip fc-{{ item.folder.color }}">{{ folder_dot(item.folder.color) }} {{ item.folder.name }}</span>{% endif -%}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{%- endmacro %}
+
 {% macro type_badge(question_type) -%}
 <span class="tb t-{{ question_type }}">{{ get_question_type_name(question_type) }}</span>
 {%- endmacro %}
