@@ -39,3 +39,8 @@
 .scard .pg::-moz-progress-bar { background: var(--success); }
 .scard .acts { display: flex; gap: var(--s0); }
 .scard .acts .btn { flex: 1; justify-content: center; }
+
+.scard .bk-more { color: var(--muted); font-size: var(--fs-sm); }
+.scard .bk-more summary { cursor: pointer; line-height: 1.6; }
+.scard .bk-more summary i { width: 14px; }
+.scard .bk-more[open] summary { margin-bottom: var(--s1); }

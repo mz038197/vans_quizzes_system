@@ -32,11 +32,19 @@
             <div>
                 <div class="t-sub"><i class="fas fa-graduation-cap" aria-hidden="true"></i> {{ cs.course.name }}</div>
                 <h3 class="nm">{{ cs.name }}</h3>
+                {% set s = row.bank_summary %}
+                {% if s.full %}
                 <ul class="bk">
                     {% for offer in cs.offers %}
                     <li><i class="far fa-file-alt" aria-hidden="true"></i> {{ offer.quiz_bank.title }} <span class="t-sub">· {{ '時限 %d 分鐘' % offer.time_limit_minutes if offer.time_limit_minutes else '不限時' }}</span></li>
                     {% endfor %}
                 </ul>
+                {% else %}
+                <details class="bk-more">
+                    <summary><i class="far fa-file-alt" aria-hidden="true"></i> {{ s.count }} 份題庫{% if s.limit_text %} · {{ s.limit_text }}{% endif %}</summary>
+                    {{ ui.bank_chips(s) }}
+                </details>
+                {% endif %}
             </div>
             <div class="tm"><span>{{ class_session_window(cs) }}</span><span>{{ row.n_students }} 人交卷</span></div>
             {% if row.status == 'live' %}<progress class="pg" max="100" value="{{ row.progress }}" aria-label="課堂時間已過 {{ row.progress }}%">{{ row.progress }}%</progress>{% endif %}

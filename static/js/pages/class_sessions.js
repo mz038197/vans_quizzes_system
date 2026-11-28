@@ -13,3 +13,14 @@
         }
     });
 })();
+
+// A Class Session with many Quiz Banks shows one summary line; this opens the details row under it.
+document.addEventListener('click', (e) => {
+    const toggle = e.target.closest('[data-banks-toggle]');
+    if (!toggle) return;
+    const details = document.getElementById(toggle.getAttribute('aria-controls'));
+    if (!details) return;
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    toggle.setAttribute('aria-expanded', String(open));
+    details.hidden = !open;
+});
