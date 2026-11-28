@@ -23,7 +23,7 @@
 }
 .scard.live { border-color: var(--success-line); box-shadow: inset 3px 0 0 var(--success); }
 /* The status pill, and 編輯課堂 at the right. */
-.scard .top { display: flex; align-items: center; justify-content: space-between; gap: var(--s1); }
+.scard .hd { display: flex; align-items: center; justify-content: space-between; gap: var(--s1); }
 .scard .nm { font-size: var(--fs-md); font-weight: 600; margin: var(--s0) 0 var(--s0); }
 .scard .bk { list-style: none; margin: 0; padding: 0; color: var(--muted); font-size: var(--fs-sm); }
 .scard .bk li { line-height: 1.6; }
